@@ -8,7 +8,7 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 3 In Progress (Document Workflows + Template Builder)
+## CURRENT STATUS — Phase 3 Complete (Document Workflows + Template Builder)
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
 - ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
@@ -18,11 +18,11 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ Roles seeded: super_admin, admin, site_engineer, qaqc_engineer, qaqc_manager
 - ✅ Users seeded: dev@jlwme.com/Dev12345, admin@jlwme.com/Admin123, site@jlwme.com/Site1234, qaqc@jlwme.com/Qaqc1234, jerry@jlwme.com/Jerry123
 - ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Employee, Activity, SubActivity, Test, System, Contractor
-- ✅ Document models: Document (single table for MIR/WIR/CIR), DocumentApproval, document_assets, FAT, fat_assets
-- ✅ Template models: DocumentTemplate (JSONB schema), ReferenceNumberConfig (pattern-based auto-numbering)
+- ✅ Document models: Document (single table for MIR/WIR/CIR with doc_type), DocumentApproval, document_assets, FAT, fat_assets
+- ✅ Template models: DocumentTemplate (JSONB schema for cover sheet layout), ReferenceNumberConfig (pattern-based auto-numbering)
 - ✅ Generic CRUD router factory + dedicated document/FAT/template endpoints
 - ✅ Document workflow: sign (site_engineer/qaqc_engineer), approval chain (respond → advance/reject)
-- ✅ Reference number generation: /templates/ref-config/generate (pattern with project_code, contractor_code, discipline_code, doc_type, serial)
+- ✅ Reference number generation: /templates/ref-config/generate (pattern: {project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d})
 - ✅ Dashboard stats endpoint: /dashboard/stats?project_id=
 - ✅ Alembic migrations applied (8 total)
 - ✅ Seed get_or_create restores soft-deleted records
@@ -44,17 +44,29 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ Dashboard page: 7 stat cards with colored icon badges, placeholder charts
 - ✅ QA/QC pages: MIR, WIR (list + full-page form at /qaqc/wir/new), CIR, FAT Reports
 - ✅ WIR form: date, discipline, subject, description, location, floor, RAMS, drawing ref, service/activity/sub-activity selects, multi-asset selection, 2 inspectors with click-to-sign, attachments
+- ✅ Template Builder: /documents/templates/builder — visual section/row/cell editor
+  - Settings: name, doc_type, font, fontSize, margins, header image, section gap
+  - Footer editor (repeats on all pages)
+  - Sections: collapsible, labeled, configurable gap
+  - Rows: height, evenCells, isTitle + color, expandToFooter
+  - Cells: type (label/data), variant (text/checkbox), width %, value/fieldKey/checkboxLabel
+  - Data binding to form fields (reference_number, revision, date, subject, discipline, inspectors, signatures, page_number, etc.)
+- ✅ Templates list page: /documents/templates with CRUD
 - ✅ Loading.tsx at dashboard layout level
 - ✅ Card component with Zenith-style border (oklch(0.28)) and background (oklch(0.20))
 - ✅ Global scrollbar: thin, subtle, no arrows, touches top edge
 - ✅ Delete confirmation on all row actions
 
-### What's Next (In Progress)
-- **Template Builder UI** — visual section/row/cell editor for document cover sheets
+### Important Rules
+- After any database migration or seed, create a database dump into `backend/db_dump/` — each table as a separate CSV file.
+
+### What's Next
 - Signature system refinement (script fonts, Docusign-style)
-- PDF generation from template + form data
+- PDF generation from template + form data (cover sheet + attachments)
+- Reference number config UI in project settings
 - Milestone tracking system
 - Commissioning level tracking
+- MIR and CIR full-page forms (similar to WIR)
 
 ### Key Files
 - frontend/src/components/layout/app-sidebar.tsx — sidebar with controlled collapsibles + scroll-to-active
@@ -70,6 +82,8 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - frontend/src/app/(dashboard)/dashboard/page.tsx — dashboard with stats
 - frontend/src/app/(dashboard)/qaqc/wir/new/page.tsx — WIR full-page form
 - frontend/src/app/(dashboard)/qaqc/wir/page.tsx — WIR list (navigates to /new)
+- frontend/src/app/(dashboard)/documents/templates/page.tsx — templates list
+- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI
 - backend/app/models/document.py — Document model (MIR/WIR/CIR single table)
 - backend/app/models/document_approval.py — DocumentApproval + document_assets
 - backend/app/models/fat.py — FAT + fat_assets
