@@ -24,11 +24,15 @@ Enterprise QA/QC + Commissioning Management Platform.
 cp .env.example .env
 ```
 
-### 2. Start Database
+### 2. Start Docker Services
 
 ```bash
 docker compose up -d
 ```
+
+This starts:
+- **PostgreSQL** on port 5432 (required for backend)
+- **pgAdmin** on port 5050 (optional, for DB management)
 
 ### 3. Backend
 
@@ -36,6 +40,7 @@ docker compose up -d
 cd backend
 uv sync
 uv run alembic upgrade head
+uv run python -m app.seed        # Seeds roles, users, and master data
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -47,9 +52,20 @@ npm install
 npm run dev
 ```
 
-### Access
+## Access
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-- pgAdmin: http://localhost:5050
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Frontend | http://localhost:3000 | See below |
+| Backend API | http://localhost:8000 | — |
+| API Docs | http://localhost:8000/docs | — |
+| pgAdmin | http://localhost:5050 | admin@qtc360.local / admin |
+
+## Test Accounts
+
+| Role | Email | Password |
+|------|-------|----------|
+| Super Admin | dev@jlwme.com | dev123 |
+| Admin | admin@jlwme.com | admin123 |
+| Site Engineer | site@jlwme.com | site123 |
+| QA/QC Engineer | qaqc@jlwme.com | qaqc123 |
