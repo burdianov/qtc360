@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Plus,
@@ -12,8 +12,10 @@ import {
   ChevronRight,
   Settings2,
   Type,
-  CheckSquare,
   Database,
+  Eye,
+  Upload,
+  X,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
@@ -22,10 +24,24 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
 // --- Types ---
+
+interface HeaderCell {
+  id: string;
+  width: number;
+  scale: number; // 0-100, percentage of cell to fill
+}
+
+interface HeaderRow {
+  id: string;
+  height: number;
+  internalBorders: boolean;
+  cells: HeaderCell[];
+}
 
 interface Cell {
   id: string;
@@ -46,6 +62,7 @@ interface Row {
   font: string;
   fontSize: number;
   expandToFooter: boolean;
+  internalBorders: boolean;
   cells: Cell[];
 }
 
@@ -61,15 +78,23 @@ interface TemplateSchema {
   margins: { top: number; right: number; bottom: number; left: number };
   font: string;
   fontSize: number;
-  header: { imageUrl: string; height: number };
+  header: { rows: HeaderRow[] };
   footer: { sections: Section[] };
   sections: Section[];
-  sectionGap: number;
 }
 
 // --- Helpers ---
 
 const uid = () => crypto.randomUUID().slice(0, 8);
+
+const defaultHeaderCell = (): HeaderCell => ({ id: uid(), width: 25, scale: 100 });
+
+const defaultHeaderRow = (): HeaderRow => ({
+  id: uid(),
+  height: 60,
+  internalBorders: true,
+  cells: [defaultHeaderCell(), defaultHeaderCell(), defaultHeaderCell(), defaultHeaderCell()],
+});
 
 const defaultCell = (): Cell => ({
   id: uid(),
@@ -90,6 +115,7 @@ const defaultRow = (): Row => ({
   font: "",
   fontSize: 0,
   expandToFooter: false,
+  internalBorders: true,
   cells: [defaultCell(), defaultCell()],
 });
 
@@ -104,10 +130,9 @@ const defaultSchema = (): TemplateSchema => ({
   margins: { top: 20, right: 15, bottom: 20, left: 15 },
   font: "Arial",
   fontSize: 10,
-  header: { imageUrl: "", height: 60 },
+  header: { rows: [defaultHeaderRow()] },
   footer: { sections: [defaultSection("Footer")] },
   sections: [defaultSection("Section 1")],
-  sectionGap: 10,
 });
 
 // --- Field keys for data binding ---
@@ -221,6 +246,10 @@ function RowEditor({ row, onChange, onRemove }: { row: Row; onChange: (r: Row) =
           <Checkbox checked={row.expandToFooter} onCheckedChange={(v) => onChange({ ...row, expandToFooter: !!v })} />
           Expand↓
         </label>
+        <label className="flex items-center gap-1 text-xs">
+          <Checkbox checked={row.internalBorders ?? true} onCheckedChange={(v) => onChange({ ...row, internalBorders: !!v })} />
+          Int. Borders
+        </label>
         <div className="ml-auto flex gap-1">
           <Button type="button" variant="ghost" size="sm" className="h-6 px-1" onClick={addCell}><Plus className="h-3 w-3" /></Button>
           <Button type="button" variant="ghost" size="sm" className="h-6 px-1 text-destructive" onClick={onRemove}><Trash2 className="h-3 w-3" /></Button>
@@ -277,6 +306,116 @@ function SectionEditor({ section, onChange, onRemove }: { section: Section; onCh
   );
 }
 
+// --- Header Editor ---
+
+function HeaderCellEditor({ cell, projectId, onChange, onRemove }: { cell: HeaderCell; projectId?: string; onChange: (c: HeaderCell) => void; onRemove: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [imgKey, setImgKey] = useState(0);
+  const imgUrl = projectId ? `${api.defaults.baseURL}/templates/header-image/${projectId}/${cell.id}` : null;
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !projectId) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.post(`/templates/header-image/${projectId}/${cell.id}`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setImgKey((k) => k + 1);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex-1 min-w-0 border border-border rounded-md p-1.5 space-y-1.5 bg-background overflow-hidden">
+      <div className="flex items-center gap-1">
+        <Input type="number" value={cell.width} onChange={(e) => onChange({ ...cell, width: Number(e.target.value) })} className="h-5 w-10 text-xs" />
+        <span className="text-[10px] text-muted-foreground">%</span>
+        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive ml-auto">
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+      {/* Image preview */}
+      <div className="flex items-center justify-center h-20 border border-dashed border-border rounded overflow-hidden bg-muted/30 cursor-pointer hover:border-primary/50 transition-colors" onClick={() => fileRef.current?.click()}>
+        {imgUrl && (
+          <img
+            key={imgKey}
+            src={`${imgUrl}?t=${imgKey}`}
+            alt=""
+            className="max-h-full max-w-full object-contain"
+            style={{ transform: `scale(${cell.scale / 100})` }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        )}
+      </div>
+      {/* Upload + Scale */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+        <Button type="button" variant="outline" size="sm" className="h-5 text-[10px] px-1.5" onClick={() => fileRef.current?.click()} disabled={uploading || !projectId}>
+          <Upload className="h-2.5 w-2.5 mr-0.5" />{uploading ? "..." : "Upload"}
+        </Button>
+        <input type="range" min={10} max={100} value={cell.scale} onChange={(e) => onChange({ ...cell, scale: Number(e.target.value) })} className="flex-1 min-w-8 h-3" />
+        <span className="text-[10px] text-muted-foreground">{cell.scale}%</span>
+      </div>
+    </div>
+  );
+}
+
+function HeaderEditor({ schema, onChange, projectId }: { schema: TemplateSchema; onChange: (s: TemplateSchema) => void; projectId?: string }) {
+  const updateRow = (ri: number, row: HeaderRow) => {
+    const rows = [...schema.header.rows];
+    rows[ri] = row;
+    onChange({ ...schema, header: { rows } });
+  };
+  const addRow = () => onChange({ ...schema, header: { rows: [...schema.header.rows, defaultHeaderRow()] } });
+  const removeRow = (ri: number) => onChange({ ...schema, header: { rows: schema.header.rows.filter((_, i) => i !== ri) } });
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between py-3">
+        <CardTitle className="text-base">Header</CardTitle>
+        <Button type="button" variant="outline" size="sm" onClick={addRow}><Plus className="h-3 w-3 mr-1" />Add Row</Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {schema.header.rows.map((row, ri) => (
+          <div key={row.id} className="space-y-2 rounded-md border border-border p-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Row {ri + 1}</span>
+              <label className="text-xs text-muted-foreground ml-2">H:</label>
+              <Input type="number" value={row.height} onChange={(e) => updateRow(ri, { ...row, height: Number(e.target.value) })} className="h-6 w-14 text-xs" />
+              <span className="text-xs text-muted-foreground">pt</span>
+              <label className="flex items-center gap-1 text-xs ml-2">
+                <Checkbox checked={row.internalBorders} onCheckedChange={(v) => updateRow(ri, { ...row, internalBorders: !!v })} />
+                Internal Borders
+              </label>
+              <Button type="button" variant="ghost" size="sm" className="h-6 px-1 ml-auto" onClick={() => updateRow(ri, { ...row, cells: [...row.cells, defaultHeaderCell()] })}><Plus className="h-3 w-3" /></Button>
+              {schema.header.rows.length > 1 && (
+                <Button type="button" variant="ghost" size="sm" className="h-6 px-1 text-destructive" onClick={() => removeRow(ri)}><Trash2 className="h-3 w-3" /></Button>
+              )}
+            </div>
+            <div className="flex gap-2 overflow-hidden">
+              {row.cells.map((cell, ci) => (
+                <HeaderCellEditor
+                  key={cell.id}
+                  cell={cell}
+                  projectId={projectId}
+                  onChange={(c) => { const cells = [...row.cells]; cells[ci] = c; updateRow(ri, { ...row, cells }); }}
+                  onRemove={() => updateRow(ri, { ...row, cells: row.cells.filter((_, i) => i !== ci) })}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 // --- Main Page ---
 
 export default function TemplateBuilderPage() {
@@ -289,6 +428,11 @@ export default function TemplateBuilderPage() {
   const [schema, setSchema] = useState<TemplateSchema>(defaultSchema);
   const [name, setName] = useState("WIR Template");
   const [docType, setDocType] = useState("WIR");
+  const [dirty, setDirty] = useState(false);
+
+  const updateSchema = (s: TemplateSchema) => { setSchema(s); setDirty(true); };
+  const updateName = (n: string) => { setName(n); setDirty(true); };
+  const updateDocType = (d: string) => { setDocType(d); setDirty(true); };
 
   // Load existing template
   useQuery({
@@ -305,41 +449,122 @@ export default function TemplateBuilderPage() {
     enabled: !!templateId,
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (templateId) {
-        return api.patch(`/templates/${templateId}`, { name, template_schema: schema });
+  // Auto-save with debounce
+  const templateIdRef = useRef(templateId);
+  templateIdRef.current = templateId;
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = setTimeout(async () => {
+      if (templateIdRef.current) {
+        await api.patch(`/templates/${templateIdRef.current}`, { name, template_schema: schema });
+      } else if (project) {
+        const res = await api.post("/templates", { project_id: project.id, doc_type: docType, name, template_schema: schema });
+        // Update URL with new template id so subsequent saves are patches
+        const url = new URL(window.location.href);
+        url.searchParams.set("id", res.data.id);
+        window.history.replaceState(null, "", url.toString());
+        templateIdRef.current = res.data.id;
       }
-      return api.post("/templates", { project_id: project!.id, doc_type: docType, name, template_schema: schema });
-    },
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] });
-      router.push("/documents/templates");
-    },
-  });
+      setDirty(false);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [dirty, schema, name, docType]);
 
   const updateSection = (idx: number, section: Section) => {
     const sections = [...schema.sections];
     sections[idx] = section;
-    setSchema({ ...schema, sections });
+    updateSchema({ ...schema, sections });
   };
 
   const removeSection = (idx: number) => {
-    setSchema({ ...schema, sections: schema.sections.filter((_, i) => i !== idx) });
+    updateSchema({ ...schema, sections: schema.sections.filter((_, i) => i !== idx) });
   };
 
   const addSection = () => {
-    setSchema({ ...schema, sections: [...schema.sections, defaultSection(`Section ${schema.sections.length + 1}`)] });
+    updateSchema({ ...schema, sections: [...schema.sections, defaultSection(`Section ${schema.sections.length + 1}`)] });
   };
 
   const updateFooterSection = (idx: number, section: Section) => {
     const sections = [...schema.footer.sections];
     sections[idx] = section;
-    setSchema({ ...schema, footer: { ...schema.footer, sections } });
+    updateSchema({ ...schema, footer: { ...schema.footer, sections } });
+  };
+
+  const handlePreview = () => {
+    const renderCells = (cells: Cell[], evenCells: boolean, internalBorders: boolean = true) =>
+      cells.map((cell, i) => {
+        const width = evenCells ? `${100 / cells.length}%` : `${cell.width}%`;
+        let content = "";
+        if (cell.type === "label" && cell.variant === "text") content = cell.value;
+        else if (cell.type === "label" && cell.variant === "checkbox") content = `☐ ${cell.checkboxLabel}`;
+        else if (cell.type === "data" && cell.variant === "text") content = `[${cell.fieldKey || "field"}]`;
+        else if (cell.type === "data" && cell.variant === "checkbox") content = `☐ [${cell.fieldKey || "field"}]`;
+        const borderStyle = internalBorders && i > 0 ? "border-left:1px solid #333;" : "";
+        return `<td style="width:${width};padding:4px 6px;${borderStyle}">${content}</td>`;
+      }).join("");
+
+    const renderRows = (rows: Row[]) =>
+      rows.map((row) => {
+        const bg = row.isTitle ? `background:${row.titleColor};color:#fff;font-weight:bold;` : "";
+        return `<tr style="height:${row.height}pt;border:1px solid #333;${bg}">${renderCells(row.cells, row.evenCells, row.internalBorders ?? true)}</tr>`;
+      }).join("");
+
+    const renderSections = (sections: Section[], startGap = 0) =>
+      sections.map((section, i) => {
+        const gap = i === 0 ? startGap : section.gap;
+        const mt = gap === 0 ? "margin-top:-1px;" : `margin-top:${gap}pt;`;
+        return `<table style="width:100%;border-collapse:collapse;${mt}border:1px solid #333;">
+          ${renderRows(section.rows)}
+        </table>`;
+      }).join("");
+
+    const renderHeader = () => {
+      if (!project || !schema.header.rows.length) return "";
+      return schema.header.rows.map((row, ri) => {
+        const cellWidth = 100 / row.cells.length;
+        const mt = ri > 0 ? "margin-top:-1px;" : "";
+        return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;height:${row.height}pt;border:1px solid #333;${mt}"><tr>${
+          row.cells.map((cell, ci) =>
+            `<td style="width:${cellWidth}%;text-align:center;vertical-align:middle;padding:4px;overflow:hidden;${ci > 0 && row.internalBorders ? "border-left:1px solid #333;" : ""}">
+              <img src="${api.defaults.baseURL}/templates/header-image/${project.id}/${cell.id}" style="max-width:100%;max-height:${row.height - 8}pt;object-fit:contain;transform:scale(${cell.scale / 100});" onerror="this.style.display='none'" />
+            </td>`
+          ).join("")
+        }</tr></table>`;
+      }).join("");
+    };
+
+    const html = `<!DOCTYPE html><html><head><title>${name} — Preview</title>
+      <style>
+        @page { margin: ${schema.margins.top}pt ${schema.margins.right}pt ${schema.margins.bottom}pt ${schema.margins.left}pt; }
+        body { font-family: ${schema.font}, sans-serif; font-size: ${schema.fontSize}pt; margin: 0; padding: 20px; color: #000; }
+        table { page-break-inside: avoid; }
+        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 0 ${schema.margins.right}pt 0 ${schema.margins.left}pt; }
+      </style>
+    </head><body>
+      ${renderHeader()}
+      ${renderSections(schema.sections, schema.sections[0]?.gap ?? 0)}
+      ${schema.footer.sections.length ? `<div class="footer">${renderSections(schema.footer.sections, 0)}</div>` : ""}
+    </body></html>`;
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.top = "-10000px";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      iframe.onload = () => {
+        iframe.contentWindow?.print();
+        setTimeout(() => document.body.removeChild(iframe), 1000);
+      };
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.push("/documents/templates")}>
@@ -349,24 +574,29 @@ export default function TemplateBuilderPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Template Builder</h1>
           <p className="text-sm text-muted-foreground">Design document cover sheet layout</p>
         </div>
-        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? "Saving..." : "Save Template"}
+        <Button variant="outline" size="sm" onClick={() => router.push("/documents/templates")}>
+          <X className="h-4 w-4 mr-1" />Close
         </Button>
       </div>
 
       {/* Template Settings */}
       <Card>
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><Settings2 className="h-4 w-4" />Template Settings</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+        <CardContent className="space-y-6">
+          {/* Identity */}
+          <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Name</label>
+              <Input value={name} onChange={(e) => updateName(e.target.value)} />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Document Type</label>
-              <Select value={docType} onValueChange={(v) => v && setDocType(v as string)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Font</label>
+              <Input value={schema.font} onChange={(e) => updateSchema({ ...schema, font: e.target.value })} className="w-48" />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Doc Type</label>
+              <Select value={docType} onValueChange={(v) => v && updateDocType(v as string)}>
+                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="WIR">WIR</SelectItem>
                   <SelectItem value="MIR">MIR</SelectItem>
@@ -374,49 +604,46 @@ export default function TemplateBuilderPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Font</label>
-              <Input value={schema.font} onChange={(e) => setSchema({ ...schema, font: e.target.value })} className="mt-1" />
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Font Size</label>
+              <Input type="number" value={schema.fontSize} onChange={(e) => updateSchema({ ...schema, fontSize: Number(e.target.value) })} className="w-20" />
+              <span className="text-xs text-muted-foreground">pt</span>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-5">
-            <div>
-              <label className="text-xs text-muted-foreground">Font Size</label>
-              <Input type="number" value={schema.fontSize} onChange={(e) => setSchema({ ...schema, fontSize: Number(e.target.value) })} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Margin Top</label>
-              <Input type="number" value={schema.margins.top} onChange={(e) => setSchema({ ...schema, margins: { ...schema.margins, top: Number(e.target.value) } })} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Margin Right</label>
-              <Input type="number" value={schema.margins.right} onChange={(e) => setSchema({ ...schema, margins: { ...schema.margins, right: Number(e.target.value) } })} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Margin Bottom</label>
-              <Input type="number" value={schema.margins.bottom} onChange={(e) => setSchema({ ...schema, margins: { ...schema.margins, bottom: Number(e.target.value) } })} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Margin Left</label>
-              <Input type="number" value={schema.margins.left} onChange={(e) => setSchema({ ...schema, margins: { ...schema.margins, left: Number(e.target.value) } })} className="mt-1" />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="text-xs text-muted-foreground">Header Image URL</label>
-              <Input value={schema.header.imageUrl} onChange={(e) => setSchema({ ...schema, header: { ...schema.header, imageUrl: e.target.value } })} className="mt-1" placeholder="/uploads/header.jpg" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Header Height (pt)</label>
-              <Input type="number" value={schema.header.height} onChange={(e) => setSchema({ ...schema, header: { ...schema.header, height: Number(e.target.value) } })} className="mt-1" />
-            </div>
-          </div>
+
+          <Separator />
+
+          {/* Margins */}
           <div>
-            <label className="text-xs text-muted-foreground">Section Gap (pt)</label>
-            <Input type="number" value={schema.sectionGap} onChange={(e) => setSchema({ ...schema, sectionGap: Number(e.target.value) })} className="mt-1 w-24" />
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Page Margins</h3>
+            <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Top</label>
+                <Input type="number" value={schema.margins.top} onChange={(e) => updateSchema({ ...schema, margins: { ...schema.margins, top: Number(e.target.value) } })} className="w-20" />
+                <span className="text-xs text-muted-foreground">pt</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Bottom</label>
+                <Input type="number" value={schema.margins.bottom} onChange={(e) => updateSchema({ ...schema, margins: { ...schema.margins, bottom: Number(e.target.value) } })} className="w-20" />
+                <span className="text-xs text-muted-foreground">pt</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Left</label>
+                <Input type="number" value={schema.margins.left} onChange={(e) => updateSchema({ ...schema, margins: { ...schema.margins, left: Number(e.target.value) } })} className="w-20" />
+                <span className="text-xs text-muted-foreground">pt</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Right</label>
+                <Input type="number" value={schema.margins.right} onChange={(e) => updateSchema({ ...schema, margins: { ...schema.margins, right: Number(e.target.value) } })} className="w-20" />
+                <span className="text-xs text-muted-foreground">pt</span>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Header */}
+      <HeaderEditor schema={schema} onChange={updateSchema} projectId={project?.id} />
 
       {/* Footer */}
       <div>
@@ -441,6 +668,20 @@ export default function TemplateBuilderPage() {
             <SectionEditor key={section.id} section={section} onChange={(s) => updateSection(si, s)} onRemove={() => removeSection(si)} />
           ))}
         </div>
+      </div>
+
+      {/* Floating action button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" className="h-12 w-12 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white" onClick={handlePreview}>
+                <Eye className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left">Preview</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );

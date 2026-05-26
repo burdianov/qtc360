@@ -8,7 +8,7 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 3 Complete (Document Workflows + Template Builder)
+## CURRENT STATUS — Phase 3+ (Template Builder Enhancements)
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
 - ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
@@ -20,16 +20,18 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Employee, Activity, SubActivity, Test, System, Contractor
 - ✅ Document models: Document (single table for MIR/WIR/CIR with doc_type), DocumentApproval, document_assets, FAT, fat_assets
 - ✅ Template models: DocumentTemplate (JSONB schema for cover sheet layout), ReferenceNumberConfig (pattern-based auto-numbering)
+- ✅ ProjectHeaderImage model: stores header images per project+cell_id (LargeBinary in DB)
 - ✅ Generic CRUD router factory + dedicated document/FAT/template endpoints
+- ✅ Header image endpoints: POST/GET /templates/header-image/{project_id}/{cell_id}
 - ✅ Document workflow: sign (site_engineer/qaqc_engineer), approval chain (respond → advance/reject)
 - ✅ Reference number generation: /templates/ref-config/generate (pattern: {project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d})
 - ✅ Dashboard stats endpoint: /dashboard/stats?project_id=
-- ✅ Alembic migrations applied (8 total)
+- ✅ Alembic migrations applied (10 total)
 - ✅ Seed get_or_create restores soft-deleted records
 
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
 - ✅ Dark/light theme with Zenith-inspired design
-- ✅ Login page: SVG background, theme toggle, password change flow
+- ✅ Login page: SVG background, theme toggle, password change flow, "Proudly by LB®"
 - ✅ Responsive sidebar: collapses to icons on tablet, Sheet overlay on mobile
 - ✅ Sidebar: controlled collapsible groups, auto-opens group on navigation, scrolls to active item
 - ✅ Sidebar logo: 32x32 icon centered in collapsed mode
@@ -45,16 +47,24 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ QA/QC pages: MIR, WIR (list + full-page form at /qaqc/wir/new), CIR, FAT Reports
 - ✅ WIR form: date, discipline, subject, description, location, floor, RAMS, drawing ref, service/activity/sub-activity selects, multi-asset selection, 2 inspectors with click-to-sign, attachments
 - ✅ Template Builder: /documents/templates/builder — visual section/row/cell editor
-  - Settings: name, doc_type, font, fontSize, margins, header image, section gap
+  - Auto-save (debounced 800ms) — no manual save button needed
+  - Header: rows/cells structure, each cell has individual image upload + scale slider (10-100%)
+  - Header images stored in DB per project+cell_id, clickable upload area
+  - Settings: name, doc_type, font, fontSize, margins
   - Footer editor (repeats on all pages)
-  - Sections: collapsible, labeled, configurable gap
-  - Rows: height, evenCells, isTitle + color, expandToFooter
+  - Sections: collapsible, labeled, individual gap per section
+  - Rows: height, evenCells, isTitle + color, expandToFooter, internalBorders toggle
   - Cells: type (label/data), variant (text/checkbox), width %, value/fieldKey/checkboxLabel
   - Data binding to form fields (reference_number, revision, date, subject, discipline, inspectors, signatures, page_number, etc.)
+  - When gap=0 between sections, they share one border line (margin-top:-1px)
+  - Floating preview button (blue, with tooltip)
+  - Close button with Back navigation
 - ✅ Templates list page: /documents/templates with CRUD
 - ✅ Loading.tsx at dashboard layout level
 - ✅ Card component with Zenith-style border (oklch(0.28)) and background (oklch(0.20))
 - ✅ Global scrollbar: thin, subtle, no arrows, touches top edge
+- ✅ Select/DropdownMenu: modal={false} to prevent scroll lock
+- ✅ Select: alignItemWithTrigger={false} to prevent scroll lock
 - ✅ Delete confirmation on all row actions
 
 ### Important Rules
@@ -79,19 +89,22 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - frontend/src/components/data-table/ — reusable DataTable system
 - frontend/src/components/data-table/data-table-row-actions.tsx — row actions with confirm dialog
 - frontend/src/components/ui/card.tsx — Card (border instead of ring)
+- frontend/src/components/ui/select.tsx — Select with modal={false}, alignItemWithTrigger={false}
+- frontend/src/components/ui/dropdown-menu.tsx — DropdownMenu with modal={false}
 - frontend/src/app/(dashboard)/dashboard/page.tsx — dashboard with stats
 - frontend/src/app/(dashboard)/qaqc/wir/new/page.tsx — WIR full-page form
 - frontend/src/app/(dashboard)/qaqc/wir/page.tsx — WIR list (navigates to /new)
 - frontend/src/app/(dashboard)/documents/templates/page.tsx — templates list
-- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI
+- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI (auto-save, header images, sections)
 - backend/app/models/document.py — Document model (MIR/WIR/CIR single table)
 - backend/app/models/document_approval.py — DocumentApproval + document_assets
 - backend/app/models/fat.py — FAT + fat_assets
 - backend/app/models/document_template.py — DocumentTemplate (JSONB schema)
 - backend/app/models/reference_number_config.py — ReferenceNumberConfig
+- backend/app/models/project_header_image.py — ProjectHeaderImage (project_id + cell_id + image bytes)
 - backend/app/api/v1/documents.py — document CRUD + sign + approval workflow
 - backend/app/api/v1/fats.py — FAT CRUD
-- backend/app/api/v1/templates.py — template CRUD + ref-config + generate ref number
+- backend/app/api/v1/templates.py — template CRUD + ref-config + header image upload/serve
 - backend/app/api/v1/dashboard.py — dashboard stats
 - backend/app/api/v1/crud.py — generic CRUD router
 - backend/app/seed.py — seed script (restores soft-deleted)

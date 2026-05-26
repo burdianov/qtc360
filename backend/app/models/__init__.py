@@ -22,6 +22,7 @@ from app.models.document_approval import DocumentApproval, document_assets
 from app.models.fat import FAT, fat_assets
 from app.models.document_template import DocumentTemplate
 from app.models.reference_number_config import ReferenceNumberConfig
+from app.models.project_header_image import ProjectHeaderImage
 
 __all__ = [
     "Base", "BaseModel",
@@ -35,4 +36,5 @@ __all__ = [
     "Document", "DocumentApproval", "document_assets",
     "FAT", "fat_assets",
     "DocumentTemplate", "ReferenceNumberConfig",
+    "ProjectHeaderImage",
 ]
