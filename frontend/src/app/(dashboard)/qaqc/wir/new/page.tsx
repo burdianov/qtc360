@@ -11,6 +11,7 @@ import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -162,7 +163,7 @@ export default function NewWIRPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={() => router.push("/qaqc/wir")}>
@@ -182,7 +183,7 @@ export default function NewWIRPage() {
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <FormField control={form.control} name="date" render={({ field }) => (
-                <FormItem><FormLabel>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="discipline_id" render={({ field }) => (
                 <FormItem>
@@ -211,7 +212,7 @@ export default function NewWIRPage() {
                 <FormItem><FormLabel>Floor / Level / Room</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="approved_rams" render={({ field }) => (
-                <FormItem><FormLabel>Approved RAMS Inspection</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Approved RAMS</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="drawing_reference" render={({ field }) => (
                 <FormItem><FormLabel>Drawing Reference</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>

@@ -8,7 +8,9 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 3+ (Template Builder Enhancements)
+## CURRENT STATUS — Phase 3+ (Template Builder + WIR Form — In Progress)
+
+We are still working on fixing and refining the Template Builder and WIR form.
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
 - ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
@@ -23,8 +25,10 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ ProjectHeaderImage model: stores header images per project+cell_id (LargeBinary in DB)
 - ✅ Generic CRUD router factory + dedicated document/FAT/template endpoints
 - ✅ Header image endpoints: POST/GET /templates/header-image/{project_id}/{cell_id}
+- ✅ PDF generation: POST /pdf/generate — WeasyPrint server-side rendering with binary search for expand-to-footer rows
+- ✅ Template create is upsert (handles duplicate project+doc_type gracefully)
 - ✅ Document workflow: sign (site_engineer/qaqc_engineer), approval chain (respond → advance/reject)
-- ✅ Reference number generation: /templates/ref-config/generate (pattern: {project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d})
+- ✅ Reference number generation: /templates/ref-config/generate
 - ✅ Dashboard stats endpoint: /dashboard/stats?project_id=
 - ✅ Alembic migrations applied (10 total)
 - ✅ Seed get_or_create restores soft-deleted records
@@ -33,81 +37,79 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ Dark/light theme with Zenith-inspired design
 - ✅ Login page: SVG background, theme toggle, password change flow, "Proudly by LB®"
 - ✅ Responsive sidebar: collapses to icons on tablet, Sheet overlay on mobile
-- ✅ Sidebar: controlled collapsible groups, auto-opens group on navigation, scrolls to active item
-- ✅ Sidebar logo: 32x32 icon centered in collapsed mode
 - ✅ Auth: useLogin, useCurrentUser, useLogout, useChangePassword hooks
 - ✅ API layer: Axios instance with JWT interceptor + auto-refresh on 401
 - ✅ React Query provider + project_id in query keys
 - ✅ Project selection: modal after login (localStorage), ProjectSwitcher in navbar
-- ✅ DataTable system: sorting, search, pagination, column visibility, row actions (with confirm dialog), bulk actions, CSV export/import
+- ✅ DataTable system: sorting, search, pagination, column visibility, row actions, bulk actions, CSV export/import
 - ✅ Form system: RHF + Zod, Select uses value (controlled)
 - ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Employees, Activities, Sub-Activities, Tests, Systems, Contractors
 - ✅ Admin pages: Users, Roles, Permissions, Settings
 - ✅ Dashboard page: 7 stat cards with colored icon badges, placeholder charts
 - ✅ QA/QC pages: MIR, WIR (list + full-page form at /qaqc/wir/new), CIR, FAT Reports
-- ✅ WIR form: date, discipline, subject, description, location, floor, RAMS, drawing ref, service/activity/sub-activity selects, multi-asset selection, 2 inspectors with click-to-sign, attachments
-- ✅ Template Builder: /documents/templates/builder — visual section/row/cell editor
-  - Auto-save (debounced 800ms) — no manual save button needed
-  - Header: rows/cells structure, each cell has individual image upload + scale slider (10-100%)
-  - Header images stored in DB per project+cell_id, clickable upload area
-  - Settings: name, doc_type, font, fontSize, margins
+- ✅ WIR form (in progress):
+  - Full width layout, grid-based form fields
+  - DatePicker component (react-day-picker + popover calendar)
+  - Discipline, subject, description, location, floor, RAMS, drawing ref
+  - Service/activity/sub-activity cascade selects
+  - Multi-asset selection with badges
+  - 2 inspectors with click-to-sign
+  - Attachments
+- ✅ Template Builder: /documents/templates/builder (in progress)
+  - Auto-save (debounced 800ms) — no manual save button
+  - Header: rows/cells structure, each cell has individual image upload + scale slider
+  - Header images stored in DB per project+cell_id
+  - Settings: name, doc_type, font (select dropdown), fontSize, margins
   - Footer editor (repeats on all pages)
   - Sections: collapsible, labeled, individual gap per section
-  - Rows: height, evenCells, isTitle + color, expandToFooter, internalBorders toggle
-  - Cells: type (label/data), variant (text/checkbox), width %, value/fieldKey/checkboxLabel
-  - Data binding to form fields (reference_number, revision, date, subject, discipline, inspectors, signatures, page_number, etc.)
+  - Rows: Row Height, isTitle + color, expandToFooter, internalBorders toggle, Row Background (color picker with gray swatches)
+  - Cells: draggable borders between cells to resize, Reset Widths button, type (label/data), variant (text/checkbox), fieldKey binding
   - When gap=0 between sections, they share one border line (margin-top:-1px)
-  - Floating preview button (blue, with tooltip)
-  - Close button with Back navigation
-- ✅ Templates list page: /documents/templates with CRUD
-- ✅ Loading.tsx at dashboard layout level
-- ✅ Card component with Zenith-style border (oklch(0.28)) and background (oklch(0.20))
-- ✅ Global scrollbar: thin, subtle, no arrows, touches top edge
-- ✅ Select/DropdownMenu: modal={false} to prevent scroll lock
-- ✅ Select: alignItemWithTrigger={false} to prevent scroll lock
+  - Floating preview button (blue, with tooltip) — calls server-side PDF generation
+  - Close button with navigation
+  - Toast notifications (sonner, theme-aware)
+- ✅ PDF Preview: server-side WeasyPrint generation
+  - position:fixed header/footer repeats on every page
+  - Expand-to-footer rows: binary search (25 iterations) finds exact max height via WeasyPrint's own layout engine — no hardcoded values
+  - Header images embedded as base64 data URIs
+  - Background colors, font sizes, internal borders all rendered correctly
+  - print-color-adjust: exact for background colors
+- ✅ Select/DropdownMenu: modal={false}, alignItemWithTrigger={false} to prevent scroll lock
 - ✅ Delete confirmation on all row actions
+- ✅ Toaster: sonner with theme="system", custom popover styling
 
 ### Important Rules
 - After any database migration or seed, create a database dump into `backend/db_dump/` — each table as a separate CSV file.
 
-### What's Next
+### What's Next (after Template Builder + WIR are finalized)
 - Signature system refinement (script fonts, Docusign-style)
-- PDF generation from template + form data (cover sheet + attachments)
 - Reference number config UI in project settings
 - Milestone tracking system
 - Commissioning level tracking
 - MIR and CIR full-page forms (similar to WIR)
 
 ### Key Files
-- frontend/src/components/layout/app-sidebar.tsx — sidebar with controlled collapsibles + scroll-to-active
+- frontend/src/components/layout/app-sidebar.tsx — sidebar
 - frontend/src/app/(dashboard)/layout.tsx — dashboard layout
-- frontend/src/app/(dashboard)/loading.tsx — loading spinner
-- frontend/src/config/navigation.ts — all nav items (FAT Reports first in QA/QC)
+- frontend/src/config/navigation.ts — nav items
 - frontend/src/app/globals.css — theme tokens, scrollbar styles
 - frontend/src/lib/api.ts — Axios instance with JWT interceptor
 - frontend/src/hooks/use-project.ts — project selection (localStorage)
 - frontend/src/components/data-table/ — reusable DataTable system
-- frontend/src/components/data-table/data-table-row-actions.tsx — row actions with confirm dialog
-- frontend/src/components/ui/card.tsx — Card (border instead of ring)
-- frontend/src/components/ui/select.tsx — Select with modal={false}, alignItemWithTrigger={false}
+- frontend/src/components/ui/card.tsx — Card
+- frontend/src/components/ui/select.tsx — Select with modal={false}
 - frontend/src/components/ui/dropdown-menu.tsx — DropdownMenu with modal={false}
+- frontend/src/components/ui/date-picker.tsx — DatePicker (react-day-picker + popover)
 - frontend/src/app/(dashboard)/dashboard/page.tsx — dashboard with stats
 - frontend/src/app/(dashboard)/qaqc/wir/new/page.tsx — WIR full-page form
-- frontend/src/app/(dashboard)/qaqc/wir/page.tsx — WIR list (navigates to /new)
-- frontend/src/app/(dashboard)/documents/templates/page.tsx — templates list
-- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI (auto-save, header images, sections)
-- backend/app/models/document.py — Document model (MIR/WIR/CIR single table)
-- backend/app/models/document_approval.py — DocumentApproval + document_assets
-- backend/app/models/fat.py — FAT + fat_assets
+- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI
+- backend/app/models/document.py — Document model
 - backend/app/models/document_template.py — DocumentTemplate (JSONB schema)
-- backend/app/models/reference_number_config.py — ReferenceNumberConfig
 - backend/app/models/project_header_image.py — ProjectHeaderImage (project_id + cell_id + image bytes)
+- backend/app/api/v1/templates.py — template CRUD + header image upload
+- backend/app/api/v1/pdf.py — PDF generation (WeasyPrint + binary search for expand rows)
 - backend/app/api/v1/documents.py — document CRUD + sign + approval workflow
-- backend/app/api/v1/fats.py — FAT CRUD
-- backend/app/api/v1/templates.py — template CRUD + ref-config + header image upload/serve
-- backend/app/api/v1/dashboard.py — dashboard stats
-- backend/app/api/v1/crud.py — generic CRUD router
-- backend/app/seed.py — seed script (restores soft-deleted)
+- backend/app/seed.py — seed script
 
 ### Running the Project
 ```bash

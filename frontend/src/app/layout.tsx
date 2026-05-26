@@ -40,7 +40,19 @@ export default function RootLayout({
           <QueryProvider>
             <TooltipProvider>
               {children}
-              <Toaster richColors position="top-right" />
+              <Toaster
+                theme="system"
+                position="top-right"
+                toastOptions={{
+                  style: {
+                    background: "var(--color-popover)",
+                    color: "var(--color-popover-foreground)",
+                    border: "1px solid var(--color-border)",
+                    fontSize: "13px",
+                    fontWeight: "400",
+                  },
+                }}
+              />
             </TooltipProvider>
           </QueryProvider>
         </ThemeProvider>

@@ -16,8 +16,10 @@ import {
   Eye,
   Upload,
   X,
+  Check,
 } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import { useSelectedProject } from "@/hooks/use-project";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
@@ -59,6 +62,7 @@ interface Row {
   evenCells: boolean;
   isTitle: boolean;
   titleColor: string;
+  bgColor: string;
   font: string;
   fontSize: number;
   expandToFooter: boolean;
@@ -112,6 +116,7 @@ const defaultRow = (): Row => ({
   evenCells: true,
   isTitle: false,
   titleColor: "#1e3a5f",
+  bgColor: "",
   font: "",
   fontSize: 0,
   expandToFooter: false,
@@ -159,58 +164,39 @@ const FIELD_KEYS = [
 
 // --- Components ---
 
-function CellEditor({ cell, row, onChange, onRemove }: { cell: Cell; row: Row; onChange: (c: Cell) => void; onRemove: () => void }) {
+// --- Color Picker ---
+
+const PRESET_COLORS = [
+  "#000000", "#1a1a1a", "#2b2b2b", "#3d3d3d", "#4d4d4d", "#5c5c5c", "#6b6b6b",
+  "#7a7a7a", "#8a8a8a", "#999999", "#a8a8a8", "#b8b8b8", "#c7c7c7", "#d6d6d6",
+  "#e0e0e0", "#e8e8e8", "#f0f0f0", "#f5f5f5", "#f8f8f8", "#fafafa", "#ffffff",
+];
+
+function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex-1 min-w-0 border border-border rounded-md p-2 space-y-2 bg-background">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          {cell.type === "label" ? <Type className="h-3 w-3 text-muted-foreground" /> : <Database className="h-3 w-3 text-blue-400" />}
-          <span className="text-xs text-muted-foreground">{cell.type}/{cell.variant}</span>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="flex items-center gap-1 cursor-pointer" onClick={() => setOpen(true)}>
+        <div className="h-5 w-5 rounded border border-border" style={{ background: value || "transparent" }} />
+      </PopoverTrigger>
+      <PopoverContent side="bottom" align="start" className="w-44 p-2">
+        <div className="grid grid-cols-7 gap-1 mb-2">
+          {PRESET_COLORS.map((c) => (
+            <button key={c} type="button" onClick={() => onChange(c)} className={`h-6 w-6 rounded border border-border hover:scale-110 transition-transform flex items-center justify-center ${value === c ? "ring-2 ring-primary" : ""}`} style={{ background: c }}>
+              {value === c && <Check className="h-3 w-3" style={{ color: c >= "#999999" ? "#000" : "#fff" }} />}
+            </button>
+          ))}
         </div>
-        {!row.evenCells && (
-          <Input
-            type="number"
-            value={cell.width}
-            onChange={(e) => onChange({ ...cell, width: Number(e.target.value) })}
-            className="h-6 w-14 text-xs"
-            placeholder="%"
-          />
-        )}
-        <button onClick={onRemove} className="text-muted-foreground hover:text-destructive">
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-1">
-        <Select value={cell.type} onValueChange={(v) => onChange({ ...cell, type: v as "label" | "data" })}>
-          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="label">Label</SelectItem>
-            <SelectItem value="data">Data</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={cell.variant} onValueChange={(v) => onChange({ ...cell, variant: v as "text" | "checkbox" })}>
-          <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="text">Text</SelectItem>
-            <SelectItem value="checkbox">Checkbox</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {cell.type === "label" && cell.variant === "text" && (
-        <Input value={cell.value} onChange={(e) => onChange({ ...cell, value: e.target.value })} placeholder="Label text" className="h-7 text-xs" />
-      )}
-      {cell.type === "label" && cell.variant === "checkbox" && (
-        <Input value={cell.checkboxLabel} onChange={(e) => onChange({ ...cell, checkboxLabel: e.target.value })} placeholder="Checkbox label" className="h-7 text-xs" />
-      )}
-      {cell.type === "data" && (
-        <Select value={cell.fieldKey} onValueChange={(v) => onChange({ ...cell, fieldKey: v as string })}>
-          <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Bind to field..." /></SelectTrigger>
-          <SelectContent>
-            {FIELD_KEYS.map((f) => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      )}
-    </div>
+        <div className="flex items-center gap-2">
+          <input type="color" value={value || "#ffffff"} onChange={(e) => onChange(e.target.value)} className="h-6 w-6 rounded border-0 cursor-pointer p-0" />
+          <span className="text-xs text-muted-foreground flex-1">{value || "None"}</span>
+          {value && <button type="button" onClick={() => onChange("")} className="text-muted-foreground hover:text-destructive"><X className="h-3 w-3" /></button>}
+          <button type="button" onClick={() => setOpen(false)} className="h-5 w-5 rounded bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90">
+            <Check className="h-3 w-3" />
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -220,27 +206,64 @@ function RowEditor({ row, onChange, onRemove }: { row: Row; onChange: (r: Row) =
     cells[idx] = cell;
     onChange({ ...row, cells });
   };
-  const removeCell = (idx: number) => onChange({ ...row, cells: row.cells.filter((_, i) => i !== idx) });
-  const addCell = () => onChange({ ...row, cells: [...row.cells, defaultCell()] });
+  const removeCell = (idx: number) => {
+    const remaining = row.cells.filter((_, i) => i !== idx);
+    const w = Math.round(100 / remaining.length);
+    onChange({ ...row, cells: remaining.map((c) => ({ ...c, width: w })) });
+  };
+  const addCell = () => {
+    const count = row.cells.length + 1;
+    const w = Math.floor(100 / count);
+    const remainder = 100 - w * count;
+    const cells = [...row.cells.map((c) => ({ ...c, width: w })), { ...defaultCell(), width: w + remainder }];
+    onChange({ ...row, cells });
+  };
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = (dividerIndex: number) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const totalWidth = containerRect.width;
+    const initialCells = row.cells.map((c) => ({ ...c }));
+    const sumBefore = initialCells.slice(0, dividerIndex).reduce((a, b) => a + b.width, 0);
+    const combined = initialCells[dividerIndex].width + initialCells[dividerIndex + 1].width;
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const x = ev.clientX - containerRect.left;
+      const pct = (x / totalWidth) * 100;
+      const newLeft = Math.round(Math.max(5, Math.min(combined - 5, pct - sumBefore)));
+      const newRight = combined - newLeft;
+      const cells = initialCells.map((c, i) => {
+        if (i === dividerIndex) return { ...c, width: newLeft };
+        if (i === dividerIndex + 1) return { ...c, width: newRight };
+        return c;
+      });
+      onChange({ ...row, cells });
+    };
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
 
   return (
     <div className={`rounded-md border p-3 space-y-2 ${row.isTitle ? "border-l-4" : "border-border"}`} style={row.isTitle ? { borderLeftColor: row.titleColor } : undefined}>
       <div className="flex items-center gap-2 flex-wrap">
         <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab shrink-0" />
         <div className="flex items-center gap-1">
-          <label className="text-xs text-muted-foreground">H:</label>
-          <Input type="number" value={row.height} onChange={(e) => onChange({ ...row, height: Number(e.target.value) })} className="h-6 w-12 text-xs" />
+          <label className="text-xs text-muted-foreground">Row Height:</label>
+          <Input type="number" value={row.height} onChange={(e) => onChange({ ...row, height: Number(e.target.value) })} className="h-6 w-16 text-xs" />
         </div>
-        <label className="flex items-center gap-1 text-xs">
-          <Checkbox checked={row.evenCells} onCheckedChange={(v) => onChange({ ...row, evenCells: !!v })} />
-          Even
-        </label>
         <label className="flex items-center gap-1 text-xs">
           <Checkbox checked={row.isTitle} onCheckedChange={(v) => onChange({ ...row, isTitle: !!v })} />
           Title
         </label>
         {row.isTitle && (
-          <Input type="color" value={row.titleColor} onChange={(e) => onChange({ ...row, titleColor: e.target.value })} className="h-6 w-8 p-0 border-0" />
+          <input type="color" value={row.titleColor} onChange={(e) => onChange({ ...row, titleColor: e.target.value })} className="h-6 w-6 rounded border border-border cursor-pointer" />
         )}
         <label className="flex items-center gap-1 text-xs">
           <Checkbox checked={row.expandToFooter} onCheckedChange={(v) => onChange({ ...row, expandToFooter: !!v })} />
@@ -248,16 +271,73 @@ function RowEditor({ row, onChange, onRemove }: { row: Row; onChange: (r: Row) =
         </label>
         <label className="flex items-center gap-1 text-xs">
           <Checkbox checked={row.internalBorders ?? true} onCheckedChange={(v) => onChange({ ...row, internalBorders: !!v })} />
-          Int. Borders
+          Internal Borders
         </label>
-        <div className="ml-auto flex gap-1">
+        <div className="flex items-center gap-1 ml-4">
+          <label className="text-xs text-muted-foreground">Row Background:</label>
+          <ColorPicker value={row.bgColor} onChange={(c) => onChange({ ...row, bgColor: c })} />
+        </div>
+        <div className="ml-auto flex items-center gap-1">
+          <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => {
+            const w = Math.floor(100 / row.cells.length);
+            const remainder = 100 - w * row.cells.length;
+            onChange({ ...row, cells: row.cells.map((c, i) => ({ ...c, width: i === row.cells.length - 1 ? w + remainder : w })) });
+          }}>Reset Widths</Button>
           <Button type="button" variant="ghost" size="sm" className="h-6 px-1" onClick={addCell}><Plus className="h-3 w-3" /></Button>
           <Button type="button" variant="ghost" size="sm" className="h-6 px-1 text-destructive" onClick={onRemove}><Trash2 className="h-3 w-3" /></Button>
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="flex border border-border rounded-md overflow-hidden" ref={containerRef}>
         {row.cells.map((cell, ci) => (
-          <CellEditor key={cell.id} cell={cell} row={row} onChange={(c) => updateCell(ci, c)} onRemove={() => removeCell(ci)} />
+          <div key={cell.id} className="relative min-w-0" style={{ width: `${cell.width}%` }}>
+            <div className="p-2 space-y-2 bg-background h-full">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1">
+                  {cell.type === "label" ? <Type className="h-3 w-3 text-muted-foreground" /> : <Database className="h-3 w-3 text-blue-400" />}
+                  <span className="text-[10px] text-muted-foreground">{Math.round(cell.width)}%</span>
+                </div>
+                <button onClick={() => removeCell(ci)} className="text-muted-foreground hover:text-destructive">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                <Select value={cell.type} onValueChange={(v) => updateCell(ci, { ...cell, type: v as "label" | "data" })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="label">Label</SelectItem>
+                    <SelectItem value="data">Data</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={cell.variant} onValueChange={(v) => updateCell(ci, { ...cell, variant: v as "text" | "checkbox" })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="checkbox">Checkbox</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {cell.type === "label" && cell.variant === "text" && (
+                <Input value={cell.value} onChange={(e) => updateCell(ci, { ...cell, value: e.target.value })} placeholder="Label text" className="h-7 text-xs" />
+              )}
+              {cell.type === "label" && cell.variant === "checkbox" && (
+                <Input value={cell.checkboxLabel} onChange={(e) => updateCell(ci, { ...cell, checkboxLabel: e.target.value })} placeholder="Checkbox label" className="h-7 text-xs" />
+              )}
+              {cell.type === "data" && (
+                <Select value={cell.fieldKey} onValueChange={(v) => updateCell(ci, { ...cell, fieldKey: v as string })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Bind to field..." /></SelectTrigger>
+                  <SelectContent>
+                    {FIELD_KEYS.map((f) => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            {ci < row.cells.length - 1 && (
+              <div
+                className="absolute top-0 right-0 w-[3px] h-full cursor-col-resize z-10 translate-x-1/2 bg-border hover:bg-primary transition-colors"
+                onMouseDown={handleMouseDown(ci)}
+              />
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -286,7 +366,7 @@ function SectionEditor({ section, onChange, onRemove }: { section: Section; onCh
         />
         <div className="flex items-center gap-1">
           <label className="text-xs text-muted-foreground">Gap:</label>
-          <Input type="number" value={section.gap} onChange={(e) => { e.stopPropagation(); onChange({ ...section, gap: Number(e.target.value) }); }} onClick={(e) => e.stopPropagation()} className="h-6 w-12 text-xs" />
+          <Input type="number" value={section.gap} onChange={(e) => { e.stopPropagation(); onChange({ ...section, gap: Number(e.target.value) }); }} onClick={(e) => e.stopPropagation()} className="h-6 w-16 text-xs" />
         </div>
         <Button type="button" variant="ghost" size="sm" className="h-7 text-destructive" onClick={(e) => { e.stopPropagation(); onRemove(); }}>
           <Trash2 className="h-3.5 w-3.5" />
@@ -386,8 +466,8 @@ function HeaderEditor({ schema, onChange, projectId }: { schema: TemplateSchema;
           <div key={row.id} className="space-y-2 rounded-md border border-border p-3">
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Row {ri + 1}</span>
-              <label className="text-xs text-muted-foreground ml-2">H:</label>
-              <Input type="number" value={row.height} onChange={(e) => updateRow(ri, { ...row, height: Number(e.target.value) })} className="h-6 w-14 text-xs" />
+              <label className="text-xs text-muted-foreground ml-2">Row Height:</label>
+              <Input type="number" value={row.height} onChange={(e) => updateRow(ri, { ...row, height: Number(e.target.value) })} className="h-6 w-16 text-xs" />
               <span className="text-xs text-muted-foreground">pt</span>
               <label className="flex items-center gap-1 text-xs ml-2">
                 <Checkbox checked={row.internalBorders} onCheckedChange={(v) => updateRow(ri, { ...row, internalBorders: !!v })} />
@@ -450,8 +530,7 @@ export default function TemplateBuilderPage() {
   });
 
   // Auto-save with debounce
-  const templateIdRef = useRef(templateId);
-  templateIdRef.current = templateId;
+  const templateIdRef = useRef<string | null>(templateId);
   useEffect(() => {
     if (!dirty) return;
     const timer = setTimeout(async () => {
@@ -491,75 +570,19 @@ export default function TemplateBuilderPage() {
     updateSchema({ ...schema, footer: { ...schema.footer, sections } });
   };
 
-  const handlePreview = () => {
-    const renderCells = (cells: Cell[], evenCells: boolean, internalBorders: boolean = true) =>
-      cells.map((cell, i) => {
-        const width = evenCells ? `${100 / cells.length}%` : `${cell.width}%`;
-        let content = "";
-        if (cell.type === "label" && cell.variant === "text") content = cell.value;
-        else if (cell.type === "label" && cell.variant === "checkbox") content = `☐ ${cell.checkboxLabel}`;
-        else if (cell.type === "data" && cell.variant === "text") content = `[${cell.fieldKey || "field"}]`;
-        else if (cell.type === "data" && cell.variant === "checkbox") content = `☐ [${cell.fieldKey || "field"}]`;
-        const borderStyle = internalBorders && i > 0 ? "border-left:1px solid #333;" : "";
-        return `<td style="width:${width};padding:4px 6px;${borderStyle}">${content}</td>`;
-      }).join("");
-
-    const renderRows = (rows: Row[]) =>
-      rows.map((row) => {
-        const bg = row.isTitle ? `background:${row.titleColor};color:#fff;font-weight:bold;` : "";
-        return `<tr style="height:${row.height}pt;border:1px solid #333;${bg}">${renderCells(row.cells, row.evenCells, row.internalBorders ?? true)}</tr>`;
-      }).join("");
-
-    const renderSections = (sections: Section[], startGap = 0) =>
-      sections.map((section, i) => {
-        const gap = i === 0 ? startGap : section.gap;
-        const mt = gap === 0 ? "margin-top:-1px;" : `margin-top:${gap}pt;`;
-        return `<table style="width:100%;border-collapse:collapse;${mt}border:1px solid #333;">
-          ${renderRows(section.rows)}
-        </table>`;
-      }).join("");
-
-    const renderHeader = () => {
-      if (!project || !schema.header.rows.length) return "";
-      return schema.header.rows.map((row, ri) => {
-        const cellWidth = 100 / row.cells.length;
-        const mt = ri > 0 ? "margin-top:-1px;" : "";
-        return `<table style="width:100%;table-layout:fixed;border-collapse:collapse;height:${row.height}pt;border:1px solid #333;${mt}"><tr>${
-          row.cells.map((cell, ci) =>
-            `<td style="width:${cellWidth}%;text-align:center;vertical-align:middle;padding:4px;overflow:hidden;${ci > 0 && row.internalBorders ? "border-left:1px solid #333;" : ""}">
-              <img src="${api.defaults.baseURL}/templates/header-image/${project.id}/${cell.id}" style="max-width:100%;max-height:${row.height - 8}pt;object-fit:contain;transform:scale(${cell.scale / 100});" onerror="this.style.display='none'" />
-            </td>`
-          ).join("")
-        }</tr></table>`;
-      }).join("");
-    };
-
-    const html = `<!DOCTYPE html><html><head><title>${name} — Preview</title>
-      <style>
-        @page { margin: ${schema.margins.top}pt ${schema.margins.right}pt ${schema.margins.bottom}pt ${schema.margins.left}pt; }
-        body { font-family: ${schema.font}, sans-serif; font-size: ${schema.fontSize}pt; margin: 0; padding: 20px; color: #000; }
-        table { page-break-inside: avoid; }
-        .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 0 ${schema.margins.right}pt 0 ${schema.margins.left}pt; }
-      </style>
-    </head><body>
-      ${renderHeader()}
-      ${renderSections(schema.sections, schema.sections[0]?.gap ?? 0)}
-      ${schema.footer.sections.length ? `<div class="footer">${renderSections(schema.footer.sections, 0)}</div>` : ""}
-    </body></html>`;
-
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.top = "-10000px";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(html);
-      doc.close();
-      iframe.onload = () => {
-        iframe.contentWindow?.print();
-        setTimeout(() => document.body.removeChild(iframe), 1000);
-      };
+  const handlePreview = async () => {
+    const id = templateIdRef.current;
+    if (!id) {
+      toast.info("Save the template first by making a change before previewing.");
+      return;
+    }
+    try {
+      const res = await api.post("/pdf/generate", { template_id: id }, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank");
+    } catch (e) {
+      console.error("PDF generation failed", e);
+      toast.error("PDF generation failed.");
     }
   };
 
@@ -591,7 +614,14 @@ export default function TemplateBuilderPage() {
             </div>
             <div className="flex items-center gap-3">
               <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Font</label>
-              <Input value={schema.font} onChange={(e) => updateSchema({ ...schema, font: e.target.value })} className="w-48" />
+              <Select value={schema.font} onValueChange={(v) => v && updateSchema({ ...schema, font: v })}>
+                <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["Arial", "Helvetica", "Times New Roman", "Calibri", "Cambria", "Georgia", "Verdana", "Tahoma", "Trebuchet MS", "Courier New"].map((f) => (
+                    <SelectItem key={f} value={f}><span style={{ fontFamily: f }}>{f}</span></SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-3">
               <label className="text-sm text-muted-foreground w-28 shrink-0 text-right">Doc Type</label>
@@ -645,18 +675,6 @@ export default function TemplateBuilderPage() {
       {/* Header */}
       <HeaderEditor schema={schema} onChange={updateSchema} projectId={project?.id} />
 
-      {/* Footer */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Footer (repeats on all pages)</h2>
-        </div>
-        {schema.footer.sections.map((section, si) => (
-          <SectionEditor key={section.id} section={section} onChange={(s) => updateFooterSection(si, s)} onRemove={() => {}} />
-        ))}
-      </div>
-
-      <Separator />
-
       {/* Sections */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -668,6 +686,18 @@ export default function TemplateBuilderPage() {
             <SectionEditor key={section.id} section={section} onChange={(s) => updateSection(si, s)} onRemove={() => removeSection(si)} />
           ))}
         </div>
+      </div>
+
+      <Separator />
+
+      {/* Footer */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Footer (repeats on all pages)</h2>
+        </div>
+        {schema.footer.sections.map((section, si) => (
+          <SectionEditor key={section.id} section={section} onChange={(s) => updateFooterSection(si, s)} onRemove={() => {}} />
+        ))}
       </div>
 
       {/* Floating action button */}

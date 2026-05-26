@@ -105,6 +105,21 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(get_current_user),
 ):
+    # Upsert: if template exists for this project+doc_type, update it
+    result = await db.execute(
+        select(DocumentTemplate).where(
+            DocumentTemplate.project_id == body.project_id,
+            DocumentTemplate.doc_type == body.doc_type,
+            DocumentTemplate.is_deleted == False,  # noqa: E712
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        existing.name = body.name
+        existing.schema = body.template_schema
+        await db.commit()
+        await db.refresh(existing)
+        return existing
     data = body.model_dump()
     data["schema"] = data.pop("template_schema")
     item = DocumentTemplate(**data)
