@@ -78,6 +78,9 @@ async def get_or_create(session, model, filter_field, filter_value, **kwargs):
     result = await session.execute(select(model).where(getattr(model, filter_field) == filter_value))
     item = result.scalar_one_or_none()
     if item:
+        if hasattr(item, "is_deleted") and item.is_deleted:
+            item.is_deleted = False
+            return item, True
         return item, False
     item = model(**{filter_field: filter_value, **kwargs})
     session.add(item)

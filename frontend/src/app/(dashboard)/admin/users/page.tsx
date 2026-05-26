@@ -94,7 +94,7 @@ export default function UsersPage() {
   const rowActions: RowAction<UserItem>[] = [
     { label: "Edit", onClick: openEdit },
     { label: "Reset Password", onClick: openReset },
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true },
+    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
   ];
 
   const columns: ColumnDef<UserItem, unknown>[] = [

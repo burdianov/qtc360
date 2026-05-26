@@ -99,7 +99,7 @@ export default function ProjectsPage() {
 
   const rowActions: RowAction<Project>[] = [
     { label: "Edit", onClick: openEdit },
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true },
+    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
   ];
 
   const columns: ColumnDef<Project, unknown>[] = [

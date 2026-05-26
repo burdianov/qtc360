@@ -46,16 +46,15 @@ export function AppSidebar() {
       <SidebarHeader className="p-0! h-16 flex items-center">
         <Link
           href="/dashboard"
-          className="flex items-center h-full w-full pl-4.5"
+          className="flex items-center h-full w-full pl-4.5 group-data-[collapsible=icon]:pl-0 group-data-[collapsible=icon]:justify-center"
         >
           {/* Dark theme logos */}
           <Image
             src="/logo-icon.svg"
             alt="QTC360"
-            width={28}
-            height={28}
+            width={32}
+            height={32}
             className="shrink-0 hidden dark:group-data-[collapsible=icon]:block"
-            style={{ width: "auto", height: "auto" }}
           />
           <Image
             src="/logo.svg"
@@ -69,10 +68,9 @@ export function AppSidebar() {
           <Image
             src="/logo-icon-light.svg"
             alt="QTC360"
-            width={28}
-            height={28}
+            width={32}
+            height={32}
             className="shrink-0 group-data-[collapsible=icon]:block hidden dark:hidden"
-            style={{ width: "auto", height: "auto" }}
           />
           <Image
             src="/logo-light.svg"

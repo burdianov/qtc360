@@ -58,7 +58,7 @@ export default function PermissionsPage() {
 
   const rowActions: RowAction<Permission>[] = [
     { label: "Edit", onClick: openEdit },
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true },
+    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
   ];
 
   const columns: ColumnDef<Permission, unknown>[] = [
