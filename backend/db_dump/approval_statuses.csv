@@ -1,0 +1,5 @@
+project_id,letter,name,description,action,id,created_at,updated_at,is_deleted
+aa87d054-90ef-4a79-9c5b-d3b208d30a53,A,Approved,Work may proceed,approved,07969d10-e430-4b0d-96ea-d1309417a2b0,2026-05-26 11:25:05.070357+00,2026-05-26 11:25:05.070357+00,f
+aa87d054-90ef-4a79-9c5b-d3b208d30a53,B,Approved with Comments,Incorporate comments and proceed,approved,38061fb3-8c31-44be-810a-6615cbb5b940,2026-05-26 11:25:05.070357+00,2026-05-26 11:25:05.070357+00,f
+aa87d054-90ef-4a79-9c5b-d3b208d30a53,C,Revise and Resubmit,Work may not proceed,rejected,6ec0fce6-b48f-40df-a7d9-a252e7e99adc,2026-05-26 11:25:05.070357+00,2026-05-26 11:25:05.070357+00,f
+aa87d054-90ef-4a79-9c5b-d3b208d30a53,D,Review not Required,Work may proceed,approved,a72c2c92-edca-4650-8e16-93decc3fd26c,2026-05-26 11:25:05.070357+00,2026-05-26 11:25:05.070357+00,f

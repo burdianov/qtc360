@@ -129,7 +129,7 @@
   html {
     @apply font-sans;
   }
-  button, [role="button"] {
+  button, [role="button"], [role="menuitem"] {
     cursor: pointer;
   }
 }

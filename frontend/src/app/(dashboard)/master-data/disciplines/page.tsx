@@ -38,7 +38,7 @@ export default function DisciplinesPage() {
   const [editing, setEditing] = useState<Discipline | null>(null);
 
   const { data: allDisciplines = [], isLoading } = useQuery<Discipline[]>({
-    queryKey: ["disciplines"],
+    queryKey: ["disciplines", selectedProject?.id],
     queryFn: async () => (await api.get("/disciplines")).data,
   });
 
@@ -97,12 +97,12 @@ export default function DisciplinesPage() {
         onExport={(rows) => exportToCsv(rows, "disciplines")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/disciplines", { ...row, project_id: selectedProject?.id });
+          await Promise.allSettled(rows.map((row) => api.post("/disciplines", { ...row, project_id: selectedProject?.id })));
           queryClient.invalidateQueries({ queryKey: ["disciplines"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code"], "disciplines")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/disciplines/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/disciplines/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["disciplines"] });
         }}
       />

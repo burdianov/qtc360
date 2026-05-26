@@ -48,6 +48,11 @@ export function downloadTemplate(columns: string[], filename: string) {
   download(csv, `${filename}_template`);
 }
 
+/**
+ * Simple CSV parser. Limitation: does not handle quoted fields containing
+ * commas or newlines (RFC 4180). Sufficient for master data imports where
+ * values are simple strings/UUIDs without embedded commas.
+ */
 export function parseCsv(file: File): Promise<Record<string, string>[]> {
   return new Promise((resolve) => {
     const reader = new FileReader();

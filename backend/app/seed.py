@@ -24,10 +24,11 @@ ROLES = [
 ]
 
 USERS = [
-    {"email": "dev@jlwme.com", "password": "dev123", "full_name": "Dev Super Admin", "role": "super_admin", "is_superuser": True},
-    {"email": "admin@jlwme.com", "password": "admin123", "full_name": "Project Admin", "role": "admin", "is_superuser": False},
-    {"email": "site@jlwme.com", "password": "site123", "full_name": "John Site Engineer", "role": "site_engineer", "is_superuser": False},
-    {"email": "qaqc@jlwme.com", "password": "qaqc123", "full_name": "Sarah QA/QC Engineer", "role": "qaqc_engineer", "is_superuser": False},
+    {"email": "dev@jlwme.com", "password": "Dev12345", "full_name": "Dev Super Admin", "role": "super_admin", "is_superuser": True},
+    {"email": "admin@jlwme.com", "password": "Admin123", "full_name": "Project Admin", "role": "admin", "is_superuser": False},
+    {"email": "site@jlwme.com", "password": "Site1234", "full_name": "John Site Engineer", "role": "site_engineer", "is_superuser": False},
+    {"email": "qaqc@jlwme.com", "password": "Qaqc1234", "full_name": "Sarah QA/QC Engineer", "role": "qaqc_engineer", "is_superuser": False},
+    {"email": "jerry@jlwme.com", "password": "Jerry123", "full_name": "Jerry QA/QC Manager", "role": "qaqc_manager", "is_superuser": False},
 ]
 
 CLIENTS = [

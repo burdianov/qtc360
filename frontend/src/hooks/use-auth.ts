@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
@@ -29,6 +30,23 @@ export function useLogin() {
       const { data } = await api.post("/auth/login", body);
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
+      return data as { access_token: string; refresh_token: string; must_change_password: boolean };
+    },
+    onSuccess: (data) => {
+      if (!data.must_change_password) {
+        queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        router.push("/dashboard");
+      }
+    },
+  });
+}
+
+export function useChangePassword() {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async (body: { current_password: string; new_password: string }) => {
+      const { data } = await api.post("/auth/change-password", body);
       return data;
     },
     onSuccess: () => {
@@ -41,11 +59,11 @@ export function useLogin() {
 export function useLogout() {
   const queryClient = useQueryClient();
   const router = useRouter();
-  return () => {
+  return useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     localStorage.removeItem("selected_project");
     queryClient.clear();
     router.push("/login");
-  };
+  }, [queryClient, router]);
 }

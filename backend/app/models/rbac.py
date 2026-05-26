@@ -29,10 +29,10 @@ class Role(BaseModel):
     description: Mapped[str | None] = mapped_column(String(255))
 
     users: Mapped[list["User"]] = relationship(  # noqa: F821
-        secondary=user_roles, back_populates="roles", lazy="selectin"
+        secondary=user_roles, back_populates="roles"
     )
     permissions: Mapped[list["Permission"]] = relationship(
-        secondary=role_permissions, back_populates="roles", lazy="selectin"
+        secondary=role_permissions, back_populates="roles"
     )
 
 
@@ -43,5 +43,5 @@ class Permission(BaseModel):
     description: Mapped[str | None] = mapped_column(String(255))
 
     roles: Mapped[list[Role]] = relationship(
-        secondary=role_permissions, back_populates="permissions", lazy="selectin"
+        secondary=role_permissions, back_populates="permissions"
     )

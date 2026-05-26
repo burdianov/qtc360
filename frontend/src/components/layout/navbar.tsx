@@ -69,6 +69,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         width={100}
         height={22}
         className="hidden dark:block dark:md:hidden shrink-0"
+        style={{ height: "auto" }}
       />
       <Image
         src="/logo-light.svg"
@@ -76,6 +77,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         width={100}
         height={22}
         className="block md:hidden dark:hidden shrink-0"
+        style={{ height: "auto" }}
       />
       <div className="flex-1 md:hidden" />
       <div className="md:hidden">

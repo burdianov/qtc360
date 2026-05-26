@@ -100,12 +100,12 @@ export default function AssetsPage() {
         onExport={(rows) => exportToCsv(rows, "assets")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/assets", row);
+          await Promise.allSettled(rows.map((row) => api.post("/assets", row)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "tag_number", "asset_type_id", "location", "status"], "assets")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/assets/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/assets/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
         }}
       />
@@ -118,7 +118,7 @@ export default function AssetsPage() {
               <FormField control={form.control} name="tag_number" render={({ field }) => (<FormItem><FormLabel>Tag Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="asset_type_id" render={({ field }) => (
                 <FormItem><FormLabel>Asset Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
                     <SelectContent>{assetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />
@@ -127,7 +127,7 @@ export default function AssetsPage() {
               <FormField control={form.control} name="location" render={({ field }) => (<FormItem><FormLabel>Location</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem><FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                     <SelectContent>
                       <SelectItem value="pending">Pending</SelectItem>

@@ -32,7 +32,7 @@ export default function ContractorsPage() {
   const [editing, setEditing] = useState<Contractor | null>(null);
 
   const { data: allContractors = [], isLoading } = useQuery<Contractor[]>({
-    queryKey: ["contractors"],
+    queryKey: ["contractors", selectedProject?.id],
     queryFn: async () => (await api.get("/contractors")).data,
   });
 
@@ -91,12 +91,12 @@ export default function ContractorsPage() {
         onExport={(rows) => exportToCsv(rows, "contractors")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/contractors", { ...row, project_id: selectedProject?.id });
+          await Promise.allSettled(rows.map((row) => api.post("/contractors", { ...row, project_id: selectedProject?.id })));
           queryClient.invalidateQueries({ queryKey: ["contractors"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code"], "contractors")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/contractors/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/contractors/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["contractors"] });
         }}
       />

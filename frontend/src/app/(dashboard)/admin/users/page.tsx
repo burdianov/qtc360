@@ -28,12 +28,19 @@ const schema = z.object({
   role_ids: z.array(z.string()),
 });
 
+const resetSchema = z.object({
+  password: z.string().min(1, "Password is required"),
+});
+
 type FormValues = z.infer<typeof schema>;
+type ResetFormValues = z.infer<typeof resetSchema>;
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [editing, setEditing] = useState<UserItem | null>(null);
+  const [resettingUser, setResettingUser] = useState<UserItem | null>(null);
 
   const { data: users = [], isLoading } = useQuery<UserItem[]>({
     queryKey: ["admin-users"],
@@ -50,16 +57,28 @@ export default function UsersPage() {
     defaultValues: { email: "", full_name: "", password: "", is_active: true, is_superuser: false, role_ids: [] },
   });
 
+  const resetForm = useForm<ResetFormValues>({
+    resolver: zodResolver(resetSchema),
+    defaultValues: { password: "" },
+  });
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const payload: Record<string, unknown> = { ...values };
       if (editing) {
-        if (!values.password) delete payload.password;
+        delete payload.password;
         return api.patch(`/admin/users/${editing.id}`, payload);
       }
       return api.post("/admin/users", payload);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-users"] }); closeDialog(); },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async (values: ResetFormValues) => {
+      return api.patch(`/admin/users/${resettingUser!.id}`, { password: values.password });
+    },
+    onSuccess: () => { setResetDialogOpen(false); setResettingUser(null); },
   });
 
   const deleteMutation = useMutation({
@@ -69,10 +88,12 @@ export default function UsersPage() {
 
   const openCreate = () => { setEditing(null); form.reset({ email: "", full_name: "", password: "", is_active: true, is_superuser: false, role_ids: [] }); setDialogOpen(true); };
   const openEdit = (item: UserItem) => { setEditing(item); form.reset({ email: item.email, full_name: item.full_name, password: "", is_active: item.is_active, is_superuser: item.is_superuser, role_ids: item.roles.map((r) => r.id) }); setDialogOpen(true); };
+  const openReset = (item: UserItem) => { setResettingUser(item); resetForm.reset({ password: "" }); setResetDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
 
   const rowActions: RowAction<UserItem>[] = [
     { label: "Edit", onClick: openEdit },
+    { label: "Reset Password", onClick: openReset },
     { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true },
   ];
 
@@ -96,6 +117,8 @@ export default function UsersPage() {
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add User</Button>
       </div>
       <DataTable columns={columns} data={users} searchKey="full_name" searchPlaceholder="Search by name..." />
+
+      {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? "Edit User" : "Add User"}</DialogTitle></DialogHeader>
@@ -103,7 +126,7 @@ export default function UsersPage() {
             <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
               <FormField control={form.control} name="full_name" render={({ field }) => (<FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="email" render={({ field }) => (<FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="password" render={({ field }) => (<FormItem><FormLabel>{editing ? "New Password (leave blank to keep)" : "Password"}</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              {!editing && <FormField control={form.control} name="password" render={({ field }) => (<FormItem><FormLabel>Password</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>)} />}
               <FormField control={form.control} name="is_active" render={({ field }) => (
                 <FormItem className="flex flex-row items-center gap-2 space-y-0">
                   <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
@@ -137,6 +160,24 @@ export default function UsersPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
                 <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Set a temporary password for <span className="font-medium text-foreground">{resettingUser?.full_name}</span>. They will be required to change it on next login. The temporary password expires in 1 hour.</p>
+          <Form {...resetForm}>
+            <form onSubmit={resetForm.handleSubmit((v) => resetMutation.mutate(v))} noValidate className="space-y-4">
+              <FormField control={resetForm.control} name="password" render={({ field }) => (<FormItem><FormLabel>Temporary Password</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              {resetMutation.isSuccess && <p className="text-sm text-green-600">Password reset successfully</p>}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={resetMutation.isPending}>{resetMutation.isPending ? "Resetting..." : "Reset Password"}</Button>
               </div>
             </form>
           </Form>

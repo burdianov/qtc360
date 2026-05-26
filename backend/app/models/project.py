@@ -19,6 +19,6 @@ class Project(BaseModel):
     end_date: Mapped[date | None] = mapped_column(Date)
     client_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id"))
 
-    client: Mapped["Client"] = relationship(lazy="selectin")  # noqa: F821
-    approvers: Mapped[list["ProjectApprover"]] = relationship(back_populates="project", lazy="selectin")  # noqa: F821
-    disciplines: Mapped[list["Discipline"]] = relationship(back_populates="project", lazy="selectin")  # noqa: F821
+    client: Mapped["Client"] = relationship()  # noqa: F821
+    approvers: Mapped[list["ProjectApprover"]] = relationship(back_populates="project")  # noqa: F821
+    disciplines: Mapped[list["Discipline"]] = relationship(back_populates="project")  # noqa: F821

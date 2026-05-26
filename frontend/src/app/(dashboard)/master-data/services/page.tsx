@@ -106,12 +106,12 @@ export default function ServicesPage() {
         onExport={(rows) => exportToCsv(rows, "services")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/services", row);
+          await Promise.allSettled(rows.map((row) => api.post("/services", row)));
           queryClient.invalidateQueries({ queryKey: ["services"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "discipline_id"], "services")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/services/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/services/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["services"] });
         }}
       />
@@ -125,7 +125,7 @@ export default function ServicesPage() {
               <FormField control={form.control} name="discipline_id" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Discipline</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select discipline" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {projectDisciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}

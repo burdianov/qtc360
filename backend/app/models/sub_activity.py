@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -9,6 +9,7 @@ from app.models.base import BaseModel
 
 class SubActivity(BaseModel):
     __tablename__ = "sub_activities"
+    __table_args__ = (UniqueConstraint("code", "activity_id", name="uq_subactivity_code_activity"),)
 
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str] = mapped_column(String(50), index=True)

@@ -98,12 +98,12 @@ export default function ActivitiesPage() {
         onExport={(rows) => exportToCsv(rows, "activities")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/activities", row);
+          await Promise.allSettled(rows.map((row) => api.post("/activities", row)));
           queryClient.invalidateQueries({ queryKey: ["activities"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "service_id", "is_milestone"], "activities")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/activities/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/activities/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["activities"] });
         }}
       />
@@ -116,7 +116,7 @@ export default function ActivitiesPage() {
               <FormField control={form.control} name="code" render={({ field }) => (<FormItem><FormLabel>Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="service_id" render={({ field }) => (
                 <FormItem><FormLabel>Service</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger></FormControl>
                     <SelectContent>{services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />

@@ -15,5 +15,5 @@ class ProjectApprover(BaseModel):
     approver_title_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("approver_titles.id"))
 
     project: Mapped["Project"] = relationship(back_populates="approvers")  # noqa: F821
-    approver: Mapped["Approver"] = relationship(lazy="selectin")  # noqa: F821
-    approver_title: Mapped["ApproverTitle"] = relationship(lazy="selectin")  # noqa: F821
+    approver: Mapped["Approver"] = relationship()  # noqa: F821
+    approver_title: Mapped["ApproverTitle"] = relationship()  # noqa: F821

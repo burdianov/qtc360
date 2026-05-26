@@ -1,0 +1,85 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1920" height="1080" fill="#F8FAFC"/>
+
+  <!-- Dot matrix - top (moved right 100px more) -->
+  <g opacity="0.30" fill="#2563EB">
+    <circle cx="378" cy="188" r="1.9"/><circle cx="402" cy="188" r="1.9"/><circle cx="426" cy="188" r="1.9"/><circle cx="450" cy="188" r="1.9"/><circle cx="474" cy="188" r="1.9"/><circle cx="498" cy="188" r="1.9"/><circle cx="522" cy="188" r="1.9"/>
+    <circle cx="378" cy="212" r="1.9"/><circle cx="402" cy="212" r="1.9"/><circle cx="426" cy="212" r="1.9"/><circle cx="450" cy="212" r="1.9"/><circle cx="474" cy="212" r="1.9"/><circle cx="498" cy="212" r="1.9"/><circle cx="522" cy="212" r="1.9"/>
+    <circle cx="378" cy="236" r="1.9"/><circle cx="402" cy="236" r="1.9"/><circle cx="426" cy="236" r="1.9"/><circle cx="450" cy="236" r="1.9"/><circle cx="474" cy="236" r="1.9"/><circle cx="498" cy="236" r="1.9"/><circle cx="522" cy="236" r="1.9"/>
+    <circle cx="378" cy="260" r="1.9"/><circle cx="402" cy="260" r="1.9"/><circle cx="426" cy="260" r="1.9"/><circle cx="450" cy="260" r="1.9"/><circle cx="474" cy="260" r="1.9"/><circle cx="498" cy="260" r="1.9"/><circle cx="522" cy="260" r="1.9"/>
+  </g>
+
+  <!-- Dot matrix - bottom right -->
+  <g opacity="0.20" fill="#2563EB">
+    <circle cx="1658" cy="728" r="1.9"/><circle cx="1682" cy="728" r="1.9"/><circle cx="1706" cy="728" r="1.9"/><circle cx="1730" cy="728" r="1.9"/><circle cx="1754" cy="728" r="1.9"/><circle cx="1778" cy="728" r="1.9"/>
+    <circle cx="1658" cy="752" r="1.9"/><circle cx="1682" cy="752" r="1.9"/><circle cx="1706" cy="752" r="1.9"/><circle cx="1730" cy="752" r="1.9"/><circle cx="1754" cy="752" r="1.9"/><circle cx="1778" cy="752" r="1.9"/>
+    <circle cx="1658" cy="776" r="1.9"/><circle cx="1682" cy="776" r="1.9"/><circle cx="1706" cy="776" r="1.9"/><circle cx="1730" cy="776" r="1.9"/><circle cx="1754" cy="776" r="1.9"/><circle cx="1778" cy="776" r="1.9"/>
+  </g>
+
+  <!-- Bar chart - moved down 100px more -->
+  <g opacity="0.14">
+    <rect x="280" y="720" width="14" height="120" rx="3" fill="#2563EB"/>
+    <rect x="302" y="760" width="14" height="80" rx="3" fill="#2563EB"/>
+    <rect x="324" y="700" width="14" height="140" rx="3" fill="#10B981"/>
+    <rect x="346" y="740" width="14" height="100" rx="3" fill="#2563EB"/>
+    <rect x="368" y="780" width="14" height="60" rx="3" fill="#93C5FD"/>
+    <rect x="390" y="710" width="14" height="130" rx="3" fill="#10B981"/>
+    <rect x="412" y="750" width="14" height="90" rx="3" fill="#2563EB"/>
+    <rect x="434" y="730" width="14" height="110" rx="3" fill="#93C5FD"/>
+  </g>
+
+  <!-- Commissioning level cards - 1 at bottom-left, 5 at top-right. Single group opacity, cards fully opaque within. -->
+  <g opacity="0.22">
+    <!-- Card 1 - Red tag (bottom, behind all) -->
+    <rect x="1520" y="290" width="64" height="88" rx="6" fill="#EF4444" stroke="#DC2626" stroke-width="1.2"/>
+    <text x="1530" y="370" font-size="14" fill="#FFFFFF" font-family="sans-serif" font-weight="700">1</text>
+    <!-- Card 2A - Red tag -->
+    <rect x="1555" y="260" width="64" height="88" rx="6" fill="#EF4444" stroke="#DC2626" stroke-width="1.2"/>
+    <text x="1565" y="340" font-size="14" fill="#FFFFFF" font-family="sans-serif" font-weight="700">2A</text>
+    <!-- Card 2B - Yellow tag -->
+    <rect x="1590" y="230" width="64" height="88" rx="6" fill="#EAB308" stroke="#CA8A04" stroke-width="1.2"/>
+    <text x="1600" y="310" font-size="14" fill="#FFFFFF" font-family="sans-serif" font-weight="700">2B</text>
+    <!-- Card 3 - Green tag -->
+    <rect x="1625" y="200" width="64" height="88" rx="6" fill="#22C55E" stroke="#16A34A" stroke-width="1.2"/>
+    <text x="1635" y="280" font-size="14" fill="#FFFFFF" font-family="sans-serif" font-weight="700">3</text>
+    <!-- Card 4 - Blue tag -->
+    <rect x="1660" y="170" width="64" height="88" rx="6" fill="#3B82F6" stroke="#2563EB" stroke-width="1.2"/>
+    <text x="1670" y="250" font-size="14" fill="#FFFFFF" font-family="sans-serif" font-weight="700">4</text>
+    <!-- Card 5 - White tag (on top of all) -->
+    <rect x="1695" y="140" width="64" height="88" rx="6" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2"/>
+    <text x="1705" y="220" font-size="14" fill="#374151" font-family="sans-serif" font-weight="700">5</text>
+    <text x="1727" y="184" font-size="28" text-anchor="middle" dominant-baseline="central" fill="#374151">👍</text>
+  </g>
+
+  <!-- Small QA shield -->
+  <g opacity="0.16" stroke="#2563EB" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M1500 520l28-12 28 12v33c0 20-12 36-28 43-16-7-28-23-28-43v-33z"/>
+    <path d="M1512 546l8 8 17-20" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Inspection checklist -->
+  <g opacity="0.14" stroke="#2563EB" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="140" y="380" width="60" height="80" rx="3"/>
+    <line x1="155" y1="400" x2="185" y2="400"/>
+    <line x1="155" y1="415" x2="185" y2="415"/>
+    <line x1="155" y1="430" x2="185" y2="430"/>
+    <line x1="155" y1="445" x2="175" y2="445"/>
+    <path d="M152 398l3 3 6-7" stroke="#10B981" stroke-width="1"/>
+    <path d="M152 413l3 3 6-7" stroke="#10B981" stroke-width="1"/>
+  </g>
+
+  <!-- Asset tag label -->
+  <g opacity="0.14" stroke="#2563EB" stroke-width="1.2" stroke-linecap="round">
+    <rect x="1660" y="480" width="80" height="36" rx="4"/>
+    <line x1="1675" y1="498" x2="1725" y2="498"/>
+    <line x1="1675" y1="508" x2="1705" y2="508"/>
+  </g>
+
+  <!-- Gantt bars -->
+  <g opacity="0.12">
+    <rect x="1560" y="600" width="120" height="6" rx="3" fill="#2563EB" opacity="0.6"/>
+    <rect x="1590" y="618" width="80" height="6" rx="3" fill="#10B981" opacity="0.5"/>
+    <rect x="1570" y="636" width="100" height="6" rx="3" fill="#93C5FD" opacity="0.4"/>
+    <rect x="1600" y="654" width="60" height="6" rx="3" fill="#2563EB" opacity="0.3"/>
+  </g>
+</svg>

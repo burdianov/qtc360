@@ -33,7 +33,7 @@ export default function SystemsPage() {
   const [editing, setEditing] = useState<System | null>(null);
 
   const { data: allSystems = [], isLoading } = useQuery<System[]>({
-    queryKey: ["systems"],
+    queryKey: ["systems", selectedProject?.id],
     queryFn: async () => (await api.get("/systems")).data,
   });
 
@@ -93,12 +93,12 @@ export default function SystemsPage() {
         onExport={(rows) => exportToCsv(rows, "systems")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/systems", { ...row, project_id: selectedProject?.id });
+          await Promise.allSettled(rows.map((row) => api.post("/systems", { ...row, project_id: selectedProject?.id })));
           queryClient.invalidateQueries({ queryKey: ["systems"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "description"], "systems")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/systems/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/systems/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["systems"] });
         }}
       />

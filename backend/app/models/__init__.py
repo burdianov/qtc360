@@ -3,7 +3,8 @@ from app.models.user import User, user_projects
 from app.models.rbac import Role, Permission, user_roles, role_permissions
 from app.models.client import Client
 from app.models.project import Project
-from app.models.approver import ApproverTitle, Approver
+from app.models.approver_title import ApproverTitle
+from app.models.approver import Approver
 from app.models.project_approver import ProjectApprover
 from app.models.discipline import Discipline
 from app.models.service import Service

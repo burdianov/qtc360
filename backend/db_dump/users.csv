@@ -1,0 +1,6 @@
+id,email,hashed_password,full_name,is_active,is_superuser,is_deleted,created_at,updated_at,must_change_password,password_reset_at
+394c9951-7ebb-4b8e-a2d2-bc88198acefe,dev@jlwme.com,$2b$12$MoxH.mlc0n6ekmGIS0G72.yT9I2pKYk2sV1hzUL8f2oxGqveQlwo.,Dev Super Admin,t,t,f,2026-05-26 11:25:04.209818+00,2026-05-26 11:25:04.209818+00,f,
+a51742ff-3edf-42fa-af01-a50ea9e5cfd4,admin@jlwme.com,$2b$12$Q.Qz7VIC5uZ9yXGWth5NauBUI8icZaLpLr9QKARIYvGIW9UJUIAcK,Project Admin,t,f,f,2026-05-26 11:25:04.209818+00,2026-05-26 11:25:04.209818+00,f,
+a27844e1-5688-4b12-b051-b07ed914615b,site@jlwme.com,$2b$12$mOXqHsBlC6Mrrl0qBchZ6O3VHfZ99NiHqpfYG5nTSSZLscLA20qSK,John Site Engineer,t,f,f,2026-05-26 11:25:04.209818+00,2026-05-26 11:25:04.209818+00,f,
+92eaa13d-a2e1-43e0-8713-c2aa2247dc88,qaqc@jlwme.com,$2b$12$SepJRYrBbbZWMuG4ch9EHeBV9hLLy3MQX08tArDuNhfGgr8aTraMi,Sarah QA/QC Engineer,t,f,f,2026-05-26 11:25:04.209818+00,2026-05-26 11:25:04.209818+00,f,
+f2d36da7-aa35-4fcc-9866-b693822b6748,jerry@jlwme.com,$2b$12$arxbKiD5Nr1KrfbeRPgUBeFP9yWKo9lpokBiwgPKiUn/sRWGhwoO.,Jerry QA/QC Manager,t,f,f,2026-05-26 11:25:04.209818+00,2026-05-26 11:25:04.209818+00,f,

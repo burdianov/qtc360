@@ -166,7 +166,7 @@ export default function ProjectsPage() {
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "description", "status", "client_id"], "projects")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/projects/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/projects/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["projects"] });
         }}
       />

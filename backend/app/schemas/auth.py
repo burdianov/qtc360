@@ -19,8 +19,20 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    must_change_password: bool = False
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class UserResponse(BaseModel):
@@ -31,3 +43,9 @@ class UserResponse(BaseModel):
     is_superuser: bool
 
     model_config = {"from_attributes": True}
+
+
+class ProjectSummaryResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str

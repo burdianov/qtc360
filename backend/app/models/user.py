@@ -1,4 +1,6 @@
-from sqlalchemy import String, Boolean, Column, ForeignKey, Table
+from datetime import datetime
+
+from sqlalchemy import String, Boolean, Column, DateTime, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,10 +22,12 @@ class User(BaseModel):
     full_name: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    password_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     roles: Mapped[list["Role"]] = relationship(  # noqa: F821
-        secondary="user_roles", back_populates="users", lazy="selectin"
+        secondary="user_roles", back_populates="users"
     )
     projects: Mapped[list["Project"]] = relationship(  # noqa: F821
-        secondary=user_projects, lazy="selectin"
+        secondary=user_projects
     )

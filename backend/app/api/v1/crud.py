@@ -2,10 +2,12 @@
 from typing import Any, Type
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel as PydanticModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, InstrumentedAttribute
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -18,16 +20,28 @@ def create_crud_router(
     tag: str,
     model: Type[BaseModel],
     create_schema: Type[PydanticModel],
+    update_schema: Type[PydanticModel] | None = None,
     response_schema: Type[PydanticModel],
+    eager: list[InstrumentedAttribute] | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix=prefix, tags=[tag])
+    _update_schema = update_schema or create_schema
+
+    def _base_query():
+        stmt = select(model).where(model.is_deleted == False)  # noqa: E712
+        if eager:
+            for rel in eager:
+                stmt = stmt.options(selectinload(rel))
+        return stmt
 
     @router.get("", response_model=list[response_schema])
     async def list_all(
+        skip: int = Query(0, ge=0),
+        limit: int = Query(100, ge=1, le=500),
         db: AsyncSession = Depends(get_db),
         _: Any = Depends(get_current_user),
     ):
-        result = await db.execute(select(model).where(model.is_deleted == False))  # noqa: E712
+        result = await db.execute(_base_query().offset(skip).limit(limit))
         return result.scalars().all()
 
     @router.get("/{item_id}", response_model=response_schema)
@@ -36,7 +50,7 @@ def create_crud_router(
         db: AsyncSession = Depends(get_db),
         _: Any = Depends(get_current_user),
     ):
-        result = await db.execute(select(model).where(model.id == item_id, model.is_deleted == False))  # noqa: E712
+        result = await db.execute(_base_query().where(model.id == item_id))
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
@@ -50,24 +64,32 @@ def create_crud_router(
     ):
         item = model(**body.model_dump())
         db.add(item)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
         await db.refresh(item)
         return item
 
     @router.patch("/{item_id}", response_model=response_schema)
     async def update(
         item_id: UUID,
-        body: create_schema,
+        body: _update_schema,
         db: AsyncSession = Depends(get_db),
         _: Any = Depends(get_current_user),
     ):
-        result = await db.execute(select(model).where(model.id == item_id, model.is_deleted == False))  # noqa: E712
+        result = await db.execute(_base_query().where(model.id == item_id))
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
         for key, value in body.model_dump(exclude_unset=True).items():
             setattr(item, key, value)
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
         await db.refresh(item)
         return item
 

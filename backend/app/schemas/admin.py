@@ -1,0 +1,66 @@
+from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
+
+
+class UserAdminCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    is_active: bool = True
+    is_superuser: bool = False
+    role_ids: list[UUID] = []
+
+class UserAdminUpdate(BaseModel):
+    email: EmailStr | None = None
+    full_name: str | None = None
+    is_active: bool | None = None
+    is_superuser: bool | None = None
+    password: str | None = None
+    role_ids: list[UUID] | None = None
+
+class RoleResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    model_config = {"from_attributes": True}
+
+class UserAdminResponse(BaseModel):
+    id: UUID
+    email: str
+    full_name: str
+    is_active: bool
+    is_superuser: bool
+    roles: list[RoleResponse] = []
+    model_config = {"from_attributes": True}
+
+class PermissionResponse(BaseModel):
+    id: UUID
+    code: str
+    description: str | None
+    model_config = {"from_attributes": True}
+
+class RoleAdminResponse(BaseModel):
+    id: UUID
+    name: str
+    description: str | None
+    permissions: list[PermissionResponse] = []
+    model_config = {"from_attributes": True}
+
+class RoleCreate(BaseModel):
+    name: str
+    description: str | None = None
+    permission_ids: list[UUID] = []
+
+class RoleUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    permission_ids: list[UUID] | None = None
+
+class PermissionCreate(BaseModel):
+    code: str
+    description: str | None = None
+
+class PermissionUpdate(BaseModel):
+    code: str | None = None
+    description: str | None = None

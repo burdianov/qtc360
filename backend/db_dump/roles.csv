@@ -1,0 +1,6 @@
+id,name,description,is_deleted,created_at,updated_at
+28556d20-ce51-4e31-ac81-9bd33243c479,super_admin,Developer / top-level administrator with full system access,f,2026-05-26 11:25:04.199572+00,2026-05-26 11:25:04.199572+00
+6f4059b8-47a1-4865-98ce-c39c8269434a,admin,"Project administrator — manages users, settings, and master data",f,2026-05-26 11:25:04.199572+00,2026-05-26 11:25:04.199572+00
+b3325425-0332-4b17-a3d4-faf59f57cc7a,site_engineer,Site engineer — submits and tracks field inspections,f,2026-05-26 11:25:04.199572+00,2026-05-26 11:25:04.199572+00
+7590e9fc-e571-4135-a428-8a48176c3209,qaqc_engineer,"QA/QC engineer — reviews, approves, and manages quality documents",f,2026-05-26 11:25:04.199572+00,2026-05-26 11:25:04.199572+00
+5615f62b-ff76-4d47-9b40-d707aed37f0d,qaqc_manager,QA/QC manager — same rights as qaqc_engineer (to be differentiated later),f,2026-05-26 11:25:04.199572+00,2026-05-26 11:25:04.199572+00

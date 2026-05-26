@@ -33,7 +33,7 @@ export default function TestsPage() {
   const [editing, setEditing] = useState<Test | null>(null);
 
   const { data: allTests = [], isLoading } = useQuery<Test[]>({
-    queryKey: ["tests"],
+    queryKey: ["tests", selectedProject?.id],
     queryFn: async () => (await api.get("/tests")).data,
   });
 
@@ -93,12 +93,12 @@ export default function TestsPage() {
         onExport={(rows) => exportToCsv(rows, "tests")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/tests", { ...row, project_id: selectedProject?.id });
+          await Promise.allSettled(rows.map((row) => api.post("/tests", { ...row, project_id: selectedProject?.id })));
           queryClient.invalidateQueries({ queryKey: ["tests"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "description"], "tests")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/tests/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/tests/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["tests"] });
         }}
       />

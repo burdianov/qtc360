@@ -8,54 +8,50 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 2 Complete + Admin Pages
+## CURRENT STATUS — Phase 2 Complete + Admin + Code Quality Pass
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
 - ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
+- ✅ Password policy: min 8 chars, 1 uppercase, 1 number. Admin reset sets temp password (1hr expiry), user must change on login
 - ✅ Registration is admin-only (requires superuser token)
 - ✅ RBAC: User, Role, Permission models with many-to-many, require_permission dependency
 - ✅ Roles seeded: super_admin, admin, site_engineer, qaqc_engineer, qaqc_manager
-- ✅ Users seeded: dev@jlwme.com/dev123, admin@jlwme.com/admin123, site@jlwme.com/site123, qaqc@jlwme.com/qaqc123
+- ✅ Users seeded: dev@jlwme.com/Dev12345, admin@jlwme.com/Admin123, site@jlwme.com/Site1234, qaqc@jlwme.com/Qaqc1234, jerry@jlwme.com/Jerry123
 - ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Employee, Activity, SubActivity, Test, System, Contractor
 - ✅ user_projects association table (users assigned to projects)
-- ✅ Generic CRUD router factory (list, get, create, patch, soft-delete)
-- ✅ All endpoints at /api/v1/: auth, clients, projects, approver-titles, approvers, project-approvers, disciplines, services, asset-types, assets, employees, activities, sub-activities, tests, systems, contractors
-- ✅ Admin endpoints at /api/v1/admin/: users, roles, permissions (superuser-only, full CRUD with M2M assignment)
-- ✅ /auth/me/projects endpoint returns user's assigned projects
-- ✅ Seed data: 2 clients, 2 projects (AUH-08/1733, DU Mercury/1728), 4 approver titles, 4 approvers, project approvers for 1728, 7 disciplines for 1728, 4 approval statuses for 1728
-- ✅ bcrypt used directly (passlib incompatible with bcrypt 5.x)
-- ✅ Alembic migrations applied (4 total)
+- ✅ Generic CRUD router factory with: pagination (skip/limit), IntegrityError handling (409), separate update_schema (optional fields), eager loading support
+- ✅ All endpoints at /api/v1/: auth, clients, projects, approver-titles, approvers, project-approvers, disciplines, services, asset-types, assets, approval-statuses, employees, activities, sub-activities, tests, systems, contractors
+- ✅ Admin endpoints at /api/v1/admin/: users (CRUD + role assignment + password reset), roles (CRUD + permission assignment), permissions (CRUD)
+- ✅ Schemas in dedicated files: schemas/master.py, schemas/auth.py, schemas/admin.py
+- ✅ Token sub field validated as UUID in deps.py
+- ✅ Register email check filters is_deleted
+- ✅ Explicit selectinload (no lazy=selectin on models)
+- ✅ UniqueConstraints on code fields (scoped by parent FK)
+- ✅ ApproverTitle in its own model file
+- ✅ Alembic migrations applied (6 total)
+- ✅ Seed data: 2 clients, 2 projects, 5 users, 5 roles, 4 approver titles, 4 approvers, project approvers, 7 disciplines, 4 approval statuses
 
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
 - ✅ Dark/light theme with Zenith-inspired design
-- ✅ Responsive sidebar: collapses to icons on tablet (768-1023px), Sheet overlay on mobile (<768px)
-- ✅ Logo: separate SVG variants for light/dark themes (logo.svg, logo-light.svg, logo-icon.svg, logo-icon-light.svg). Light uses #2563eb blue, dark uses original #014EFC
-- ✅ Sidebar active links use var(--primary) blue
-- ✅ Sidebar item text: 70% opacity default, full on hover (uses sidebar-accent-foreground)
-- ✅ Login page with RHF + Zod validation, no browser validation, "Proudly by LB" at bottom
-- ✅ Auth: useLogin, useCurrentUser, useLogout hooks, AuthGuard component
-- ✅ Logout clears tokens + selected_project from localStorage
+- ✅ Login page: SVG background (construction/commissioning themed), theme toggle, password change flow
+- ✅ Responsive sidebar: collapses to icons on tablet, Sheet overlay on mobile
+- ✅ Sidebar footer with user avatar (centered when collapsed)
+- ✅ Logo: separate SVG variants for light/dark themes
+- ✅ Auth: useLogin, useCurrentUser, useLogout (useCallback), useChangePassword hooks
 - ✅ API layer: Axios instance with JWT interceptor + auto-refresh on 401
-- ✅ React Query provider
-- ✅ Project selection: modal after login (if multiple projects), ProjectSwitcher in navbar (desktop: bordered pill right of search, mobile: right-aligned next to hamburger+logo)
-- ✅ DataTable system: sorting, search, pagination, column visibility, faceted filters, row actions, row selection with checkboxes (Zenith-style subtle borders), bulk actions (delete with confirmation dialog, export selected), CSV export (resolves FK objects to names), import (dialog with template download)
-- ✅ Form system: RHF + Zod, FormField/FormItem/FormLabel/FormControl/FormMessage, field wrappers
-- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Employees, Activities, Sub-Activities, Tests, Systems, Contractors — each with DataTable + add/edit dialog + export/import + bulk delete
-- ✅ Admin pages: Users (CRUD + role assignment), Roles (CRUD + permission assignment), Permissions (CRUD), Settings (placeholder)
-- ✅ Button destructive variant: solid red-600, white text (Zenith style)
-- ✅ Checkboxes: subtle border (foreground/20), no bg, hover brightens, disabled uses data-disabled with pointer-events-none
-- ✅ Scrollbar: 4px, flush right, no arrows, hover darkens
-- ✅ cursor: pointer on all buttons globally
-- ✅ Pagination shows "Showing 1-10 of X results"
-- ✅ Actions column has "Actions" header label
+- ✅ React Query provider + project_id in query keys for project-scoped pages
+- ✅ Project selection: modal after login, ProjectSwitcher in navbar
+- ✅ DataTable system: sorting, search, pagination, column visibility, row actions, bulk actions (Promise.allSettled), CSV export/import
+- ✅ Form system: RHF + Zod, Select uses value (controlled)
+- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Employees, Activities, Sub-Activities, Tests, Systems, Contractors
+- ✅ Admin pages: Users (CRUD + role assignment + Reset Password dialog), Roles, Permissions, Settings
+- ✅ Toast notifications (sonner)
+- ✅ Next.js Image component used throughout
+- ✅ cursor: pointer on buttons, [role="button"], [role="menuitem"]
+- ✅ Route: /master-data/clients (plural, consistent)
 
-### Key Architecture Decisions
-- shadcn/ui uses @base-ui/react (NOT Radix) — no `asChild` prop, triggers render children directly
-- DropdownMenuLabel must be inside DropdownMenuGroup
-- Zod v4 with @hookform/resolvers — avoid .default() and .optional() in schemas (use explicit string types with defaultValues)
-- useSyncExternalStore for project selection (cached snapshot to avoid infinite loops)
-- Tailwind v4 with @tailwindcss/postcss — standard breakpoints (sm=640, md=768, lg=1024)
-- base-ui checkbox uses `data-disabled` not native `disabled` attribute for styling
+### Important Rules
+- After any database migration or seed, create a database dump into `backend/db_dump/` — each table as a separate CSV file.
 
 ### What's Next
 - Dashboard page with actual content
@@ -64,25 +60,27 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - Commissioning level tracking
 
 ### Key Files
-- frontend/src/components/ui/sidebar.tsx — shadcn sidebar (@base-ui/react)
-- frontend/src/app/(dashboard)/layout.tsx — dashboard layout with AuthGuard + SidebarProvider
+- frontend/src/components/layout/app-sidebar.tsx — sidebar (no footer logout, just user info)
+- frontend/src/app/(dashboard)/layout.tsx — dashboard layout
 - frontend/src/config/navigation.ts — all nav items
 - frontend/src/app/globals.css — theme tokens and custom styles
 - frontend/src/lib/api.ts — Axios instance with JWT interceptor
-- frontend/src/lib/csv.ts — CSV export/import utilities
-- frontend/src/hooks/use-auth.ts — auth hooks
+- frontend/src/lib/csv.ts — CSV export/import (limitation documented)
+- frontend/src/hooks/use-auth.ts — auth hooks (useCallback on logout)
 - frontend/src/hooks/use-project.ts — project selection hooks
 - frontend/src/components/data-table/ — reusable DataTable system
 - frontend/src/components/form/ — reusable form system
-- frontend/src/components/ui/button.tsx — button with destructive variant (solid red)
-- frontend/src/components/ui/checkbox.tsx — checkbox with Zenith-style subtle borders
-- backend/app/models/ — all SQLAlchemy models
-- backend/app/api/v1/crud.py — generic CRUD router factory
-- backend/app/api/v1/master.py — master table routes
-- backend/app/api/v1/admin.py — admin routes (users, roles, permissions)
-- backend/app/core/security.py — JWT + bcrypt
-- backend/app/core/deps.py — auth dependencies (get_current_user, require_permission)
-- backend/app/seed.py — seed script for all data
+- frontend/src/app/login/page.tsx — login + password change + theme toggle
+- frontend/public/login-bg.svg, login-bg-light.svg — login backgrounds
+- backend/app/models/ — all SQLAlchemy models (no lazy=selectin)
+- backend/app/api/v1/crud.py — generic CRUD router (pagination, eager, IntegrityError)
+- backend/app/api/v1/master.py — master table routes with update schemas
+- backend/app/api/v1/admin.py — admin routes (imports from schemas/admin.py)
+- backend/app/api/v1/auth.py — auth routes (imports from schemas/auth.py)
+- backend/app/schemas/ — master.py, auth.py, admin.py
+- backend/app/core/security.py — JWT + bcrypt + validate_password
+- backend/app/core/deps.py — auth dependencies (UUID validation, selectinload)
+- backend/app/seed.py — seed script (valid passwords)
 
 ### Running the Project
 ```bash

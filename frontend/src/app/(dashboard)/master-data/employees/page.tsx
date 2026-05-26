@@ -34,7 +34,7 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState<Employee | null>(null);
 
   const { data: allEmployees = [], isLoading } = useQuery<Employee[]>({
-    queryKey: ["employees"],
+    queryKey: ["employees", selectedProject?.id],
     queryFn: async () => (await api.get("/employees")).data,
   });
 
@@ -95,12 +95,12 @@ export default function EmployeesPage() {
         onExport={(rows) => exportToCsv(rows, "employees")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/employees", { ...row, project_id: selectedProject?.id });
+          await Promise.allSettled(rows.map((row) => api.post("/employees", { ...row, project_id: selectedProject?.id })));
           queryClient.invalidateQueries({ queryKey: ["employees"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "email", "phone", "position"], "employees")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/employees/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/employees/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["employees"] });
         }}
       />

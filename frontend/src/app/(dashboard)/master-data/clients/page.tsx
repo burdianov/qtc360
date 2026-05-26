@@ -91,12 +91,12 @@ export default function ClientsPage() {
         onExport={(rows) => exportToCsv(rows, "clients")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/clients", row);
+          await Promise.allSettled(rows.map((row) => api.post("/clients", row)));
           queryClient.invalidateQueries({ queryKey: ["clients"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code"], "clients")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/clients/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/clients/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["clients"] });
         }}
       />

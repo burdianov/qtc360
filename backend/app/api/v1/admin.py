@@ -1,80 +1,23 @@
 """Admin endpoints for Users, Roles, Permissions."""
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel as PydanticModel, EmailStr
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import require_superuser
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.rbac import Role, Permission
-
-
-# --- Schemas ---
-class UserAdminCreate(PydanticModel):
-    email: EmailStr
-    password: str
-    full_name: str
-    is_active: bool = True
-    is_superuser: bool = False
-    role_ids: list[UUID] = []
-
-class UserAdminUpdate(PydanticModel):
-    email: EmailStr | None = None
-    full_name: str | None = None
-    is_active: bool | None = None
-    is_superuser: bool | None = None
-    password: str | None = None
-    role_ids: list[UUID] | None = None
-
-class RoleResponse(PydanticModel):
-    id: UUID
-    name: str
-    description: str | None
-    model_config = {"from_attributes": True}
-
-class UserAdminResponse(PydanticModel):
-    id: UUID
-    email: str
-    full_name: str
-    is_active: bool
-    is_superuser: bool
-    roles: list[RoleResponse] = []
-    model_config = {"from_attributes": True}
-
-class PermissionResponse(PydanticModel):
-    id: UUID
-    code: str
-    description: str | None
-    model_config = {"from_attributes": True}
-
-class RoleAdminResponse(PydanticModel):
-    id: UUID
-    name: str
-    description: str | None
-    permissions: list[PermissionResponse] = []
-    model_config = {"from_attributes": True}
-
-class RoleCreate(PydanticModel):
-    name: str
-    description: str | None = None
-    permission_ids: list[UUID] = []
-
-class RoleUpdate(PydanticModel):
-    name: str | None = None
-    description: str | None = None
-    permission_ids: list[UUID] | None = None
-
-class PermissionCreate(PydanticModel):
-    code: str
-    description: str | None = None
-
-class PermissionUpdate(PydanticModel):
-    code: str | None = None
-    description: str | None = None
+from app.schemas.admin import (
+    UserAdminCreate, UserAdminUpdate, UserAdminResponse,
+    RoleCreate, RoleUpdate, RoleAdminResponse,
+    PermissionCreate, PermissionUpdate, PermissionResponse,
+)
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_superuser)])
@@ -83,7 +26,7 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(requir
 # --- Users ---
 @router.get("/users", response_model=list[UserAdminResponse])
 async def list_users(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.is_deleted == False))  # noqa: E712
+    result = await db.execute(select(User).where(User.is_deleted == False).options(selectinload(User.roles)))  # noqa: E712
     return result.scalars().all()
 
 @router.post("/users", response_model=UserAdminResponse, status_code=status.HTTP_201_CREATED)
@@ -91,7 +34,7 @@ async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db))
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, is_active=body.is_active, is_superuser=body.is_superuser)
+    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, is_active=body.is_active, is_superuser=body.is_superuser, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
     if body.role_ids:
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
         user.roles = list(roles)
@@ -115,6 +58,8 @@ async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = D
         user.is_superuser = body.is_superuser
     if body.password is not None:
         user.hashed_password = hash_password(body.password)
+        user.must_change_password = True
+        user.password_reset_at = datetime.now(timezone.utc)
     if body.role_ids is not None:
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
         user.roles = list(roles)
@@ -134,7 +79,7 @@ async def delete_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
 # --- Roles ---
 @router.get("/roles", response_model=list[RoleAdminResponse])
 async def list_roles(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Role).where(Role.is_deleted == False))  # noqa: E712
+    result = await db.execute(select(Role).where(Role.is_deleted == False).options(selectinload(Role.permissions)))  # noqa: E712
     return result.scalars().all()
 
 @router.post("/roles", response_model=RoleAdminResponse, status_code=status.HTTP_201_CREATED)
@@ -144,7 +89,11 @@ async def create_role(body: RoleCreate, db: AsyncSession = Depends(get_db)):
         perms = (await db.execute(select(Permission).where(Permission.id.in_(body.permission_ids)))).scalars().all()
         role.permissions = list(perms)
     db.add(role)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Role already exists")
     await db.refresh(role)
     return role
 
@@ -183,7 +132,11 @@ async def list_permissions(db: AsyncSession = Depends(get_db)):
 async def create_permission(body: PermissionCreate, db: AsyncSession = Depends(get_db)):
     perm = Permission(code=body.code, description=body.description)
     db.add(perm)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Permission already exists")
     await db.refresh(perm)
     return perm
 

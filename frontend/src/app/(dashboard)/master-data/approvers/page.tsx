@@ -99,12 +99,12 @@ export default function ApproversPage() {
         ])}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/approvers", row);
+          await Promise.allSettled(rows.map((row) => api.post("/approvers", row)));
           queryClient.invalidateQueries({ queryKey: ["approvers"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "title_id"], "approvers")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/approvers/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/approvers/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["approvers"] });
         }}
       />
@@ -118,7 +118,7 @@ export default function ApproversPage() {
               <FormField control={form.control} name="title_id" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Title</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select title" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {titles.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronLeft, LogOut } from "lucide-react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,10 +24,13 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { navigation } from "@/config/navigation";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { toggleSidebar } = useSidebar();
+  const { data: user } = useCurrentUser();
+  const initials = user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
 
   return (
     <Sidebar
@@ -52,6 +55,7 @@ export function AppSidebar() {
             width={28}
             height={28}
             className="shrink-0 hidden dark:group-data-[collapsible=icon]:block"
+            style={{ width: "auto", height: "auto" }}
           />
           <Image
             src="/logo.svg"
@@ -59,7 +63,7 @@ export function AppSidebar() {
             width={140}
             height={28}
             className="hidden dark:group-data-[collapsible=icon]:hidden dark:block"
-            style={{ marginLeft: "-2px" }}
+            style={{ marginLeft: "-2px", height: "auto" }}
           />
           {/* Light theme logos */}
           <Image
@@ -68,6 +72,7 @@ export function AppSidebar() {
             width={28}
             height={28}
             className="shrink-0 group-data-[collapsible=icon]:block hidden dark:hidden"
+            style={{ width: "auto", height: "auto" }}
           />
           <Image
             src="/logo-light.svg"
@@ -75,7 +80,7 @@ export function AppSidebar() {
             width={140}
             height={28}
             className="group-data-[collapsible=icon]:hidden block dark:hidden"
-            style={{ marginLeft: "-2px" }}
+            style={{ marginLeft: "-2px", height: "auto" }}
           />
         </Link>
       </SidebarHeader>
@@ -138,22 +143,23 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* Footer */}
-      <SidebarFooter className="border-t border-border px-3">
+      <SidebarFooter className="border-t border-border py-2 px-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Profile" className="h-10">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                  AD
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="text-sm">Admin</span>
+            <SidebarMenuButton tooltip={user?.full_name || "Profile"} className="h-10 pointer-events-none">
+              <div className="flex h-4 w-4 items-center justify-center">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+              <div className="flex flex-col ml-1 group-data-[collapsible=icon]:hidden">
+                <span className="text-sm">{user?.full_name || "User"}</span>
                 <span className="text-xs text-muted-foreground">
-                  admin@qtc360.com
+                  {user?.email || ""}
                 </span>
               </div>
-              <LogOut className="ml-auto h-4 w-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

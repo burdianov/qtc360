@@ -63,7 +63,7 @@ export const navigation: NavGroup[] = [
       { title: "Assets", url: "/master-data/assets", icon: Box },
       { title: "Systems", url: "/master-data/systems", icon: Network },
       { title: "Contractors", url: "/master-data/contractors", icon: Building2 },
-      { title: "Client", url: "/master-data/client", icon: UserCheck },
+      { title: "Client", url: "/master-data/clients", icon: UserCheck },
       { title: "Approvers", url: "/master-data/approvers", icon: ClipboardCheck },
     ],
   },

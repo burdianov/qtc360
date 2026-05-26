@@ -95,12 +95,12 @@ export default function SubActivitiesPage() {
         onExport={(rows) => exportToCsv(rows, "sub-activities")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
-          for (const row of rows) await api.post("/sub-activities", row);
+          await Promise.allSettled(rows.map((row) => api.post("/sub-activities", row)));
           queryClient.invalidateQueries({ queryKey: ["sub-activities"] });
         }}
         onDownloadTemplate={() => downloadTemplate(["name", "code", "activity_id"], "sub-activities")}
         onBulkDelete={async (rows) => {
-          for (const row of rows) await api.delete(`/sub-activities/${row.id}`);
+          await Promise.allSettled(rows.map((row) => api.delete(`/sub-activities/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["sub-activities"] });
         }}
       />
@@ -113,7 +113,7 @@ export default function SubActivitiesPage() {
               <FormField control={form.control} name="code" render={({ field }) => (<FormItem><FormLabel>Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="activity_id" render={({ field }) => (
                 <FormItem><FormLabel>Activity</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select activity" /></SelectTrigger></FormControl>
                     <SelectContent>{activities.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />

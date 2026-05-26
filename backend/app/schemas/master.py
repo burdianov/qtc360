@@ -9,6 +9,10 @@ class ClientCreate(BaseModel):
     name: str
     code: str
 
+class ClientUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+
 class ClientResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -22,6 +26,10 @@ class ApproverTitleCreate(BaseModel):
     code: str
     title: str
 
+class ApproverTitleUpdate(BaseModel):
+    code: str | None = None
+    title: str | None = None
+
 class ApproverTitleResponse(BaseModel):
     id: uuid.UUID
     code: str
@@ -34,6 +42,11 @@ class ApproverCreate(BaseModel):
     name: str
     code: str
     title_id: uuid.UUID
+
+class ApproverUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    title_id: uuid.UUID | None = None
 
 class ApproverResponse(BaseModel):
     id: uuid.UUID
@@ -50,6 +63,15 @@ class ProjectCreate(BaseModel):
     code: str
     description: str | None = None
     status: str = "active"
+    start_date: date | None = None
+    end_date: date | None = None
+    client_id: uuid.UUID | None = None
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    description: str | None = None
+    status: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     client_id: uuid.UUID | None = None
@@ -73,6 +95,11 @@ class ProjectApproverCreate(BaseModel):
     approver_id: uuid.UUID
     approver_title_id: uuid.UUID
 
+class ProjectApproverUpdate(BaseModel):
+    project_id: uuid.UUID | None = None
+    approver_id: uuid.UUID | None = None
+    approver_title_id: uuid.UUID | None = None
+
 class ProjectApproverResponse(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
@@ -86,6 +113,10 @@ class DisciplineCreate(BaseModel):
     name: str
     code: str
     project_id: uuid.UUID
+
+class DisciplineUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
 
 class DisciplineResponse(BaseModel):
     id: uuid.UUID
@@ -102,6 +133,11 @@ class ServiceCreate(BaseModel):
     code: str
     discipline_id: uuid.UUID
 
+class ServiceUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    discipline_id: uuid.UUID | None = None
+
 class ServiceResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -116,6 +152,12 @@ class AssetTypeCreate(BaseModel):
     name: str
     code: str
     service_id: uuid.UUID
+    parent_type_id: uuid.UUID | None = None
+
+class AssetTypeUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    service_id: uuid.UUID | None = None
     parent_type_id: uuid.UUID | None = None
 
 class AssetTypeResponse(BaseModel):
@@ -136,6 +178,13 @@ class AssetCreate(BaseModel):
     location: str | None = None
     status: str = "pending"
 
+class AssetUpdate(BaseModel):
+    name: str | None = None
+    tag_number: str | None = None
+    asset_type_id: uuid.UUID | None = None
+    location: str | None = None
+    status: str | None = None
+
 class AssetResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -147,7 +196,6 @@ class AssetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
 # --- Employee ---
 class EmployeeCreate(BaseModel):
     name: str
@@ -155,6 +203,12 @@ class EmployeeCreate(BaseModel):
     phone: str | None = None
     position: str | None = None
     project_id: uuid.UUID
+
+class EmployeeUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    position: str | None = None
 
 class EmployeeResponse(BaseModel):
     id: uuid.UUID
@@ -174,6 +228,12 @@ class ActivityCreate(BaseModel):
     service_id: uuid.UUID
     is_milestone: bool = False
 
+class ActivityUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    service_id: uuid.UUID | None = None
+    is_milestone: bool | None = None
+
 class ActivityResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -190,6 +250,11 @@ class SubActivityCreate(BaseModel):
     code: str
     activity_id: uuid.UUID
 
+class SubActivityUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    activity_id: uuid.UUID | None = None
+
 class SubActivityResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -205,6 +270,11 @@ class TestCreate(BaseModel):
     code: str
     description: str | None = None
     project_id: uuid.UUID
+
+class TestUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    description: str | None = None
 
 class TestResponse(BaseModel):
     id: uuid.UUID
@@ -223,6 +293,11 @@ class SystemCreate(BaseModel):
     description: str | None = None
     project_id: uuid.UUID
 
+class SystemUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+    description: str | None = None
+
 class SystemResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -239,10 +314,39 @@ class ContractorCreate(BaseModel):
     code: str
     project_id: uuid.UUID
 
+class ContractorUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
+
 class ContractorResponse(BaseModel):
     id: uuid.UUID
     name: str
     code: str
     project_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- ApprovalStatus ---
+class ApprovalStatusCreate(BaseModel):
+    project_id: uuid.UUID
+    letter: str
+    name: str
+    description: str
+    action: str
+
+class ApprovalStatusUpdate(BaseModel):
+    letter: str | None = None
+    name: str | None = None
+    description: str | None = None
+    action: str | None = None
+
+class ApprovalStatusResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    letter: str
+    name: str
+    description: str
+    action: str
     created_at: datetime
     model_config = {"from_attributes": True}
