@@ -1,0 +1,18 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    needs: []  # Will reference CI job once wired up
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      # TODO: Add deployment steps once hosting is decided
+      # Options: Railway, Render, Fly.io, or AWS
+      - name: Placeholder
+        run: echo "Deployment target TBD"

@@ -1,0 +1,19 @@
+import uuid
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import BaseModel
+
+
+class ProjectApprover(BaseModel):
+    __tablename__ = "project_approvers"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    approver_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("approvers.id"))
+    approver_title_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("approver_titles.id"))
+
+    project: Mapped["Project"] = relationship(back_populates="approvers")  # noqa: F821
+    approver: Mapped["Approver"] = relationship(lazy="selectin")  # noqa: F821
+    approver_title: Mapped["ApproverTitle"] = relationship(lazy="selectin")  # noqa: F821
