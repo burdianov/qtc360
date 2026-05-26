@@ -70,10 +70,10 @@ export const navigation: NavGroup[] = [
   {
     label: "QA/QC",
     items: [
+      { title: "FAT Reports", url: "/qaqc/fat-reports", icon: FileStack },
       { title: "MIR", url: "/qaqc/mir", icon: FileText },
       { title: "WIR", url: "/qaqc/wir", icon: HardHat },
       { title: "CIR", url: "/qaqc/cir", icon: FileSearch },
-      { title: "FAT Reports", url: "/qaqc/fat-reports", icon: FileStack },
     ],
   },
   {

@@ -1,0 +1,131 @@
+"use client";
+
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { z } from "zod/v4";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { type ColumnDef } from "@tanstack/react-table";
+import { Plus } from "lucide-react";
+import api from "@/lib/api";
+import { useSelectedProject } from "@/hooks/use-project";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { Badge } from "@/components/ui/badge";
+
+interface Document {
+  id: string;
+  number: string;
+  title: string;
+  revision: number;
+  status: string;
+  delivery_note: string | null;
+  is_milestone_delivery: boolean | null;
+  created_at: string;
+}
+
+const schema = z.object({
+  number: z.string().min(1, "Number is required"),
+  title: z.string().min(1, "Title is required"),
+  delivery_note: z.string().optional(),
+  is_milestone_delivery: z.boolean().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+const statusColors: Record<string, string> = {
+  draft: "bg-muted text-muted-foreground",
+  pending_review: "bg-amber-500/15 text-amber-500",
+  approved: "bg-emerald-500/15 text-emerald-500",
+  rejected: "bg-red-500/15 text-red-500",
+};
+
+export default function MIRPage() {
+  const project = useSelectedProject();
+  const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Document | null>(null);
+
+  const { data: documents = [], isLoading } = useQuery<Document[]>({
+    queryKey: ["documents", "MIR", project?.id],
+    queryFn: async () => (await api.get("/documents", { params: { project_id: project!.id, doc_type: "MIR" } })).data,
+    enabled: !!project,
+  });
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { number: "", title: "", delivery_note: "", is_milestone_delivery: false },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      if (editing) return api.patch(`/documents/${editing.id}`, values);
+      return api.post("/documents", { ...values, project_id: project!.id, doc_type: "MIR" });
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["documents", "MIR", project?.id] }); closeDialog(); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/documents/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", "MIR", project?.id] }),
+  });
+
+  const openCreate = () => { setEditing(null); form.reset({ number: "", title: "", delivery_note: "", is_milestone_delivery: false }); setDialogOpen(true); };
+  const openEdit = (item: Document) => { setEditing(item); form.reset({ number: item.number, title: item.title, delivery_note: item.delivery_note || "", is_milestone_delivery: item.is_milestone_delivery || false }); setDialogOpen(true); };
+  const closeDialog = () => { setDialogOpen(false); setEditing(null); };
+
+  const rowActions: RowAction<Document>[] = [
+    { label: "Edit", onClick: openEdit },
+    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
+  ];
+
+  const columns: ColumnDef<Document, unknown>[] = [
+    { accessorKey: "number", header: ({ column }) => <DataTableColumnHeader column={column} title="Number" /> },
+    { accessorKey: "title", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
+    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" /> },
+    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace("_", " ")}</Badge> },
+    { accessorKey: "delivery_note", header: ({ column }) => <DataTableColumnHeader column={column} title="Delivery Note" /> },
+    { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
+  ];
+
+  if (isLoading) return <div className="p-6">Loading...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Material Inspection Requests</h1>
+          <p className="text-sm text-muted-foreground">Manage MIR submissions</p>
+        </div>
+        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />New MIR</Button>
+      </div>
+      <DataTable columns={columns} data={documents} searchKey="title" searchPlaceholder="Search by title..." />
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editing ? "Edit MIR" : "New MIR"}</DialogTitle></DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
+              <FormField control={form.control} name="number" render={({ field }) => (<FormItem><FormLabel>Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="delivery_note" render={({ field }) => (<FormItem><FormLabel>Delivery Note</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="is_milestone_delivery" render={({ field }) => (
+                <FormItem className="flex items-center gap-2">
+                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <FormLabel className="!mt-0">Milestone Delivery</FormLabel>
+                </FormItem>
+              )} />
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
+                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

@@ -17,6 +17,11 @@ from app.models.sub_activity import SubActivity
 from app.models.test import Test
 from app.models.system import System
 from app.models.contractor import Contractor
+from app.models.document import Document
+from app.models.document_approval import DocumentApproval, document_assets
+from app.models.fat import FAT, fat_assets
+from app.models.document_template import DocumentTemplate
+from app.models.reference_number_config import ReferenceNumberConfig
 
 __all__ = [
     "Base", "BaseModel",
@@ -27,4 +32,7 @@ __all__ = [
     "Discipline", "Service", "AssetType", "Asset",
     "ApprovalStatus",
     "Employee", "Activity", "SubActivity", "Test", "System", "Contractor",
+    "Document", "DocumentApproval", "document_assets",
+    "FAT", "fat_assets",
+    "DocumentTemplate", "ReferenceNumberConfig",
 ]

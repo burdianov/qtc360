@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -31,6 +32,24 @@ export function AppSidebar() {
   const { toggleSidebar } = useSidebar();
   const { data: user } = useCurrentUser();
   const initials = user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(navigation.map((g) => [g.label, true]))
+  );
+
+  // Open the group containing the active route on navigation
+  useEffect(() => {
+    const group = navigation.find((g) => g.items.some((item) => item.url === pathname));
+    if (group && !openGroups[group.label]) {
+      setOpenGroups((prev) => ({ ...prev, [group.label]: true }));
+    }
+    // Scroll after group opens
+    const timer = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-sidebar="menu-button"][data-active]`);
+      el?.scrollIntoView({ block: "nearest" });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Sidebar
@@ -93,10 +112,12 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <SidebarContent>
-        {navigation.map((group) => (
+        {navigation.map((group) => {
+          return (
           <Collapsible
             key={group.label}
-            defaultOpen
+            open={openGroups[group.label]}
+            onOpenChange={(open) => setOpenGroups((prev) => ({ ...prev, [group.label]: open }))}
             className="group/collapsible"
           >
             <SidebarGroup className="py-1 px-3">
@@ -137,7 +158,8 @@ export function AppSidebar() {
               </CollapsibleContent>
             </SidebarGroup>
           </Collapsible>
-        ))}
+          );
+        })}
       </SidebarContent>
 
       {/* Footer */}
