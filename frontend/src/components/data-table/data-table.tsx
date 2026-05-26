@@ -60,6 +60,7 @@ export function DataTable<TData, TValue>({
       <Checkbox
         checked={t.getIsAllPageRowsSelected()}
         onCheckedChange={(value) => t.toggleAllPageRowsSelected(!!value)}
+        disabled={t.getRowModel().rows.length === 0}
         aria-label="Select all"
       />
     ),

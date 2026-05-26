@@ -43,21 +43,15 @@ export function DataTableToolbar<TData>({
     <div className="space-y-2">
       {/* Bulk action bar */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2">
-          <span className="text-sm font-medium">{selectedCount} selected</span>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="text-muted-foreground">{selectedCount} selected</span>
           {onBulkDelete && (
-            <Button variant="destructive" size="sm" className="h-7" onClick={() => setDeleteDialogOpen(true)}>
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+            <Button variant="destructive" size="sm" className="h-7 text-xs px-3" onClick={() => setDeleteDialogOpen(true)}>
+              <Trash2 className="mr-1.5 h-3 w-3" />
               Delete ({selectedCount})
             </Button>
           )}
-          {onExport && (
-            <Button variant="outline" size="sm" className="h-7" onClick={onExport}>
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              Export ({selectedCount})
-            </Button>
-          )}
-          <button onClick={onClearSelection} className="ml-auto flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <button onClick={onClearSelection} className="flex items-center gap-1 text-sm text-foreground hover:text-foreground/80">
             <X className="h-3.5 w-3.5" />
             Clear
           </button>
@@ -100,7 +94,7 @@ export function DataTableToolbar<TData>({
               Import
             </Button>
           )}
-          {onExport && selectedCount === 0 && (
+          {onExport && (
             <Button variant="outline" size="sm" className="h-8" onClick={onExport}>
               <Download className="mr-2 h-4 w-4" />
               Export

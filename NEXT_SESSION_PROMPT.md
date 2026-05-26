@@ -28,20 +28,24 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
 - ✅ Dark/light theme with Zenith-inspired design
 - ✅ Responsive sidebar: collapses to icons on tablet (768-1023px), Sheet overlay on mobile (<768px)
-- ✅ Logo: separate SVG variants for light/dark themes (logo.svg, logo-light.svg, logo-icon.svg, logo-icon-light.svg)
+- ✅ Logo: separate SVG variants for light/dark themes (logo.svg, logo-light.svg, logo-icon.svg, logo-icon-light.svg). Light uses #2563eb blue, dark uses original #014EFC
 - ✅ Sidebar active links use var(--primary) blue
-- ✅ Login page with RHF + Zod validation, no browser validation
+- ✅ Sidebar item text: 70% opacity default, full on hover (uses sidebar-accent-foreground)
+- ✅ Login page with RHF + Zod validation, no browser validation, "Proudly by LB" at bottom
 - ✅ Auth: useLogin, useCurrentUser, useLogout hooks, AuthGuard component
 - ✅ Logout clears tokens + selected_project from localStorage
 - ✅ API layer: Axios instance with JWT interceptor + auto-refresh on 401
 - ✅ React Query provider
-- ✅ Project selection: modal after login (if multiple projects), ProjectSwitcher in navbar
-- ✅ DataTable system: sorting, search, pagination, column visibility, faceted filters, row actions, row selection with checkboxes, bulk actions (delete selected, export selected), export (CSV with FK resolution), import (with template download dialog)
+- ✅ Project selection: modal after login (if multiple projects), ProjectSwitcher in navbar (desktop: bordered pill right of search, mobile: right-aligned next to hamburger+logo)
+- ✅ DataTable system: sorting, search, pagination, column visibility, faceted filters, row actions, row selection with checkboxes (Zenith-style subtle borders), bulk actions (delete with confirmation dialog, export selected), CSV export (resolves FK objects to names), import (dialog with template download)
 - ✅ Form system: RHF + Zod, FormField/FormItem/FormLabel/FormControl/FormMessage, field wrappers
-- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets — each with DataTable + add/edit dialog + export/import
-- ✅ "Proudly by LB" on login page
+- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets — each with DataTable + add/edit dialog + export/import + bulk delete
+- ✅ Button destructive variant: solid red-600, white text (Zenith style)
+- ✅ Checkboxes: subtle border (foreground/20), no bg, hover brightens, disabled uses data-disabled with pointer-events-none
 - ✅ Scrollbar: 4px, flush right, no arrows, hover darkens
 - ✅ cursor: pointer on all buttons globally
+- ✅ Pagination shows "Showing 1-10 of X results"
+- ✅ Actions column has "Actions" header label
 
 ### Key Architecture Decisions
 - shadcn/ui uses @base-ui/react (NOT Radix) — no `asChild` prop, triggers render children directly
@@ -49,6 +53,7 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - Zod v4 with @hookform/resolvers — avoid .default() and .optional() in schemas (use explicit string types with defaultValues)
 - useSyncExternalStore for project selection (cached snapshot to avoid infinite loops)
 - Tailwind v4 with @tailwindcss/postcss — standard breakpoints (sm=640, md=768, lg=1024)
+- base-ui checkbox uses `data-disabled` not native `disabled` attribute for styling
 
 ### What's Next
 - Frontend pages for remaining master tables (Employees, Activities, Sub-Activities, Tests, Systems, Contractors)
@@ -69,6 +74,8 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - frontend/src/hooks/use-project.ts — project selection hooks
 - frontend/src/components/data-table/ — reusable DataTable system
 - frontend/src/components/form/ — reusable form system
+- frontend/src/components/ui/button.tsx — button with destructive variant (solid red)
+- frontend/src/components/ui/checkbox.tsx — checkbox with Zenith-style subtle borders
 - backend/app/models/ — all SQLAlchemy models
 - backend/app/api/v1/crud.py — generic CRUD router factory
 - backend/app/api/v1/master.py — master table routes
@@ -78,8 +85,8 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 
 ### Running the Project
 ```bash
-# Start PostgreSQL
-cd D:\QTC360\qtc360 && docker compose up -d postgres
+# Start Docker services (PostgreSQL + pgAdmin)
+cd D:\QTC360\qtc360 && docker compose up -d
 
 # Backend
 cd D:\QTC360\qtc360\backend && uv run alembic upgrade head && uv run python -m app.seed && uv run uvicorn app.main:app --reload
@@ -87,3 +94,6 @@ cd D:\QTC360\qtc360\backend && uv run alembic upgrade head && uv run python -m a
 # Frontend
 cd D:\QTC360\qtc360\frontend && npm run dev
 ```
+
+### GitHub
+Repository: git@github.com:burdianov/qtc360.git
