@@ -5,9 +5,8 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.user import User
+from app.models.user import User, user_projects
 from app.models.discipline import Discipline
-from app.models.employee import Employee
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.service import Service
@@ -32,8 +31,12 @@ async def get_dashboard_stats(
     disciplines = await count(Discipline, project_id=project_id)
     systems = await count(System, project_id=project_id)
     contractors = await count(Contractor, project_id=project_id)
-    employees = await count(Employee, project_id=project_id)
     tests = await count(Test, project_id=project_id)
+
+    # Users assigned to this project
+    users_count = (await db.execute(
+        select(func.count()).select_from(user_projects).where(user_projects.c.project_id == project_id)
+    )).scalar() or 0
 
     # Services count via disciplines
     svc_stmt = (
@@ -52,7 +55,7 @@ async def get_dashboard_stats(
         "services": services,
         "systems": systems,
         "contractors": contractors,
-        "employees": employees,
+        "users": users_count,
         "tests": tests,
         "approvers": approvers,
     }

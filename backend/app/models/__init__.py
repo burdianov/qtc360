@@ -11,7 +11,6 @@ from app.models.service import Service
 from app.models.asset_type import AssetType
 from app.models.asset import Asset
 from app.models.approval_status import ApprovalStatus
-from app.models.employee import Employee
 from app.models.activity import Activity
 from app.models.sub_activity import SubActivity
 from app.models.test import Test
@@ -32,7 +31,7 @@ __all__ = [
     "ApproverTitle", "Approver", "ProjectApprover",
     "Discipline", "Service", "AssetType", "Asset",
     "ApprovalStatus",
-    "Employee", "Activity", "SubActivity", "Test", "System", "Contractor",
+    "Activity", "SubActivity", "Test", "System", "Contractor",
     "Document", "DocumentApproval", "document_assets",
     "FAT", "fat_assets",
     "DocumentTemplate", "ReferenceNumberConfig",

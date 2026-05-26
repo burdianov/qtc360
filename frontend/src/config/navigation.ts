@@ -53,7 +53,6 @@ export const navigation: NavGroup[] = [
   {
     label: "Master Data",
     items: [
-      { title: "Employees", url: "/master-data/employees", icon: Users },
       { title: "Projects", url: "/master-data/projects", icon: FolderKanban },
       { title: "Disciplines", url: "/master-data/disciplines", icon: Compass },
       { title: "Services", url: "/master-data/services", icon: Wrench },

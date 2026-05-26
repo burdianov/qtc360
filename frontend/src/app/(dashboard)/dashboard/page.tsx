@@ -20,7 +20,7 @@ interface DashboardStats {
   services: number;
   systems: number;
   contractors: number;
-  employees: number;
+  users: number;
   tests: number;
   approvers: number;
 }
@@ -29,7 +29,7 @@ const statCards = [
   { key: "disciplines", label: "Disciplines", icon: Compass, color: "bg-blue-500/15 text-blue-500" },
   { key: "services", label: "Services", icon: Layers, color: "bg-emerald-500/15 text-emerald-500" },
   { key: "systems", label: "Systems", icon: Building2, color: "bg-orange-500/15 text-orange-500" },
-  { key: "employees", label: "Employees", icon: Users, color: "bg-purple-500/15 text-purple-500" },
+  { key: "users", label: "Users", icon: Users, color: "bg-purple-500/15 text-purple-500" },
   { key: "contractors", label: "Contractors", icon: Wrench, color: "bg-blue-500/15 text-blue-500" },
   { key: "tests", label: "Tests", icon: FlaskConical, color: "bg-emerald-500/15 text-emerald-500" },
   { key: "approvers", label: "Approvers", icon: UserCheck, color: "bg-orange-500/15 text-orange-500" },

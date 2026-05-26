@@ -19,7 +19,8 @@ We are still working on fixing and refining the Template Builder and WIR form.
 - ✅ RBAC: User, Role, Permission models with many-to-many, require_permission dependency
 - ✅ Roles seeded: super_admin, admin, site_engineer, qaqc_engineer, qaqc_manager
 - ✅ Users seeded: dev@jlwme.com/Dev12345, admin@jlwme.com/Admin123, site@jlwme.com/Site1234, qaqc@jlwme.com/Qaqc1234, jerry@jlwme.com/Jerry123
-- ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Employee, Activity, SubActivity, Test, System, Contractor
+- ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Activity, SubActivity, Test, System, Contractor
+- ✅ Users table includes phone + position (Employee table merged into Users — no separate employees)
 - ✅ Document models: Document (single table for MIR/WIR/CIR with doc_type), DocumentApproval, document_assets, FAT, fat_assets
 - ✅ Template models: DocumentTemplate (JSONB schema for cover sheet layout), ReferenceNumberConfig (pattern-based auto-numbering)
 - ✅ ProjectHeaderImage model: stores header images per project+cell_id (LargeBinary in DB)
@@ -30,7 +31,7 @@ We are still working on fixing and refining the Template Builder and WIR form.
 - ✅ Document workflow: sign (site_engineer/qaqc_engineer), approval chain (respond → advance/reject)
 - ✅ Reference number generation: /templates/ref-config/generate
 - ✅ Dashboard stats endpoint: /dashboard/stats?project_id=
-- ✅ Alembic migrations applied (10 total)
+- ✅ Alembic migrations applied (11 total)
 - ✅ Seed get_or_create restores soft-deleted records
 
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
@@ -43,7 +44,7 @@ We are still working on fixing and refining the Template Builder and WIR form.
 - ✅ Project selection: modal after login (localStorage), ProjectSwitcher in navbar
 - ✅ DataTable system: sorting, search, pagination, column visibility, row actions, bulk actions, CSV export/import
 - ✅ Form system: RHF + Zod, Select uses value (controlled)
-- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Employees, Activities, Sub-Activities, Tests, Systems, Contractors
+- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Activities, Sub-Activities, Tests, Systems, Contractors
 - ✅ Admin pages: Users, Roles, Permissions, Settings
 - ✅ Dashboard page: 7 stat cards with colored icon badges, placeholder charts
 - ✅ QA/QC pages: MIR, WIR (list + full-page form at /qaqc/wir/new), CIR, FAT Reports
@@ -53,7 +54,7 @@ We are still working on fixing and refining the Template Builder and WIR form.
   - Discipline, subject, description, location, floor, RAMS, drawing ref
   - Service/activity/sub-activity cascade selects
   - Multi-asset selection with badges
-  - 2 inspectors with click-to-sign
+  - 2 inspectors with click-to-sign (uses Users, not separate employees)
   - Attachments
 - ✅ Template Builder: /documents/templates/builder (in progress)
   - Auto-save (debounced 800ms) — no manual save button

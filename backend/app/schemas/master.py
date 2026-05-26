@@ -196,30 +196,6 @@ class AssetResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# --- Employee ---
-class EmployeeCreate(BaseModel):
-    name: str
-    email: str | None = None
-    phone: str | None = None
-    position: str | None = None
-    project_id: uuid.UUID
-
-class EmployeeUpdate(BaseModel):
-    name: str | None = None
-    email: str | None = None
-    phone: str | None = None
-    position: str | None = None
-
-class EmployeeResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    email: str | None
-    phone: str | None
-    position: str | None
-    project_id: uuid.UUID
-    created_at: datetime
-    model_config = {"from_attributes": True}
-
 
 # --- Activity ---
 class ActivityCreate(BaseModel):

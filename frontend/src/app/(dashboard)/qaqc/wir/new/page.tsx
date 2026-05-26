@@ -23,7 +23,7 @@ interface Discipline { id: string; name: string; code: string; }
 interface Activity { id: string; name: string; code: string; service_id: string; }
 interface SubActivity { id: string; name: string; code: string; activity_id: string; }
 interface Service { id: string; name: string; code: string; }
-interface Employee { id: string; name: string; position: string | null; }
+interface User { id: string; full_name: string; position: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
 const schema = z.object({
@@ -72,9 +72,9 @@ export default function NewWIRPage() {
     queryFn: async () => (await api.get("/sub-activities")).data,
   });
 
-  const { data: employees = [] } = useQuery<Employee[]>({
-    queryKey: ["employees"],
-    queryFn: async () => (await api.get("/employees")).data,
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ["users"],
+    queryFn: async () => (await api.get("/admin/users")).data,
   });
 
   const { data: assets = [] } = useQuery<Asset[]>({
@@ -296,7 +296,7 @@ export default function NewWIRPage() {
                       <FormLabel>Inspected by 1</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Select inspector" /></SelectTrigger></FormControl>
-                        <SelectContent>{employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
+                        <SelectContent>{users.map((e) => <SelectItem key={e.id} value={e.id}>{e.full_name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
                       </Select>
                     </FormItem>
                   )} />
@@ -307,7 +307,7 @@ export default function NewWIRPage() {
                   >
                     {signed.inspector1 ? (
                       <span className="text-lg italic font-serif text-emerald-500">
-                        {employees.find((e) => e.id === form.getValues("inspector_1_id"))?.name || "Signed"}
+                        {users.find((e) => e.id === form.getValues("inspector_1_id"))?.full_name || "Signed"}
                       </span>
                     ) : (
                       <span className="text-sm text-muted-foreground">Click to sign</span>
@@ -320,7 +320,7 @@ export default function NewWIRPage() {
                       <FormLabel>Inspected by 2</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl><SelectTrigger><SelectValue placeholder="Select inspector" /></SelectTrigger></FormControl>
-                        <SelectContent>{employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
+                        <SelectContent>{users.map((e) => <SelectItem key={e.id} value={e.id}>{e.full_name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
                       </Select>
                     </FormItem>
                   )} />
@@ -330,7 +330,7 @@ export default function NewWIRPage() {
                   >
                     {signed.inspector2 ? (
                       <span className="text-lg italic font-serif text-emerald-500">
-                        {employees.find((e) => e.id === form.getValues("inspector_2_id"))?.name || "Signed"}
+                        {users.find((e) => e.id === form.getValues("inspector_2_id"))?.full_name || "Signed"}
                       </span>
                     ) : (
                       <span className="text-sm text-muted-foreground">Click to sign</span>
