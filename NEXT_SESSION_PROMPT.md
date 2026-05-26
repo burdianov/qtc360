@@ -8,7 +8,7 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 2 Complete
+## CURRENT STATUS — Phase 2 Complete + Admin Pages
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
 - ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
@@ -16,14 +16,15 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ RBAC: User, Role, Permission models with many-to-many, require_permission dependency
 - ✅ Roles seeded: super_admin, admin, site_engineer, qaqc_engineer, qaqc_manager
 - ✅ Users seeded: dev@jlwme.com/dev123, admin@jlwme.com/admin123, site@jlwme.com/site123, qaqc@jlwme.com/qaqc123
-- ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus
+- ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Employee, Activity, SubActivity, Test, System, Contractor
 - ✅ user_projects association table (users assigned to projects)
 - ✅ Generic CRUD router factory (list, get, create, patch, soft-delete)
-- ✅ All endpoints at /api/v1/: auth, clients, projects, approver-titles, approvers, project-approvers, disciplines, services, asset-types, assets
+- ✅ All endpoints at /api/v1/: auth, clients, projects, approver-titles, approvers, project-approvers, disciplines, services, asset-types, assets, employees, activities, sub-activities, tests, systems, contractors
+- ✅ Admin endpoints at /api/v1/admin/: users, roles, permissions (superuser-only, full CRUD with M2M assignment)
 - ✅ /auth/me/projects endpoint returns user's assigned projects
 - ✅ Seed data: 2 clients, 2 projects (AUH-08/1733, DU Mercury/1728), 4 approver titles, 4 approvers, project approvers for 1728, 7 disciplines for 1728, 4 approval statuses for 1728
 - ✅ bcrypt used directly (passlib incompatible with bcrypt 5.x)
-- ✅ Alembic migrations applied (3 total)
+- ✅ Alembic migrations applied (4 total)
 
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
 - ✅ Dark/light theme with Zenith-inspired design
@@ -39,7 +40,8 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - ✅ Project selection: modal after login (if multiple projects), ProjectSwitcher in navbar (desktop: bordered pill right of search, mobile: right-aligned next to hamburger+logo)
 - ✅ DataTable system: sorting, search, pagination, column visibility, faceted filters, row actions, row selection with checkboxes (Zenith-style subtle borders), bulk actions (delete with confirmation dialog, export selected), CSV export (resolves FK objects to names), import (dialog with template download)
 - ✅ Form system: RHF + Zod, FormField/FormItem/FormLabel/FormControl/FormMessage, field wrappers
-- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets — each with DataTable + add/edit dialog + export/import + bulk delete
+- ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Employees, Activities, Sub-Activities, Tests, Systems, Contractors — each with DataTable + add/edit dialog + export/import + bulk delete
+- ✅ Admin pages: Users (CRUD + role assignment), Roles (CRUD + permission assignment), Permissions (CRUD), Settings (placeholder)
 - ✅ Button destructive variant: solid red-600, white text (Zenith style)
 - ✅ Checkboxes: subtle border (foreground/20), no bg, hover brightens, disabled uses data-disabled with pointer-events-none
 - ✅ Scrollbar: 4px, flush right, no arrows, hover darkens
@@ -56,8 +58,6 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - base-ui checkbox uses `data-disabled` not native `disabled` attribute for styling
 
 ### What's Next
-- Frontend pages for remaining master tables (Employees, Activities, Sub-Activities, Tests, Systems, Contractors)
-- Admin pages (Users management, Roles, Permissions, Settings)
 - Dashboard page with actual content
 - Phase 3: Document submission workflows (MIR, WIR, CIR, FAT)
 - Milestone tracking system
@@ -79,6 +79,7 @@ PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QT
 - backend/app/models/ — all SQLAlchemy models
 - backend/app/api/v1/crud.py — generic CRUD router factory
 - backend/app/api/v1/master.py — master table routes
+- backend/app/api/v1/admin.py — admin routes (users, roles, permissions)
 - backend/app/core/security.py — JWT + bcrypt
 - backend/app/core/deps.py — auth dependencies (get_current_user, require_permission)
 - backend/app/seed.py — seed script for all data

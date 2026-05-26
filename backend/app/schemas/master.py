@@ -145,3 +145,104 @@ class AssetResponse(BaseModel):
     status: str
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+
+# --- Employee ---
+class EmployeeCreate(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    position: str | None = None
+    project_id: uuid.UUID
+
+class EmployeeResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str | None
+    phone: str | None
+    position: str | None
+    project_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- Activity ---
+class ActivityCreate(BaseModel):
+    name: str
+    code: str
+    service_id: uuid.UUID
+    is_milestone: bool = False
+
+class ActivityResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    service_id: uuid.UUID
+    is_milestone: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- SubActivity ---
+class SubActivityCreate(BaseModel):
+    name: str
+    code: str
+    activity_id: uuid.UUID
+
+class SubActivityResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    activity_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- Test ---
+class TestCreate(BaseModel):
+    name: str
+    code: str
+    description: str | None = None
+    project_id: uuid.UUID
+
+class TestResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    description: str | None
+    project_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- System ---
+class SystemCreate(BaseModel):
+    name: str
+    code: str
+    description: str | None = None
+    project_id: uuid.UUID
+
+class SystemResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    description: str | None
+    project_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# --- Contractor ---
+class ContractorCreate(BaseModel):
+    name: str
+    code: str
+    project_id: uuid.UUID
+
+class ContractorResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    project_id: uuid.UUID
+    created_at: datetime
+    model_config = {"from_attributes": True}

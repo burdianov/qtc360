@@ -10,6 +10,12 @@ from app.models.service import Service
 from app.models.asset_type import AssetType
 from app.models.asset import Asset
 from app.models.approval_status import ApprovalStatus
+from app.models.employee import Employee
+from app.models.activity import Activity
+from app.models.sub_activity import SubActivity
+from app.models.test import Test
+from app.models.system import System
+from app.models.contractor import Contractor
 
 __all__ = [
     "Base", "BaseModel",
@@ -19,4 +25,5 @@ __all__ = [
     "ApproverTitle", "Approver", "ProjectApprover",
     "Discipline", "Service", "AssetType", "Asset",
     "ApprovalStatus",
+    "Employee", "Activity", "SubActivity", "Test", "System", "Contractor",
 ]
