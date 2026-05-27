@@ -123,7 +123,7 @@ export function CommissioningLinkagePanel({ projectId, selectedAssets, documentT
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Asset</label>
               <Select value={selectedAssetId} onValueChange={(v: any) => handleAssetSelect(v)}>
-                <SelectTrigger><SelectValue placeholder="Select asset for requirement..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select asset for requirement...">{selectedAssetId ? (() => { const a = selectedAssets.find((x) => x.id === selectedAssetId); return a ? `${a.tag_number} — ${a.name}` : ""; })() : ""}</SelectValue></SelectTrigger>
                 <SelectContent>
                   {selectedAssets.map((a) => (
                     <SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>
@@ -140,7 +140,7 @@ export function CommissioningLinkagePanel({ projectId, selectedAssets, documentT
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Requirement</label>
               <Select value={value?.assetRequirementId || ""} onValueChange={(v: any) => handleRequirementSelect(v)}>
-                <SelectTrigger><SelectValue placeholder="Select requirement..." /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select requirement...">{value?.assetRequirementId ? (() => { const ar = assetRequirements.find((x) => x.id === value.assetRequirementId); const tmpl = ar ? templateMap[ar.requirement_template_id] : null; return tmpl ? `[${tmpl.level_code}] ${tmpl.name}` : ""; })() : ""}</SelectValue></SelectTrigger>
                 <SelectContent>
                   {availableRequirements.map((ar) => {
                     const tmpl = templateMap[ar.requirement_template_id];
