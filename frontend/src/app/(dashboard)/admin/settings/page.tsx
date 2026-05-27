@@ -86,7 +86,7 @@ export default function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Document Type</label>
-              <Select value={docType} onValueChange={(v) => { setDocType(v); }}>
+              <Select value={docType} onValueChange={(v) => { setDocType(v as string); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="WIR">WIR</SelectItem>

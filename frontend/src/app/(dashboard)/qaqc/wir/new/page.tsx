@@ -22,12 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
-import { Checkbox } from "@/components/ui/checkbox";
-
 interface Discipline { id: string; name: string; code: string; }
-interface Activity { id: string; name: string; code: string; service_id: string; }
-interface SubActivity { id: string; name: string; code: string; activity_id: string; }
-interface Service { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
@@ -39,64 +34,12 @@ const schema = z.object({
   floor_level_room: z.string().optional(),
   approved_rams: z.string().optional(),
   drawing_reference: z.string().optional(),
-  service_id: z.string().optional(),
-  activity_id: z.string().optional(),
-  sub_activity_id: z.string().optional(),
   inspector_1_id: z.string().optional(),
   inspector_2_id: z.string().optional(),
   date: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
-
-function SubActivityPanel({ activityId, projectId, completedIds, onToggle, onCreated }: {
-  activityId: string;
-  projectId: string;
-  completedIds: string[];
-  onToggle: (id: string) => void;
-  onCreated: () => void;
-}) {
-  const [newName, setNewName] = useState("");
-  const [newCode, setNewCode] = useState("");
-
-  const { data: statusData = [] } = useQuery<{ id: string; name: string; code: string; completed: boolean }[]>({
-    queryKey: ["sub-activity-status", activityId, projectId],
-    queryFn: async () => (await api.get(`/documents/sub-activity-status?activity_id=${activityId}&project_id=${projectId}`)).data,
-    enabled: !!activityId && !!projectId,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () => api.post("/sub-activities", { name: newName, code: newCode, activity_id: activityId }),
-    onSuccess: () => { setNewName(""); setNewCode(""); onCreated(); },
-  });
-
-  return (
-    <div className="rounded-lg border p-3 space-y-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase">Sub-Activity Completion</p>
-      {statusData.length === 0 && <p className="text-xs text-muted-foreground">No sub-activities for this activity.</p>}
-      <div className="space-y-1">
-        {statusData.map((s) => {
-          const checked = completedIds.includes(s.id) || s.completed;
-          return (
-            <label key={s.id} className="flex items-center gap-2 text-sm">
-              <Checkbox checked={checked} disabled={s.completed && !completedIds.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
-              <span className={checked ? "line-through text-muted-foreground" : ""}>{s.name}</span>
-              {s.completed && !completedIds.includes(s.id) && <Badge variant="outline" className="text-[10px] ml-auto">Done in another WIR</Badge>}
-            </label>
-          );
-        })}
-      </div>
-      {/* Inline create */}
-      <div className="flex gap-2 items-end pt-2">
-        <Input placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className="h-7 text-xs flex-1" />
-        <Input placeholder="Code" value={newCode} onChange={(e) => setNewCode(e.target.value)} className="h-7 text-xs w-20" />
-        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!newName || !newCode} onClick={() => createMutation.mutate()}>
-          <Plus className="h-3 w-3 mr-1" />Add
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 export default function NewWIRPage() {
   const router = useRouter();
@@ -108,26 +51,10 @@ export default function NewWIRPage() {
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
-  const [completedSubActivityIds, setCompletedSubActivityIds] = useState<string[]>([]);
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
     queryFn: async () => (await api.get("/disciplines")).data,
-  });
-
-  const { data: services = [] } = useQuery<Service[]>({
-    queryKey: ["services"],
-    queryFn: async () => (await api.get("/services")).data,
-  });
-
-  const { data: activities = [] } = useQuery<Activity[]>({
-    queryKey: ["activities"],
-    queryFn: async () => (await api.get("/activities")).data,
-  });
-
-  const { data: subActivities = [] } = useQuery<SubActivity[]>({
-    queryKey: ["sub-activities"],
-    queryFn: async () => (await api.get("/sub-activities")).data,
   });
 
   const { data: users = [] } = useQuery<User[]>({
@@ -150,9 +77,6 @@ export default function NewWIRPage() {
       floor_level_room: "",
       approved_rams: "",
       drawing_reference: "",
-      service_id: "",
-      activity_id: "",
-      sub_activity_id: "",
       inspector_1_id: "",
       inspector_2_id: "",
       date: new Date().toISOString().split("T")[0],
@@ -176,82 +100,51 @@ export default function NewWIRPage() {
         floor_level_room: existingDoc.floor_level || "",
         approved_rams: existingDoc.rams_ref || "",
         drawing_reference: existingDoc.drawing_ref || "",
-        service_id: "",
-        activity_id: existingDoc.activity_id || "",
-        sub_activity_id: existingDoc.sub_activity_id || "",
         inspector_1_id: existingDoc.site_engineer_id || "",
         inspector_2_id: existingDoc.qaqc_engineer_id || "",
         date: existingDoc.inspection_date ? existingDoc.inspection_date.split("T")[0] : "",
       });
-      if (existingDoc.site_engineer_signed || existingDoc.qaqc_engineer_signed) {
-        setSigned({
-          inspector1: !!existingDoc.site_engineer_signed,
-          inspector2: !!existingDoc.qaqc_engineer_signed,
-        });
-      }
+      setSigned({
+        inspector1: !!existingDoc.site_engineer_signed,
+        inspector2: !!existingDoc.qaqc_engineer_signed,
+      });
     }
-  }, [existingDoc]);
+  }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const serviceId = form.watch("service_id");
-  const activityId = form.watch("activity_id");
   const disciplineId = form.watch("discipline_id");
-  const subActivityId = form.watch("sub_activity_id");
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
-  const filteredActivities = serviceId ? activities.filter((a) => a.service_id === serviceId) : activities;
-  const filteredSubActivities = activityId ? subActivities.filter((s) => s.activity_id === activityId) : [];
+
+  const buildPayload = (values: FormValues, refNo?: string) => ({
+    project_id: project!.id,
+    document_type: "WIR",
+    reference_no: refNo || existingDoc?.reference_no || "",
+    title: values.subject,
+    description: values.description,
+    discipline_id: values.discipline_id,
+    location: values.general_location || null,
+    floor_level: values.floor_level_room || null,
+    rams_ref: values.approved_rams || null,
+    drawing_ref: values.drawing_reference || null,
+    inspection_date: values.date || null,
+    site_engineer_id: values.inspector_1_id || null,
+    qaqc_engineer_id: values.inspector_2_id || null,
+    site_engineer_signed: signed.inspector1,
+    qaqc_engineer_signed: signed.inspector2,
+    asset_ids: selectedAssets.map((a) => a.id),
+  });
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       if (editId) {
-        // Update existing
-        const payload = {
-          title: values.subject,
-          description: values.description,
-          discipline_id: values.discipline_id,
-          activity_id: values.activity_id || null,
-          sub_activity_id: values.sub_activity_id || null,
-          location: values.general_location || null,
-          floor_level: values.floor_level_room || null,
-          rams_ref: values.approved_rams || null,
-          drawing_ref: values.drawing_reference || null,
-          inspection_date: values.date || null,
-          site_engineer_id: values.inspector_1_id || null,
-          qaqc_engineer_id: values.inspector_2_id || null,
-          site_engineer_signed: signed.inspector1,
-          qaqc_engineer_signed: signed.inspector2,
-          completed_sub_activity_ids: completedSubActivityIds,
-        };
-        return api.patch(`/documents/${editId}`, payload);
+        const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
+        return api.patch(`/documents/${editId}`, updatePayload);
       }
-      // Create new
       const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
       const refRes = await api.get("/documents/generate-ref-number", {
         params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
       });
-      const payload = {
-        project_id: project!.id,
-        doc_type: "WIR",
-        number: refRes.data.reference_number,
-        title: values.subject,
-        description: values.description,
-        discipline_id: values.discipline_id,
-        activity_id: values.activity_id || null,
-        sub_activity_id: values.sub_activity_id || null,
-        is_milestone_activity: !!values.activity_id,
-        location: values.general_location || null,
-        floor_level: values.floor_level_room || null,
-        rams_ref: values.approved_rams || null,
-        drawing_ref: values.drawing_reference || null,
-        inspection_date: values.date || null,
-        site_engineer_id: values.inspector_1_id || null,
-        qaqc_engineer_id: values.inspector_2_id || null,
-        site_engineer_signed: signed.inspector1,
-        qaqc_engineer_signed: signed.inspector2,
-        asset_ids: selectedAssets.map((a) => a.id),
-        completed_sub_activity_ids: completedSubActivityIds,
-      };
-      return api.post("/documents", payload);
+      return api.post("/documents", buildPayload(values, refRes.data.reference_number));
     },
     onSuccess: () => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
@@ -264,48 +157,15 @@ export default function NewWIRPage() {
     mutationFn: async (values: FormValues) => {
       let docId = editId;
       if (!docId) {
-        // Create first
         const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
         const refRes = await api.get("/documents/generate-ref-number", {
           params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
         });
-        const payload = {
-          project_id: project!.id,
-          doc_type: "WIR",
-          number: refRes.data.reference_number,
-          title: values.subject,
-          description: values.description,
-          discipline_id: values.discipline_id,
-          activity_id: values.activity_id || null,
-          sub_activity_id: values.sub_activity_id || null,
-          is_milestone_activity: !!values.activity_id,
-          location: values.general_location || null,
-          floor_level: values.floor_level_room || null,
-          rams_ref: values.approved_rams || null,
-          drawing_ref: values.drawing_reference || null,
-          inspection_date: values.date || null,
-          site_engineer_id: values.inspector_1_id || null,
-          qaqc_engineer_id: values.inspector_2_id || null,
-          asset_ids: selectedAssets.map((a) => a.id),
-        };
-        const res = await api.post("/documents", payload);
+        const res = await api.post("/documents", buildPayload(values, refRes.data.reference_number));
         docId = res.data.id;
       } else {
-        // Update first
-        await api.patch(`/documents/${docId}`, {
-          title: values.subject,
-          description: values.description,
-          discipline_id: values.discipline_id,
-          activity_id: values.activity_id || null,
-          sub_activity_id: values.sub_activity_id || null,
-          location: values.general_location || null,
-          floor_level: values.floor_level_room || null,
-          rams_ref: values.approved_rams || null,
-          drawing_ref: values.drawing_reference || null,
-          inspection_date: values.date || null,
-          site_engineer_id: values.inspector_1_id || null,
-          qaqc_engineer_id: values.inspector_2_id || null,
-        });
+        const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
+        await api.patch(`/documents/${docId}`, updatePayload);
       }
       await api.post(`/documents/${docId}/notify-signatories`);
     },
@@ -413,56 +273,12 @@ export default function NewWIRPage() {
             </CardContent>
           </Card>
 
-          {/* Activity & Assets */}
+          {/* Assets */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Activity & Assets</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Assets</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <FormField control={form.control} name="service_id" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Service</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select service">{serviceId ? services.find((s) => s.id === serviceId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="activity_id" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Activity</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select activity">{activityId ? activities.find((a) => a.id === activityId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{filteredActivities.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="sub_activity_id" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sub-Activity</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select sub-activity">{subActivityId ? subActivities.find((s) => s.id === subActivityId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{filteredSubActivities.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </FormItem>
-                )} />
-              </div>
-
-              {/* Sub-activity status & inline creation */}
-              {activityId && (
-                <SubActivityPanel
-                  activityId={activityId}
-                  projectId={project?.id || ""}
-                  completedIds={completedSubActivityIds}
-                  onToggle={(id) => setCompletedSubActivityIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
-                  onCreated={() => queryClient.invalidateQueries({ queryKey: ["sub-activities"] })}
-                />
-              )}
-
-              <Separator />
-
-              {/* Asset Selection */}
               <div>
-                <FormLabel>Assets</FormLabel>
+                <FormLabel>Select Assets</FormLabel>
                 <div className="mt-2 flex gap-2">
                   <Select onValueChange={(v) => v && addAsset(v as string)}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Add asset..." /></SelectTrigger>

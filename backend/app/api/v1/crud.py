@@ -69,7 +69,8 @@ def create_crud_router(
         except IntegrityError:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
-        await db.refresh(item)
+        result = await db.execute(_base_query().where(model.id == item.id))
+        item = result.scalar_one()
         return item
 
     @router.patch("/{item_id}", response_model=response_schema)
@@ -90,7 +91,8 @@ def create_crud_router(
         except IntegrityError:
             await db.rollback()
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
-        await db.refresh(item)
+        result = await db.execute(_base_query().where(model.id == item_id))
+        item = result.scalar_one()
         return item
 
     @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)

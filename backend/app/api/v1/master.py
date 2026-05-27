@@ -10,9 +10,6 @@ from app.models.discipline import Discipline
 from app.models.service import Service
 from app.models.asset_type import AssetType
 from app.models.asset import Asset
-from app.models.activity import Activity
-from app.models.sub_activity import SubActivity
-from app.models.test import Test
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.approval_status import ApprovalStatus
@@ -26,9 +23,6 @@ from app.schemas.master import (
     ServiceCreate, ServiceUpdate, ServiceResponse,
     AssetTypeCreate, AssetTypeUpdate, AssetTypeResponse,
     AssetCreate, AssetUpdate, AssetResponse,
-    ActivityCreate, ActivityUpdate, ActivityResponse,
-    SubActivityCreate, SubActivityUpdate, SubActivityResponse,
-    TestCreate, TestUpdate, TestResponse,
     SystemCreate, SystemUpdate, SystemResponse,
     ContractorCreate, ContractorUpdate, ContractorResponse,
     ApprovalStatusCreate, ApprovalStatusUpdate, ApprovalStatusResponse,
@@ -45,9 +39,6 @@ router.include_router(create_crud_router(prefix="/disciplines", tag="disciplines
 router.include_router(create_crud_router(prefix="/services", tag="services", model=Service, create_schema=ServiceCreate, update_schema=ServiceUpdate, response_schema=ServiceResponse))
 router.include_router(create_crud_router(prefix="/asset-types", tag="asset-types", model=AssetType, create_schema=AssetTypeCreate, update_schema=AssetTypeUpdate, response_schema=AssetTypeResponse))
 router.include_router(create_crud_router(prefix="/assets", tag="assets", model=Asset, create_schema=AssetCreate, update_schema=AssetUpdate, response_schema=AssetResponse))
-router.include_router(create_crud_router(prefix="/activities", tag="activities", model=Activity, create_schema=ActivityCreate, update_schema=ActivityUpdate, response_schema=ActivityResponse))
-router.include_router(create_crud_router(prefix="/sub-activities", tag="sub-activities", model=SubActivity, create_schema=SubActivityCreate, update_schema=SubActivityUpdate, response_schema=SubActivityResponse))
-router.include_router(create_crud_router(prefix="/tests", tag="tests", model=Test, create_schema=TestCreate, update_schema=TestUpdate, response_schema=TestResponse))
 router.include_router(create_crud_router(prefix="/systems", tag="systems", model=System, create_schema=SystemCreate, update_schema=SystemUpdate, response_schema=SystemResponse))
 router.include_router(create_crud_router(prefix="/contractors", tag="contractors", model=Contractor, create_schema=ContractorCreate, update_schema=ContractorUpdate, response_schema=ContractorResponse))
 router.include_router(create_crud_router(prefix="/approval-statuses", tag="approval-statuses", model=ApprovalStatus, create_schema=ApprovalStatusCreate, update_schema=ApprovalStatusUpdate, response_schema=ApprovalStatusResponse))

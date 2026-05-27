@@ -116,7 +116,7 @@ export function DataTable<TData, TValue>({
         selectedCount={table.getFilteredSelectedRowModel().rows.length}
         onClearSelection={() => table.resetRowSelection()}
       />
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

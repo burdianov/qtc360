@@ -11,17 +11,21 @@ from app.models.service import Service
 from app.models.asset_type import AssetType
 from app.models.asset import Asset
 from app.models.approval_status import ApprovalStatus
-from app.models.activity import Activity
-from app.models.sub_activity import SubActivity
-from app.models.test import Test
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.document import Document
 from app.models.document_approval import DocumentApproval, document_assets
-from app.models.fat import FAT, fat_assets
 from app.models.reference_number_config import ReferenceNumberConfig
 from app.models.doc_template import DocTemplate
 from app.models.notification import Notification
+from app.models.commissioning import (
+    RequirementTemplate,
+    AssetRequirement,
+    RequirementWorkItem,
+    DocumentRequirementLink,
+    AssetTagTarget,
+)
+from app.models.gate_override import GateOverrideAcknowledgement
 
 __all__ = [
     "Base", "BaseModel",
@@ -31,10 +35,12 @@ __all__ = [
     "ApproverTitle", "Approver", "ProjectApprover",
     "Discipline", "Service", "AssetType", "Asset",
     "ApprovalStatus",
-    "Activity", "SubActivity", "Test", "System", "Contractor",
+    "System", "Contractor",
     "Document", "DocumentApproval", "document_assets",
-    "FAT", "fat_assets",
     "ReferenceNumberConfig",
     "DocTemplate",
     "Notification",
+    "RequirementTemplate", "AssetRequirement", "RequirementWorkItem",
+    "DocumentRequirementLink", "AssetTagTarget",
+    "GateOverrideAcknowledgement",
 ]

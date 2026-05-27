@@ -8,65 +8,53 @@ from pydantic import BaseModel
 
 class DocumentCreate(BaseModel):
     project_id: UUID
-    doc_type: str  # MIR, WIR, CIR
-    number: str
+    document_type: str  # FAT, MIR, WIR, CIR
+    reference_no: str
     title: str
     description: str | None = None
     discipline_id: UUID | None = None
-    # MIR
-    delivery_note: str | None = None
-    is_milestone_delivery: bool | None = None
-    # WIR
-    activity_id: UUID | None = None
-    sub_activity_id: UUID | None = None
-    is_milestone_activity: bool | None = None
+    # Context fields
     location: str | None = None
     floor_level: str | None = None
     rams_ref: str | None = None
     drawing_ref: str | None = None
     inspection_date: datetime | None = None
+    delivery_note: str | None = None
+    asset_type_id: UUID | None = None
+    # Signatories
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
     site_engineer_signed: bool = False
     qaqc_engineer_signed: bool = False
-    # CIR
-    test_id: UUID | None = None
-    is_milestone_test: bool | None = None
-    # Assets & Sub-activities
+    # Assets
     asset_ids: list[UUID] = []
-    completed_sub_activity_ids: list[UUID] = []
 
 
 class DocumentUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     discipline_id: UUID | None = None
-    delivery_note: str | None = None
-    is_milestone_delivery: bool | None = None
-    activity_id: UUID | None = None
-    sub_activity_id: UUID | None = None
-    is_milestone_activity: bool | None = None
     location: str | None = None
     floor_level: str | None = None
     rams_ref: str | None = None
     drawing_ref: str | None = None
     inspection_date: datetime | None = None
+    delivery_note: str | None = None
+    asset_type_id: UUID | None = None
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
     site_engineer_signed: bool | None = None
     qaqc_engineer_signed: bool | None = None
-    test_id: UUID | None = None
-    is_milestone_test: bool | None = None
+    status: str | None = None
     asset_ids: list[UUID] | None = None
-    completed_sub_activity_ids: list[UUID] | None = None
 
 
 class DocumentResponse(BaseModel):
     id: UUID
     project_id: UUID
-    doc_type: str
-    number: str
-    revision: int
+    document_type: str
+    reference_no: str
+    revision_no: int
     title: str
     description: str | None
     discipline_id: UUID | None
@@ -75,22 +63,18 @@ class DocumentResponse(BaseModel):
     qaqc_engineer_id: UUID | None
     site_engineer_signed: bool
     qaqc_engineer_signed: bool
-    signed_at: datetime | None
     current_approver_order: int | None
-    submitted_at: datetime | None
-    closed_at: datetime | None
-    delivery_note: str | None
-    is_milestone_delivery: bool | None
-    activity_id: UUID | None
-    sub_activity_id: UUID | None
-    is_milestone_activity: bool | None
+    submitted_date: datetime | None
+    approved_date: datetime | None
     location: str | None
     floor_level: str | None
     rams_ref: str | None
     drawing_ref: str | None
     inspection_date: datetime | None
-    test_id: UUID | None
-    is_milestone_test: bool | None
+    delivery_note: str | None
+    asset_type_id: UUID | None
+    created_by: UUID | None
+    updated_by: UUID | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -118,36 +102,3 @@ class DocumentApprovalResponse(BaseModel):
 class ApprovalActionRequest(BaseModel):
     status_id: UUID
     comments: str | None = None
-
-
-# --- FAT ---
-
-class FATCreate(BaseModel):
-    project_id: UUID
-    reference: str
-    title: str
-    description: str | None = None
-    asset_type_id: UUID
-    asset_ids: list[UUID] = []
-
-
-class FATUpdate(BaseModel):
-    reference: str | None = None
-    title: str | None = None
-    description: str | None = None
-    asset_type_id: UUID | None = None
-    status: str | None = None
-    asset_ids: list[UUID] | None = None
-
-
-class FATResponse(BaseModel):
-    id: UUID
-    project_id: UUID
-    reference: str
-    title: str
-    description: str | None
-    asset_type_id: UUID
-    status: str
-    created_at: datetime
-
-    model_config = {"from_attributes": True}

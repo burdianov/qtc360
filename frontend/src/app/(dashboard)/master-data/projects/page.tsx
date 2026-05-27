@@ -8,9 +8,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
+import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -20,13 +24,21 @@ import {
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
+interface Client {
+  id: string;
+  name: string;
+  code: string;
+}
+
 interface Project {
   id: string;
   name: string;
   code: string;
   description: string | null;
   status: string;
-  client: { id: string; name: string; code: string } | null;
+  start_date: string | null;
+  end_date: string | null;
+  client: Client | null;
   created_at: string;
 }
 
@@ -34,7 +46,9 @@ const schema = z.object({
   name: z.string().min(1, "Name is required"),
   code: z.string().min(1, "Code is required"),
   description: z.string(),
-  status: z.string(),
+  status: z.string().min(1, "Status is required"),
+  start_date: z.string(),
+  end_date: z.string(),
   client_id: z.string(),
 });
 
@@ -50,22 +64,40 @@ export default function ProjectsPage() {
     queryFn: async () => (await api.get("/projects")).data,
   });
 
+  const { data: clients = [] } = useQuery<Client[]>({
+    queryKey: ["clients"],
+    queryFn: async () => (await api.get("/clients")).data,
+  });
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", code: "", description: "", status: "active", client_id: "" },
+    defaultValues: { name: "", code: "", description: "", status: "active", start_date: "", end_date: "", client_id: "" },
   });
+
+  const { isDirty } = form.formState;
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const payload = { ...values, client_id: values.client_id || null };
-      if (editing) {
-        return api.patch(`/projects/${editing.id}`, payload);
-      }
+      const payload: Record<string, unknown> = {
+        name: values.name,
+        code: values.code,
+        status: values.status,
+        description: values.description || null,
+        client_id: values.client_id || null,
+        start_date: values.start_date || null,
+        end_date: values.end_date || null,
+      };
+      if (editing) return api.patch(`/projects/${editing.id}`, payload);
       return api.post("/projects", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      closeDialog();
+      setDialogOpen(false);
+      setEditing(null);
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to save";
+      toast.error(msg);
     },
   });
 
@@ -76,7 +108,7 @@ export default function ProjectsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({ name: "", code: "", description: "", status: "active", client_id: "" });
+    form.reset({ name: "", code: "", description: "", status: "active", start_date: "", end_date: "", client_id: "" });
     setDialogOpen(true);
   };
 
@@ -87,14 +119,11 @@ export default function ProjectsPage() {
       code: project.code,
       description: project.description || "",
       status: project.status,
+      start_date: project.start_date || "",
+      end_date: project.end_date || "",
       client_id: project.client?.id || "",
     });
     setDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    setDialogOpen(false);
-    setEditing(null);
   };
 
   const rowActions: RowAction<Project>[] = [
@@ -122,6 +151,21 @@ export default function ProjectsPage() {
       id: "client",
       accessorFn: (row) => row.client?.name ?? "—",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Client" />,
+    },
+    {
+      accessorKey: "description",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
+      cell: ({ row }) => row.getValue("description") || "—",
+    },
+    {
+      accessorKey: "start_date",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="Start Date" />,
+      cell: ({ row }) => formatDate(row.getValue("start_date") as string),
+    },
+    {
+      accessorKey: "end_date",
+      header: ({ column }) => <DataTableColumnHeader column={column} title="End Date" />,
+      cell: ({ row }) => formatDate(row.getValue("end_date") as string),
     },
     {
       id: "actions",
@@ -156,6 +200,8 @@ export default function ProjectsPage() {
           { key: "status", label: "status" },
           { key: "client.name", label: "client" },
           { key: "description", label: "description" },
+          { key: "start_date", label: "start_date" },
+          { key: "end_date", label: "end_date" },
         ])}
         onImport={async (file) => {
           const rows = await parseCsv(file);
@@ -164,7 +210,7 @@ export default function ProjectsPage() {
           }
           queryClient.invalidateQueries({ queryKey: ["projects"] });
         }}
-        onDownloadTemplate={() => downloadTemplate(["name", "code", "description", "status", "client_id"], "projects")}
+        onDownloadTemplate={() => downloadTemplate(["name", "code", "description", "status", "start_date", "end_date", "client_id"], "projects")}
         onBulkDelete={async (rows) => {
           await Promise.allSettled(rows.map((row) => api.delete(`/projects/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -172,48 +218,62 @@ export default function ProjectsPage() {
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Project" : "Add Project"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="name" render={({ field }) => (
+                  <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="code" render={({ field }) => (
+                  <FormItem><FormLabel>Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="description" render={({ field }) => (
+                <FormItem><FormLabel>Description</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="client_id" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
+                    <FormLabel>Client</FormLabel>
+                    <Select value={field.value || undefined} onValueChange={field.onChange}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select client">{field.value ? clients.find((c) => c.id === field.value)?.name : ""}</SelectValue></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="code"
-                render={({ field }) => (
+                )} />
+                <FormField control={form.control} name="status" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Code</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
+                    <FormLabel>Status</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select status">{{ active: "Active", completed: "Completed", on_hold: "On Hold" }[field.value] || ""}</SelectValue></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="on_hold">On Hold</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                )} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="start_date" render={({ field }) => (
+                  <FormItem><FormLabel>Start Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="end_date" render={({ field }) => (
+                  <FormItem><FormLabel>End Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>
+                )} />
+              </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={mutation.isPending || (!!editing && !isDirty)}>
                   {mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}
                 </Button>
               </div>

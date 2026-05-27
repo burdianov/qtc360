@@ -7,8 +7,6 @@ import {
   Compass,
   Wrench,
   ListChecks,
-  ListTree,
-  FlaskConical,
   Box,
   Network,
   Building2,
@@ -18,7 +16,6 @@ import {
   HardHat,
   FileSearch,
   Layers,
-  ArrowRightLeft,
   Gauge,
   FileUp,
   FileStack,
@@ -55,9 +52,7 @@ export const navigation: NavGroup[] = [
       { title: "Projects", url: "/master-data/projects", icon: FolderKanban },
       { title: "Disciplines", url: "/master-data/disciplines", icon: Compass },
       { title: "Services", url: "/master-data/services", icon: Wrench },
-      { title: "Activities", url: "/master-data/activities", icon: ListChecks },
-      { title: "Sub-Activities", url: "/master-data/sub-activities", icon: ListTree },
-      { title: "Tests", url: "/master-data/tests", icon: FlaskConical },
+      { title: "Requirement Templates", url: "/master-data/requirement-templates", icon: ListChecks },
       { title: "Assets", url: "/master-data/assets", icon: Box },
       { title: "Systems", url: "/master-data/systems", icon: Network },
       { title: "Contractors", url: "/master-data/contractors", icon: Building2 },
@@ -68,7 +63,7 @@ export const navigation: NavGroup[] = [
   {
     label: "QA/QC",
     items: [
-      { title: "FAT Reports", url: "/qaqc/fat-reports", icon: FileStack },
+      { title: "Documents", url: "/qaqc/documents", icon: FileStack },
       { title: "MIR", url: "/qaqc/mir", icon: FileText },
       { title: "WIR", url: "/qaqc/wir", icon: HardHat },
       { title: "CIR", url: "/qaqc/cir", icon: FileSearch },
@@ -77,10 +72,9 @@ export const navigation: NavGroup[] = [
   {
     label: "Commissioning",
     items: [
-      { title: "Systems", url: "/commissioning/systems", icon: Network },
-      { title: "Levels", url: "/commissioning/levels", icon: Layers },
-      { title: "Handover", url: "/commissioning/handover", icon: ArrowRightLeft },
-      { title: "Tracking", url: "/commissioning/tracking", icon: Gauge },
+      { title: "Requirements", url: "/commissioning/requirements", icon: ListChecks },
+      { title: "Tag Targets", url: "/commissioning/tag-targets", icon: Gauge },
+      { title: "Tracking", url: "/commissioning/tracking", icon: Layers },
     ],
   },
   {

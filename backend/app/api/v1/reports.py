@@ -225,7 +225,7 @@ async def generate_report(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{doc_type.upper()}_{document.ref_no or "draft"}.pdf"'},
+        headers={"Content-Disposition": f'inline; filename="{doc_type.upper()}_{document.reference_no or "draft"}.pdf"'},
     )
 
 
@@ -258,8 +258,8 @@ async def pdf_engine_health():
 def _build_context(document: Document) -> dict:
     """Build template context from a Document model."""
     ctx = {
-        "ref_no": document.number or "",
-        "revision": str(document.revision or 0),
+        "ref_no": document.reference_no or "",
+        "revision": str(document.revision_no or 0),
         "prj_no": "",
         "date": document.inspection_date.strftime("%d/%m/%Y") if document.inspection_date else "",
         "subject": document.title or "",
@@ -291,8 +291,8 @@ def _build_context(document: Document) -> dict:
         if inspector:
             ctx[f"inspected_by_{i}"] = inspector.full_name
             ctx[f"designation_{i}"] = inspector.position or ""
-            ctx[f"date_{i}"] = document.signed_at.strftime("%d/%m/%Y") if document.signed_at else ""
-            ctx[f"time_{i}"] = document.signed_at.strftime("%H:%M") if document.signed_at else ""
+            ctx[f"date_{i}"] = document.submitted_date.strftime("%d/%m/%Y") if document.submitted_date else ""
+            ctx[f"time_{i}"] = document.submitted_date.strftime("%H:%M") if document.submitted_date else ""
             ctx[f"remarks_{i}"] = ""
         else:
             ctx[f"inspected_by_{i}"] = ""

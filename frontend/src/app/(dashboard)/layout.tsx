@@ -42,7 +42,7 @@ export default function DashboardLayout({
         <AppSidebar />
         <SidebarInset>
           <Navbar onSearchClick={() => setCommandOpen(true)} />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 overflow-x-hidden p-6">{children}</main>
         </SidebarInset>
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       </SidebarProvider>

@@ -6,6 +6,7 @@ import { CalendarIcon } from "lucide-react";
 import { DayPicker } from "react-day-picker";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format-date";
 
 interface DatePickerProps {
   value?: string; // ISO date string (YYYY-MM-DD)
@@ -25,7 +26,7 @@ export function DatePicker({ value, onChange, placeholder = "Select a date" }: D
         !value && "text-muted-foreground"
       )}>
         <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-        {value ? format(selected!, "PPP") : placeholder}
+        {value ? formatDate(value) : placeholder}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-3">
         <DayPicker
@@ -50,7 +51,7 @@ export function DatePicker({ value, onChange, placeholder = "Select a date" }: D
             day: "w-8 h-8 text-center text-sm inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer",
             day_button: "w-full h-full inline-flex items-center justify-center rounded-md",
             selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-            today: "font-bold",
+            today: "bg-primary/20 text-primary font-bold",
             outside: "text-muted-foreground opacity-50",
             month_grid: "mt-2",
           }}

@@ -13,18 +13,20 @@ import { Badge } from "@/components/ui/badge";
 
 interface Document {
   id: string;
-  number: string;
+  reference_no: string;
   title: string;
-  revision: number;
+  revision_no: number;
   status: string;
   created_at: string;
 }
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
-  pending_review: "bg-amber-500/15 text-amber-500",
+  submitted: "bg-amber-500/15 text-amber-500",
   approved: "bg-emerald-500/15 text-emerald-500",
+  approved_with_comments: "bg-emerald-500/15 text-emerald-500",
   rejected: "bg-red-500/15 text-red-500",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 export default function WIRPage() {
@@ -34,7 +36,7 @@ export default function WIRPage() {
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ["documents", "WIR", project?.id],
-    queryFn: async () => (await api.get("/documents", { params: { project_id: project!.id, doc_type: "WIR" } })).data,
+    queryFn: async () => (await api.get("/documents", { params: { project_id: project!.id, document_type: "WIR" } })).data,
     enabled: !!project,
   });
 
@@ -56,10 +58,10 @@ export default function WIRPage() {
   ];
 
   const columns: ColumnDef<Document, unknown>[] = [
-    { accessorKey: "number", header: ({ column }) => <DataTableColumnHeader column={column} title="Number" /> },
+    { accessorKey: "reference_no", header: ({ column }) => <DataTableColumnHeader column={column} title="Number" /> },
     { accessorKey: "title", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
-    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" />, meta: { title: "Rev" } },
-    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace("_", " ")}</Badge> },
+    { accessorKey: "revision_no", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" />, meta: { title: "Rev" } },
+    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace(/_/g, " ")}</Badge> },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

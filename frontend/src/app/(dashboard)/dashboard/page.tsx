@@ -6,9 +6,10 @@ import {
   Layers,
   Users,
   Wrench,
-  FlaskConical,
+  FileText,
   Building2,
   UserCheck,
+  ListChecks,
 } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
@@ -21,7 +22,8 @@ interface DashboardStats {
   systems: number;
   contractors: number;
   users: number;
-  tests: number;
+  documents: number;
+  requirement_templates: number;
   approvers: number;
 }
 
@@ -31,7 +33,8 @@ const statCards = [
   { key: "systems", label: "Systems", icon: Building2, color: "bg-orange-500/15 text-orange-500" },
   { key: "users", label: "Users", icon: Users, color: "bg-purple-500/15 text-purple-500" },
   { key: "contractors", label: "Contractors", icon: Wrench, color: "bg-blue-500/15 text-blue-500" },
-  { key: "tests", label: "Tests", icon: FlaskConical, color: "bg-emerald-500/15 text-emerald-500" },
+  { key: "documents", label: "Documents", icon: FileText, color: "bg-emerald-500/15 text-emerald-500" },
+  { key: "requirement_templates", label: "Requirements", icon: ListChecks, color: "bg-amber-500/15 text-amber-500" },
   { key: "approvers", label: "Approvers", icon: UserCheck, color: "bg-orange-500/15 text-orange-500" },
 ] as const;
 

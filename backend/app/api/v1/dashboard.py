@@ -10,8 +10,11 @@ from app.models.discipline import Discipline
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.service import Service
-from app.models.test import Test
+from app.models.asset import Asset
+from app.models.asset_type import AssetType
 from app.models.project_approver import ProjectApprover
+from app.models.commissioning import RequirementTemplate, AssetRequirement
+from app.models.document import Document
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -31,7 +34,8 @@ async def get_dashboard_stats(
     disciplines = await count(Discipline, project_id=project_id)
     systems = await count(System, project_id=project_id)
     contractors = await count(Contractor, project_id=project_id)
-    tests = await count(Test, project_id=project_id)
+    documents = await count(Document, project_id=project_id)
+    requirement_templates = await count(RequirementTemplate, project_id=project_id)
 
     # Users assigned to this project
     users_count = (await db.execute(
@@ -56,6 +60,7 @@ async def get_dashboard_stats(
         "systems": systems,
         "contractors": contractors,
         "users": users_count,
-        "tests": tests,
+        "documents": documents,
+        "requirement_templates": requirement_templates,
         "approvers": approvers,
     }
