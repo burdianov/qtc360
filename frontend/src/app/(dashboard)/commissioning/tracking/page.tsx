@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type ColumnDef } from "@tanstack/react-table";
 import api from "@/lib/api";
@@ -7,6 +8,7 @@ import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AssetRequirement {
   id: string;
@@ -58,6 +60,7 @@ const statusColors: Record<string, string> = {
 
 export default function CommissioningTrackingPage() {
   const project = useSelectedProject();
+  const [filterTag, setFilterTag] = useState<string>("");
 
   const { data: assets = [] } = useQuery<Asset[]>({
     queryKey: ["assets"],
@@ -130,6 +133,20 @@ export default function CommissioningTrackingPage() {
         <p className="text-sm text-muted-foreground">Asset progress through commissioning levels</p>
       </div>
 
+      {/* Filter */}
+      <div className="flex gap-3 items-center">
+        <Select value={filterTag} onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Filter by tag">{filterTag ? `${filterTag} tag` : "All Tags"}</SelectValue></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Tags</SelectItem>
+            <SelectItem value="red">Red Tag (not achieved)</SelectItem>
+            <SelectItem value="yellow">Yellow Tag (not achieved)</SelectItem>
+            <SelectItem value="green">Green Tag (not achieved)</SelectItem>
+            <SelectItem value="blue">Blue Tag (not achieved)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-4">
         <SummaryCard label="Total Assets" value={progressData.length} />
@@ -140,7 +157,7 @@ export default function CommissioningTrackingPage() {
 
       <DataTable
         columns={columns}
-        data={progressData}
+        data={filterTag ? progressData.filter((p) => !p[`${filterTag}_tag` as keyof AssetProgress]) : progressData}
         searchKey="asset.tag_number"
         searchPlaceholder="Search by tag number..."
       />

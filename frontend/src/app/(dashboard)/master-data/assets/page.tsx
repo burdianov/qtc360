@@ -33,6 +33,7 @@ export default function AssetsPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
+  const [filterTypeId, setFilterTypeId] = useState<string>("");
 
   const { data: assets = [], isLoading } = useQuery<Asset[]>({
     queryKey: ["assets"],
@@ -92,9 +93,19 @@ export default function AssetsPage() {
         </div>
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Asset</Button>
       </div>
+      <div className="flex gap-3 items-center">
+        <Select value={filterTypeId} onValueChange={(v: any) => setFilterTypeId(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Filter by type">{filterTypeId ? assetTypes.find((t) => t.id === filterTypeId)?.name : "All Types"}</SelectValue></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Types</SelectItem>
+            {assetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {filterTypeId && <span className="text-xs text-muted-foreground">{assets.filter((a) => a.asset_type_id === filterTypeId).length} assets</span>}
+      </div>
       <DataTable
         columns={columns}
-        data={assets}
+        data={filterTypeId ? assets.filter((a) => a.asset_type_id === filterTypeId) : assets}
         searchKey="name"
         searchPlaceholder="Search by name..."
         onExport={(rows) => exportToCsv(rows, "assets")}
