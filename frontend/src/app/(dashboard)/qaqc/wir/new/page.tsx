@@ -161,38 +161,45 @@ export default function NewWIRPage() {
       // Save commissioning linkage for all assets
       if (commissioningLinkage && docId && selectedAssets.length > 0) {
         for (const asset of selectedAssets) {
-          // Get asset requirement for this asset + template
-          const arRes = await api.get("/commissioning/asset-requirements", {
-            params: { asset_id: asset.id },
-          });
+          const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
           const assetReq = (arRes.data as any[]).find(
             (ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId
           );
           if (!assetReq) continue;
 
           if (commissioningLinkage.isPartialScope) {
-            // Link existing selected work items
-            for (const sel of commissioningLinkage.selectedWorkItems) {
-              if (sel.existingId) {
-                await api.post("/commissioning/document-links", {
-                  document_id: docId,
-                  asset_requirement_id: assetReq.id,
-                  requirement_work_item_id: sel.existingId,
-                });
-              }
+            // Delete marked items
+            for (const delId of commissioningLinkage.deleteExistingIds) {
+              await api.patch(`/commissioning/work-items/${delId}`, { status: "not_started" });
+              // Soft-delete by marking — or we could add a delete endpoint
             }
-            // Create new work items and link them
-            for (let i = 0; i < commissioningLinkage.newWorkItems.length; i++) {
+            // Create new items (all of them, checked or not)
+            const createdIds: string[] = [];
+            for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
               const wiRes = await api.post("/commissioning/work-items", {
                 asset_requirement_id: assetReq.id,
-                name: commissioningLinkage.newWorkItems[i],
+                name: commissioningLinkage.newItems[i].name,
                 sequence_no: i + 100,
                 created_dynamically: true,
               });
+              if (commissioningLinkage.newItems[i].checked) {
+                createdIds.push(wiRes.data.id);
+              }
+            }
+            // Link checked existing items to this document
+            for (const wiId of commissioningLinkage.checkedExistingIds) {
               await api.post("/commissioning/document-links", {
                 document_id: docId,
                 asset_requirement_id: assetReq.id,
-                requirement_work_item_id: wiRes.data.id,
+                requirement_work_item_id: wiId,
+              });
+            }
+            // Link checked new items to this document
+            for (const wiId of createdIds) {
+              await api.post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiId,
               });
             }
           } else {
