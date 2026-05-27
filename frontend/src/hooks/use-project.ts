@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 
 export interface Project {
@@ -38,7 +38,24 @@ function subscribe(callback: () => void) {
 }
 
 export function useSelectedProject() {
-  return useSyncExternalStore(subscribe, getSnapshot, serverSnapshot);
+  const project = useSyncExternalStore(subscribe, getSnapshot, serverSnapshot);
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["auth", "projects"],
+    queryFn: async () => (await api.get("/auth/me/projects")).data,
+    enabled: typeof window !== "undefined" && !!localStorage.getItem("access_token"),
+  });
+
+  // Auto-fix stale project: if cached project ID doesn't match any user project, select first
+  useEffect(() => {
+    if (!projects || projects.length === 0) return;
+    if (!project || !projects.find((p) => p.id === project.id)) {
+      const first = projects[0];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(first));
+      window.dispatchEvent(new Event("project-changed"));
+    }
+  }, [projects, project]);
+
+  return project;
 }
 
 export function useSetProject() {
