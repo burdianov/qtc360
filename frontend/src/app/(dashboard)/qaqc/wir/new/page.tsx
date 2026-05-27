@@ -471,8 +471,23 @@ export default function NewWIRPage() {
               ) : (
                 <div className="space-y-2">
                   {attachments.map((att, i) => (
-                    <div key={i} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                    <div
+                      key={i}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = Number(e.dataTransfer.getData("text/plain"));
+                        if (from === i) return;
+                        const items = [...attachments];
+                        const [moved] = items.splice(from, 1);
+                        items.splice(i, 0, moved);
+                        setAttachments(items);
+                      }}
+                      className="flex items-center gap-3 rounded-md border border-border px-3 py-2 transition-colors hover:bg-accent/50"
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
                       <span className="flex-1 text-sm truncate">{att.name}</span>
                       <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
