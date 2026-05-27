@@ -176,6 +176,26 @@ async def seed():
             await get_or_create(session, Discipline, "code", d["code"], name=d["name"], project_id=proj_1728.id)
         await session.commit()
 
+        # Reference Number Configs for 1728
+        from app.models.reference_number_config import ReferenceNumberConfig
+        for doc_type in ["WIR", "MIR", "CIR", "FAT"]:
+            existing = await session.execute(
+                select(ReferenceNumberConfig).where(
+                    ReferenceNumberConfig.project_id == proj_1728.id,
+                    ReferenceNumberConfig.doc_type == doc_type,
+                )
+            )
+            if not existing.scalar_one_or_none():
+                session.add(ReferenceNumberConfig(
+                    project_id=proj_1728.id,
+                    doc_type=doc_type,
+                    pattern="{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}",
+                    project_code="MERC",
+                    contractor_code="JMJV",
+                    serial_start=1,
+                ))
+        await session.commit()
+
         # Approval Statuses for 1728
         approval_statuses_1728 = [
             {"letter": "A", "name": "Approved", "description": "Work may proceed", "action": "approved"},

@@ -118,13 +118,14 @@ export default function NewWIRPage() {
   // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
   useEffect(() => {
-    if (!editId && disciplineId && project?.id) {
+    if (!editId && disciplineId && project?.id && disciplines.length > 0) {
       const disciplineCode = disciplines.find((d) => d.id === disciplineId)?.code || "";
       api.get("/documents/generate-ref-number", {
         params: { project_id: project.id, doc_type: "WIR", discipline_code: disciplineCode },
-      }).then((res) => setReferenceNo(res.data.reference_number));
+      }).then((res) => setReferenceNo(res.data.reference_number))
+        .catch(() => {});
     }
-  }, [editId, disciplineId, project?.id, disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
