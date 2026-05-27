@@ -61,6 +61,7 @@ class ApproverResponse(BaseModel):
 class ProjectCreate(BaseModel):
     name: str
     code: str
+    external_code: str | None = None
     description: str | None = None
     status: str = "active"
     start_date: date | None = None
@@ -70,6 +71,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+    external_code: str | None = None
     description: str | None = None
     status: str | None = None
     start_date: date | None = None
@@ -80,6 +82,7 @@ class ProjectResponse(BaseModel):
     id: uuid.UUID
     name: str
     code: str
+    external_code: str | None = None
     description: str | None
     status: str
     start_date: date | None

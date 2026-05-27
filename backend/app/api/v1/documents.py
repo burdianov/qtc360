@@ -159,7 +159,7 @@ async def update_document(
     await db.refresh(doc)
 
     # If status changed, recalculate linked requirements
-    if doc.status != old_status:
+    if doc.status != old_status and doc.status in ("approved", "approved_with_comments", "rejected"):
         await recalculate_requirements_for_document(db, doc.id)
         await db.commit()
 
@@ -207,7 +207,6 @@ async def resubmit_document(
     await db.flush()
 
     # Copy asset links
-    from sqlalchemy import select as sa_select
     assets_result = await db.execute(
         document_assets.select().where(document_assets.c.document_id == doc_id)
     )
@@ -363,7 +362,7 @@ async def respond_approval(
     if not approval_status:
         raise HTTPException(status_code=400, detail="Invalid approval status")
 
-    doc_result = await db.execute(select(Document).where(Document.id == doc_id))
+    doc_result = await db.execute(select(Document).where(Document.id == doc_id, Document.is_deleted == False))  # noqa: E712
     doc = doc_result.scalar_one()
 
     if approval_status.action == "rejected":

@@ -44,7 +44,7 @@ export default function NotificationsPage() {
     mutationFn: (id: string) => api.patch(`/notifications/${id}/read`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
-      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] })
     },
   })
 
@@ -52,7 +52,7 @@ export default function NotificationsPage() {
     mutationFn: () => api.patch('/notifications/mark-all-read'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
-      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] })
     },
   })
 

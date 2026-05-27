@@ -347,7 +347,7 @@ def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         if proc.returncode != 0:
             raise HTTPException(
                 status_code=500,
-                detail=f"LibreOffice conversion failed: {proc.stderr.decode()[:200]}",
+                detail="Report generation failed",
             )
 
         pdf_path = Path(tmp_dir) / "document.pdf"

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     libreoffice_path: str = "soffice"
 
     # Auth
-    secret_key: str = "change-me-in-production"
+    secret_key: str  # REQUIRED — must be set in .env
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
+import { statusColors } from "@/lib/constants";
 
 interface Document {
   id: string;
@@ -20,16 +21,6 @@ interface Document {
   current_approver_order: number | null;
   created_at: string;
 }
-
-const statusColors: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  submitted: "bg-amber-500/15 text-amber-500",
-  approved: "bg-emerald-500/15 text-emerald-500",
-  approved_with_comments: "bg-emerald-500/15 text-emerald-500",
-  rejected: "bg-red-500/15 text-red-500",
-  superseded: "bg-muted text-muted-foreground",
-  cancelled: "bg-muted text-muted-foreground",
-};
 
 export default function WIRPage() {
   const router = useRouter();
@@ -54,6 +45,7 @@ export default function WIRPage() {
         const res = await api.post(`/reports/generate/WIR`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" });
         const url = URL.createObjectURL(res.data);
         window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
       } catch { toast.error("PDF generation failed"); }
     }},
     { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },

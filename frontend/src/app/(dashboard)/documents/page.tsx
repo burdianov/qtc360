@@ -9,6 +9,7 @@ import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { statusColors } from "@/lib/constants";
 
 interface Document {
   id: string;
@@ -20,16 +21,6 @@ interface Document {
   current_approver_order: number | null;
   created_at: string;
 }
-
-const statusColors: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  submitted: "bg-amber-500/15 text-amber-500",
-  approved: "bg-emerald-500/15 text-emerald-500",
-  approved_with_comments: "bg-emerald-500/15 text-emerald-500",
-  rejected: "bg-red-500/15 text-red-500",
-  superseded: "bg-muted text-muted-foreground",
-  cancelled: "bg-muted text-muted-foreground",
-};
 
 const typeColors: Record<string, string> = {
   WIR: "bg-blue-500/15 text-blue-500",
