@@ -32,12 +32,11 @@ interface ExistingWorkItem {
 export interface CommissioningLinkage {
   requirementTemplateId: string;
   isPartialScope: boolean;
-  // IDs of existing work items checked (covered by this WIR)
   checkedExistingIds: string[];
-  // IDs of existing work items to delete
   deleteExistingIds: string[];
-  // New items to create: {name, checked}
   newItems: { name: string; checked: boolean }[];
+  gateWarningAcknowledged?: boolean;
+  incompleteRequirements?: { requirement_id: string; status: string }[];
 }
 
 interface Props {
@@ -76,7 +75,7 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
   const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
 
   // Gate check: if selected template is a gate requirement, check for incomplete prerequisites
-  const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
+  const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { requirement_id: string; template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
     queryKey: ["gate-check", selectedAssetIds[0], selectedTemplate?.level_code],
     queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: selectedAssetIds[0], level_code: selectedTemplate!.level_code } })).data,
     enabled: !!selectedTemplate?.is_gate_requirement && selectedAssetIds.length > 0,
@@ -189,6 +188,16 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
                 ))}
               </ul>
               <p className="text-xs text-amber-500/80">You may proceed, but the tag will not be achieved until all requirements are completed.</p>
+              {!value?.gateWarningAcknowledged ? (
+                <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10" onClick={() => {
+                  if (!value) return;
+                  onChange({ ...value, gateWarningAcknowledged: true, incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })) });
+                }}>
+                  I acknowledge — proceed anyway
+                </Button>
+              ) : (
+                <p className="text-xs text-emerald-500">✓ Acknowledged</p>
+              )}
             </div>
           )}
 

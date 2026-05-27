@@ -212,6 +212,17 @@ export default function NewWIRPage() {
           }
         }
       }
+      // Store gate override acknowledgement if applicable
+      if (commissioningLinkage?.gateWarningAcknowledged && docId) {
+        for (const asset of selectedAssets) {
+          await api.post("/commissioning/gate-overrides", {
+            asset_id: asset.id,
+            document_id: docId,
+            level_code: "L2B", // gate overrides are for level gates
+            incomplete_requirements: commissioningLinkage.incompleteRequirements || [],
+          }).catch(() => {});
+        }
+      }
       return res;
     },
     onSuccess: () => {

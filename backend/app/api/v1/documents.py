@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -289,9 +289,13 @@ async def sign_document(
         raise HTTPException(status_code=400, detail="Document is not in draft status")
 
     if role == "site_engineer":
+        if doc.site_engineer_id and doc.site_engineer_id != user.id:
+            raise HTTPException(status_code=403, detail="Only the assigned site engineer can sign")
         doc.site_engineer_id = user.id
         doc.site_engineer_signed = True
     else:
+        if doc.qaqc_engineer_id and doc.qaqc_engineer_id != user.id:
+            raise HTTPException(status_code=403, detail="Only the assigned QA/QC engineer can sign")
         doc.qaqc_engineer_id = user.id
         doc.qaqc_engineer_signed = True
 
@@ -388,3 +392,66 @@ async def respond_approval(
 
     await db.refresh(approval)
     return approval
+
+
+# --- Attachments ---
+
+@router.get("/{doc_id}/attachments")
+async def list_attachments(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(get_current_user),
+):
+    from app.models.document_attachment import DocumentAttachment
+    result = await db.execute(
+        select(DocumentAttachment)
+        .where(DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False)  # noqa: E712
+        .order_by(DocumentAttachment.sort_order)
+    )
+    return [{"id": str(a.id), "filename": a.filename, "content_type": a.content_type, "size": a.size, "sort_order": a.sort_order} for a in result.scalars().all()]
+
+
+@router.post("/{doc_id}/attachments", status_code=201)
+async def upload_attachment(
+    doc_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(get_current_user),
+):
+    from app.models.document_attachment import DocumentAttachment
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+    # Get next sort order
+    count_result = await db.execute(
+        select(func.count()).select_from(DocumentAttachment).where(DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False)  # noqa: E712
+    )
+    sort_order = (count_result.scalar() or 0)
+    att = DocumentAttachment(
+        document_id=doc_id,
+        filename=file.filename or "unnamed",
+        content_type=file.content_type or "application/octet-stream",
+        file=data,
+        size=len(data),
+        sort_order=sort_order,
+    )
+    db.add(att)
+    await db.commit()
+    await db.refresh(att)
+    return {"id": str(att.id), "filename": att.filename, "size": att.size}
+
+
+@router.delete("/{doc_id}/attachments/{att_id}", status_code=204)
+async def delete_attachment(
+    doc_id: UUID,
+    att_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(get_current_user),
+):
+    from app.models.document_attachment import DocumentAttachment
+    result = await db.execute(select(DocumentAttachment).where(DocumentAttachment.id == att_id, DocumentAttachment.document_id == doc_id))
+    att = result.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    att.is_deleted = True
+    await db.commit()

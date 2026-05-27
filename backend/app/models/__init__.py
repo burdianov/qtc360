@@ -26,6 +26,7 @@ from app.models.commissioning import (
     AssetTagTarget,
 )
 from app.models.gate_override import GateOverrideAcknowledgement
+from app.models.document_attachment import DocumentAttachment
 
 __all__ = [
     "Base", "BaseModel",
@@ -43,4 +44,5 @@ __all__ = [
     "RequirementTemplate", "AssetRequirement", "RequirementWorkItem",
     "DocumentRequirementLink", "AssetTagTarget",
     "GateOverrideAcknowledgement",
+    "DocumentAttachment",
 ]

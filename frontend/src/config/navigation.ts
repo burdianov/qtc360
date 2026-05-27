@@ -62,6 +62,7 @@ export const navigation: NavGroup[] = [
     label: "QA/QC",
     items: [
       { title: "All Documents", url: "/documents", icon: FileStack },
+      { title: "FAT", url: "/qaqc/fat", icon: ClipboardCheck },
       { title: "MIR", url: "/qaqc/mir", icon: FileText },
       { title: "WIR", url: "/qaqc/wir", icon: HardHat },
       { title: "CIR", url: "/qaqc/cir", icon: FileSearch },
@@ -89,6 +90,7 @@ export const navigation: NavGroup[] = [
       { title: "Roles", url: "/admin/roles", icon: Shield },
       { title: "Permissions", url: "/admin/permissions", icon: Lock },
       { title: "Settings", url: "/admin/settings", icon: Settings },
+      { title: "Audit Trail", url: "/admin/audit", icon: FileText },
     ],
   },
 ];
