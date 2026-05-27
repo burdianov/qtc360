@@ -158,30 +158,38 @@ export default function NewWIRPage() {
         res = await api.post("/documents", buildPayload(values));
       }
       const docId = res.data?.id || editId;
-      // Save commissioning linkage
-      if (commissioningLinkage && docId) {
-        // Create work items if partial scope
-        if (commissioningLinkage.isPartialScope && commissioningLinkage.workItems.length > 0) {
-          for (const wi of commissioningLinkage.workItems) {
-            const wiRes = await api.post("/commissioning/work-items", {
-              asset_requirement_id: commissioningLinkage.assetRequirementId,
-              name: wi.name,
-              sequence_no: wi.sequence_no,
-              created_dynamically: true,
-            });
-            // Link document to work item
+      // Save commissioning linkage for all assets
+      if (commissioningLinkage && docId && selectedAssets.length > 0) {
+        for (const asset of selectedAssets) {
+          // Get asset requirement for this asset + template
+          const arRes = await api.get("/commissioning/asset-requirements", {
+            params: { asset_id: asset.id },
+          });
+          const assetReq = (arRes.data as any[]).find(
+            (ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId
+          );
+          if (!assetReq) continue;
+
+          if (commissioningLinkage.isPartialScope && commissioningLinkage.workItems.length > 0) {
+            for (const wi of commissioningLinkage.workItems) {
+              const wiRes = await api.post("/commissioning/work-items", {
+                asset_requirement_id: assetReq.id,
+                name: wi.name,
+                sequence_no: wi.sequence_no,
+                created_dynamically: true,
+              });
+              await api.post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiRes.data.id,
+              });
+            }
+          } else {
             await api.post("/commissioning/document-links", {
               document_id: docId,
-              asset_requirement_id: commissioningLinkage.assetRequirementId,
-              requirement_work_item_id: wiRes.data.id,
+              asset_requirement_id: assetReq.id,
             });
           }
-        } else {
-          // Full scope - link document directly to requirement
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: commissioningLinkage.assetRequirementId,
-          });
         }
       }
       return res;
@@ -352,7 +360,6 @@ export default function NewWIRPage() {
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
-                selectedAssets={selectedAssets}
                 documentType="WIR"
                 value={commissioningLinkage}
                 onChange={setCommissioningLinkage}

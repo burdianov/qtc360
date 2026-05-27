@@ -20,35 +20,26 @@ interface RequirementTemplate {
   evidence_document_type: string;
 }
 
-interface AssetRequirement {
-  id: string;
-  asset_id: string;
-  requirement_template_id: string;
-  status: string;
-}
-
 export interface WorkItemDraft {
   name: string;
   sequence_no: number;
 }
 
 export interface CommissioningLinkage {
-  assetRequirementId: string;
+  requirementTemplateId: string;
   isPartialScope: boolean;
   workItems: WorkItemDraft[];
 }
 
 interface Props {
   projectId: string;
-  selectedAssets: { id: string; tag_number: string; name: string }[];
   documentType: string; // WIR, CIR, MIR
   value: CommissioningLinkage | null;
   onChange: (linkage: CommissioningLinkage | null) => void;
 }
 
-export function CommissioningLinkagePanel({ projectId, selectedAssets, documentType, value, onChange }: Props) {
+export function CommissioningLinkagePanel({ projectId, documentType, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(!!value);
-  const [selectedAssetId, setSelectedAssetId] = useState(value ? "" : "");
   const [newItemName, setNewItemName] = useState("");
 
   // Fetch requirement templates filtered by evidence_document_type
@@ -61,29 +52,15 @@ export function CommissioningLinkagePanel({ projectId, selectedAssets, documentT
     enabled: !!projectId,
   });
 
-  // Fetch asset requirements for selected asset
-  const { data: assetRequirements = [] } = useQuery<AssetRequirement[]>({
-    queryKey: ["asset-requirements", selectedAssetId],
-    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { asset_id: selectedAssetId } })).data,
-    enabled: !!selectedAssetId,
-  });
-
-  // Filter to only show requirements matching available templates
-  const templateMap = Object.fromEntries(templates.map((t) => [t.id, t]));
-  const availableRequirements = assetRequirements.filter((ar) => templateMap[ar.requirement_template_id]);
+  const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
 
   const handleToggle = (on: boolean) => {
     setEnabled(on);
     if (!on) onChange(null);
   };
 
-  const handleAssetSelect = (assetId: string) => {
-    setSelectedAssetId(assetId);
-    onChange(null); // Reset when asset changes
-  };
-
-  const handleRequirementSelect = (assetReqId: string) => {
-    onChange({ assetRequirementId: assetReqId, isPartialScope: false, workItems: [] });
+  const handleTemplateSelect = (templateId: string) => {
+    onChange({ requirementTemplateId: templateId, isPartialScope: false, workItems: [] });
   };
 
   const handlePartialToggle = (partial: boolean) => {
@@ -104,67 +81,43 @@ export function CommissioningLinkagePanel({ projectId, selectedAssets, documentT
     onChange({ ...value, workItems: items });
   };
 
-  const selectedTemplate = value ? templateMap[assetRequirements.find((ar) => ar.id === value.assetRequirementId)?.requirement_template_id || ""] : null;
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">Commissioning Requirement Linkage</p>
-          <p className="text-xs text-muted-foreground">Optionally link this document to a commissioning requirement</p>
+          <p className="text-xs text-muted-foreground">Optionally link this document to a commissioning requirement for all listed assets</p>
         </div>
         <Switch checked={enabled} onCheckedChange={handleToggle} />
       </div>
 
       {enabled && (
         <div className="space-y-3 pl-1">
-          {/* Asset selection (from already selected assets) */}
-          {selectedAssets.length > 0 ? (
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Asset</label>
-              <Select value={selectedAssetId} onValueChange={(v: any) => handleAssetSelect(v)}>
-                <SelectTrigger><SelectValue placeholder="Select asset for requirement...">{selectedAssetId ? (() => { const a = selectedAssets.find((x) => x.id === selectedAssetId); return a ? `${a.tag_number} — ${a.name}` : ""; })() : ""}</SelectValue></SelectTrigger>
-                <SelectContent>
-                  {selectedAssets.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <p className="text-xs text-amber-500">Add assets above first to link a requirement.</p>
-          )}
+          {/* Requirement template selection */}
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Requirement</label>
+            <Select value={value?.requirementTemplateId || ""} onValueChange={(v: any) => handleTemplateSelect(v)}>
+              <SelectTrigger><SelectValue placeholder="Select requirement...">{selectedTemplate ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}` : ""}</SelectValue></SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">[{t.level_code}]</span>
+                      <span>{t.name}</span>
+                      <Badge variant="outline" className="text-[10px] ml-2">{t.requirement_category}</Badge>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-          {/* Requirement selection */}
-          {selectedAssetId && availableRequirements.length > 0 && (
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Requirement</label>
-              <Select value={value?.assetRequirementId || ""} onValueChange={(v: any) => handleRequirementSelect(v)}>
-                <SelectTrigger><SelectValue placeholder="Select requirement...">{value?.assetRequirementId ? (() => { const ar = assetRequirements.find((x) => x.id === value.assetRequirementId); const tmpl = ar ? templateMap[ar.requirement_template_id] : null; return tmpl ? `[${tmpl.level_code}] ${tmpl.name}` : ""; })() : ""}</SelectValue></SelectTrigger>
-                <SelectContent>
-                  {availableRequirements.map((ar) => {
-                    const tmpl = templateMap[ar.requirement_template_id];
-                    return (
-                      <SelectItem key={ar.id} value={ar.id}>
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-muted-foreground">[{tmpl?.level_code}]</span>
-                          <span>{tmpl?.name}</span>
-                          {ar.status !== "not_started" && <Badge variant="outline" className="text-[10px] ml-auto">{ar.status}</Badge>}
-                        </span>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {selectedAssetId && availableRequirements.length === 0 && (
-            <p className="text-xs text-muted-foreground">No {documentType} requirements found for this asset.</p>
+          {templates.length === 0 && (
+            <p className="text-xs text-muted-foreground">No {documentType} requirement templates found for this project.</p>
           )}
 
           {/* Partial scope toggle */}
-          {value?.assetRequirementId && (
+          {value?.requirementTemplateId && (
             <>
               <Separator />
               <div className="flex items-center justify-between">
@@ -172,8 +125,8 @@ export function CommissioningLinkagePanel({ projectId, selectedAssets, documentT
                   <p className="text-sm">Partial scope?</p>
                   <p className="text-xs text-muted-foreground">
                     {value.isPartialScope
-                      ? "This WIR covers only part of the requirement. Add work items below."
-                      : "This WIR covers the full scope of the requirement."}
+                      ? "This document covers only part of the requirement. Add work items below."
+                      : "This document covers the full scope of the requirement."}
                   </p>
                 </div>
                 <Switch checked={value.isPartialScope} onCheckedChange={handlePartialToggle} />
