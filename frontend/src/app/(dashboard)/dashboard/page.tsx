@@ -86,25 +86,92 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Commissioning Progress</CardTitle>
+            <CardTitle className="text-base">Commissioning Progress by Level</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Chart will be available once commissioning tracking is implemented
-            </div>
+            <LevelProgress />
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Recent Activity</CardTitle>
+            <CardTitle className="text-base">Tag Achievement</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Activity feed will appear here once document workflows are active
-            </div>
+            <TagSummary />
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function LevelProgress() {
+  const { data: requirements = [] } = useQuery<{ status: string; required_for_tag: string }[]>({
+    queryKey: ["asset-requirements-all"],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements")).data,
+  });
+
+  const levels = [
+    { tag: "red", label: "L1 + L2A", color: "bg-red-500" },
+    { tag: "yellow", label: "L2B", color: "bg-yellow-500" },
+    { tag: "green", label: "L3", color: "bg-emerald-500" },
+    { tag: "blue", label: "L4", color: "bg-blue-500" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {levels.map(({ tag, label, color }) => {
+        const tagReqs = requirements.filter((r) => r.required_for_tag === tag);
+        const achieved = tagReqs.filter((r) => r.status === "achieved").length;
+        const total = tagReqs.length;
+        const pct = total > 0 ? Math.round((achieved / total) * 100) : 0;
+        return (
+          <div key={tag} className="space-y-1">
+            <div className="flex justify-between text-sm">
+              <span>{label}</span>
+              <span className="text-muted-foreground">{achieved}/{total} ({pct}%)</span>
+            </div>
+            <div className="h-2 rounded-full bg-primary/20 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TagSummary() {
+  const { data: requirements = [] } = useQuery<{ asset_id: string; status: string; required_for_tag: string }[]>({
+    queryKey: ["asset-requirements-all"],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements")).data,
+  });
+
+  // Count unique assets that achieved each tag
+  const tags = ["red", "yellow", "green", "blue"] as const;
+  const tagLabels = { red: "Red Tag", yellow: "Yellow Tag", green: "Green Tag", blue: "Blue Tag" };
+  const tagColors = { red: "text-red-500", yellow: "text-yellow-500", green: "text-emerald-500", blue: "text-blue-500" };
+
+  const assetIds = [...new Set(requirements.map((r) => r.asset_id))];
+  const totalAssets = assetIds.length;
+
+  const tagCounts = tags.map((tag) => {
+    const achieved = assetIds.filter((assetId) => {
+      const assetTagReqs = requirements.filter((r) => r.asset_id === assetId && r.required_for_tag === tag);
+      return assetTagReqs.length > 0 && assetTagReqs.every((r) => r.status === "achieved");
+    }).length;
+    return { tag, label: tagLabels[tag], color: tagColors[tag], achieved, total: totalAssets };
+  });
+
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      {tagCounts.map(({ tag, label, color, achieved, total }) => (
+        <div key={tag} className="text-center p-3 rounded-lg border">
+          <p className={`text-2xl font-bold ${color}`}>{achieved}</p>
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-[10px] text-muted-foreground">of {total} assets</p>
+        </div>
+      ))}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
+import { ApprovalChain } from "@/components/approval-chain";
 import { X } from "lucide-react";
 
 interface Discipline { id: string; name: string; code: string; }
@@ -247,6 +248,14 @@ export default function NewCIRPage() {
           </div>
         </form>
       </Form>
+
+      {editId && existingDoc && existingDoc.status !== "draft" && (
+        <Card>
+          <CardContent className="pt-6">
+            <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
