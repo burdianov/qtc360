@@ -170,12 +170,23 @@ export default function NewWIRPage() {
           );
           if (!assetReq) continue;
 
-          if (commissioningLinkage.isPartialScope && commissioningLinkage.workItems.length > 0) {
-            for (const wi of commissioningLinkage.workItems) {
+          if (commissioningLinkage.isPartialScope) {
+            // Link existing selected work items
+            for (const sel of commissioningLinkage.selectedWorkItems) {
+              if (sel.existingId) {
+                await api.post("/commissioning/document-links", {
+                  document_id: docId,
+                  asset_requirement_id: assetReq.id,
+                  requirement_work_item_id: sel.existingId,
+                });
+              }
+            }
+            // Create new work items and link them
+            for (let i = 0; i < commissioningLinkage.newWorkItems.length; i++) {
               const wiRes = await api.post("/commissioning/work-items", {
                 asset_requirement_id: assetReq.id,
-                name: wi.name,
-                sequence_no: wi.sequence_no,
+                name: commissioningLinkage.newWorkItems[i],
+                sequence_no: i + 100,
                 created_dynamically: true,
               });
               await api.post("/commissioning/document-links", {
@@ -185,6 +196,7 @@ export default function NewWIRPage() {
               });
             }
           } else {
+            // Full scope - link document directly to requirement
             await api.post("/commissioning/document-links", {
               document_id: docId,
               asset_requirement_id: assetReq.id,
@@ -360,6 +372,7 @@ export default function NewWIRPage() {
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
+                selectedAssetIds={selectedAssets.map((a) => a.id)}
                 documentType="WIR"
                 value={commissioningLinkage}
                 onChange={setCommissioningLinkage}

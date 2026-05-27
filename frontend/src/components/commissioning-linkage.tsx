@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface RequirementTemplate {
   id: string;
@@ -20,25 +21,36 @@ interface RequirementTemplate {
   evidence_document_type: string;
 }
 
-export interface WorkItemDraft {
+interface ExistingWorkItem {
+  id: string;
   name: string;
+  status: string; // not_started, submitted, approved
   sequence_no: number;
+  linked_document_id: string | null;
+}
+
+export interface WorkItemSelection {
+  existingId?: string; // if selecting an existing work item
+  name: string;
+  isNew: boolean;
 }
 
 export interface CommissioningLinkage {
   requirementTemplateId: string;
   isPartialScope: boolean;
-  workItems: WorkItemDraft[];
+  selectedWorkItems: WorkItemSelection[]; // items covered by THIS document
+  newWorkItems: string[]; // new items to create (names)
 }
 
 interface Props {
   projectId: string;
-  documentType: string; // WIR, CIR, MIR
+  selectedAssetIds: string[];
+  documentType: string;
   value: CommissioningLinkage | null;
   onChange: (linkage: CommissioningLinkage | null) => void;
 }
 
-export function CommissioningLinkagePanel({ projectId, documentType, value, onChange }: Props) {
+export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documentType, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(!!value);
   const [newItemName, setNewItemName] = useState("");
 
@@ -52,6 +64,21 @@ export function CommissioningLinkagePanel({ projectId, documentType, value, onCh
     enabled: !!projectId,
   });
 
+  // Fetch existing work items for the first selected asset's requirement
+  // (work items are per asset_requirement, we use first asset as reference)
+  const { data: existingWorkItems = [] } = useQuery<ExistingWorkItem[]>({
+    queryKey: ["work-items", selectedAssetIds[0], value?.requirementTemplateId],
+    queryFn: async () => {
+      // Find asset_requirement for first asset
+      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: selectedAssetIds[0] } });
+      const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === value?.requirementTemplateId);
+      if (!ar) return [];
+      const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: ar.id } });
+      return wiRes.data;
+    },
+    enabled: !!value?.requirementTemplateId && !!value?.isPartialScope && selectedAssetIds.length > 0,
+  });
+
   const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
 
   const handleToggle = (on: boolean) => {
@@ -60,25 +87,33 @@ export function CommissioningLinkagePanel({ projectId, documentType, value, onCh
   };
 
   const handleTemplateSelect = (templateId: string) => {
-    onChange({ requirementTemplateId: templateId, isPartialScope: false, workItems: [] });
+    onChange({ requirementTemplateId: templateId, isPartialScope: false, selectedWorkItems: [], newWorkItems: [] });
   };
 
   const handlePartialToggle = (partial: boolean) => {
     if (!value) return;
-    onChange({ ...value, isPartialScope: partial, workItems: partial ? value.workItems : [] });
+    onChange({ ...value, isPartialScope: partial, selectedWorkItems: [], newWorkItems: [] });
   };
 
-  const addWorkItem = () => {
+  const toggleExistingItem = (item: ExistingWorkItem) => {
+    if (!value) return;
+    const exists = value.selectedWorkItems.find((s) => s.existingId === item.id);
+    if (exists) {
+      onChange({ ...value, selectedWorkItems: value.selectedWorkItems.filter((s) => s.existingId !== item.id) });
+    } else {
+      onChange({ ...value, selectedWorkItems: [...value.selectedWorkItems, { existingId: item.id, name: item.name, isNew: false }] });
+    }
+  };
+
+  const addNewItem = () => {
     if (!value || !newItemName.trim()) return;
-    const items = [...value.workItems, { name: newItemName.trim(), sequence_no: value.workItems.length + 1 }];
-    onChange({ ...value, workItems: items });
+    onChange({ ...value, newWorkItems: [...value.newWorkItems, newItemName.trim()] });
     setNewItemName("");
   };
 
-  const removeWorkItem = (index: number) => {
+  const removeNewItem = (index: number) => {
     if (!value) return;
-    const items = value.workItems.filter((_, i) => i !== index);
-    onChange({ ...value, workItems: items });
+    onChange({ ...value, newWorkItems: value.newWorkItems.filter((_, i) => i !== index) });
   };
 
   return (
@@ -113,7 +148,7 @@ export function CommissioningLinkagePanel({ projectId, documentType, value, onCh
           </div>
 
           {templates.length === 0 && (
-            <p className="text-xs text-muted-foreground">No {documentType} requirement templates found for this project.</p>
+            <p className="text-xs text-muted-foreground">No {documentType} requirement templates found.</p>
           )}
 
           {/* Partial scope toggle */}
@@ -125,7 +160,7 @@ export function CommissioningLinkagePanel({ projectId, documentType, value, onCh
                   <p className="text-sm">Partial scope?</p>
                   <p className="text-xs text-muted-foreground">
                     {value.isPartialScope
-                      ? "This document covers only part of the requirement. Add work items below."
+                      ? "Select which work items this document covers."
                       : "This document covers the full scope of the requirement."}
                   </p>
                 </div>
@@ -136,29 +171,57 @@ export function CommissioningLinkagePanel({ projectId, documentType, value, onCh
 
           {/* Work items (when partial) */}
           {value?.isPartialScope && (
-            <div className="space-y-2 rounded-lg border p-3">
+            <div className="space-y-3 rounded-lg border p-3">
               <p className="text-xs font-medium text-muted-foreground uppercase">Work Breakdown Items</p>
-              {value.workItems.length === 0 && (
-                <p className="text-xs text-muted-foreground">No work items yet. Add items to describe the partial scope.</p>
-              )}
-              {value.workItems.map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-5">{i + 1}.</span>
-                  <span className="flex-1 text-sm">{item.name}</span>
-                  <button type="button" onClick={() => removeWorkItem(i)} className="text-muted-foreground hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+
+              {/* Existing work items (from previous WIRs) */}
+              {existingWorkItems.length > 0 && (
+                <div className="space-y-1.5">
+                  {existingWorkItems.map((item) => {
+                    const isApproved = item.status === "approved";
+                    const isChecked = isApproved || !!value.selectedWorkItems.find((s) => s.existingId === item.id);
+                    return (
+                      <label key={item.id} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={isChecked}
+                          disabled={isApproved}
+                          onCheckedChange={() => !isApproved && toggleExistingItem(item)}
+                        />
+                        <span className={isApproved ? "line-through text-muted-foreground" : ""}>{item.name}</span>
+                        {isApproved && <Badge variant="outline" className="text-[10px] ml-auto">Done</Badge>}
+                      </label>
+                    );
+                  })}
                 </div>
-              ))}
+              )}
+
+              {/* New items to add */}
+              {value.newWorkItems.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {existingWorkItems.length > 0 && <Separator />}
+                  <p className="text-xs text-muted-foreground">New items (will be created):</p>
+                  {value.newWorkItems.map((name, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Checkbox checked disabled />
+                      <span className="flex-1 text-sm">{name}</span>
+                      <button type="button" onClick={() => removeNewItem(i)} className="text-muted-foreground hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new item */}
               <div className="flex gap-2 pt-1">
                 <Input
                   placeholder="e.g. MDB-01 to DB-1A"
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   className="h-8 text-sm flex-1"
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addWorkItem(); } }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addNewItem(); } }}
                 />
-                <Button type="button" size="sm" variant="outline" className="h-8" disabled={!newItemName.trim()} onClick={addWorkItem}>
+                <Button type="button" size="sm" variant="outline" className="h-8" disabled={!newItemName.trim()} onClick={addNewItem}>
                   <Plus className="h-3 w-3 mr-1" />Add
                 </Button>
               </div>
