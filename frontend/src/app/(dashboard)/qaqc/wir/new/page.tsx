@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
@@ -51,6 +52,7 @@ export default function NewWIRPage() {
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
+  const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -136,15 +138,45 @@ export default function NewWIRPage() {
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      let res;
       if (editId) {
         const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
-        return api.patch(`/documents/${editId}`, updatePayload);
+        res = await api.patch(`/documents/${editId}`, updatePayload);
+      } else {
+        const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
+        const refRes = await api.get("/documents/generate-ref-number", {
+          params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
+        });
+        res = await api.post("/documents", buildPayload(values, refRes.data.reference_number));
       }
-      const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
-      const refRes = await api.get("/documents/generate-ref-number", {
-        params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
-      });
-      return api.post("/documents", buildPayload(values, refRes.data.reference_number));
+      const docId = res.data?.id || editId;
+      // Save commissioning linkage
+      if (commissioningLinkage && docId) {
+        // Create work items if partial scope
+        if (commissioningLinkage.isPartialScope && commissioningLinkage.workItems.length > 0) {
+          for (const wi of commissioningLinkage.workItems) {
+            const wiRes = await api.post("/commissioning/work-items", {
+              asset_requirement_id: commissioningLinkage.assetRequirementId,
+              name: wi.name,
+              sequence_no: wi.sequence_no,
+              created_dynamically: true,
+            });
+            // Link document to work item
+            await api.post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: commissioningLinkage.assetRequirementId,
+              requirement_work_item_id: wiRes.data.id,
+            });
+          }
+        } else {
+          // Full scope - link document directly to requirement
+          await api.post("/commissioning/document-links", {
+            document_id: docId,
+            asset_requirement_id: commissioningLinkage.assetRequirementId,
+          });
+        }
+      }
+      return res;
     },
     onSuccess: () => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
@@ -302,6 +334,19 @@ export default function NewWIRPage() {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Commissioning Linkage (optional) */}
+          <Card>
+            <CardContent className="pt-6">
+              <CommissioningLinkagePanel
+                projectId={project?.id || ""}
+                selectedAssets={selectedAssets}
+                documentType="WIR"
+                value={commissioningLinkage}
+                onChange={setCommissioningLinkage}
+              />
             </CardContent>
           </Card>
 
