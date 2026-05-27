@@ -77,7 +77,14 @@ export default function CommissioningRequirementsPage() {
     { accessorKey: "template.code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" />, cell: ({ row }) => <span className="font-mono text-xs">{row.original.template?.code}</span> },
     { accessorKey: "template.name", header: ({ column }) => <DataTableColumnHeader column={column} title="Requirement" /> },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace(/_/g, " ")}</Badge> },
-    { accessorKey: "progress_percent", header: "Progress", cell: ({ row }) => <span className="text-xs">{row.original.progress_percent}%</span> },
+    { accessorKey: "progress_percent", header: "Progress", cell: ({ row }) => (
+      <div className="flex items-center gap-2 min-w-[80px]">
+        <div className="h-1.5 flex-1 rounded-full bg-primary/20 overflow-hidden">
+          <div className="h-full bg-primary rounded-full" style={{ width: `${row.original.progress_percent}%` }} />
+        </div>
+        <span className="text-[10px] text-muted-foreground w-7">{row.original.progress_percent}%</span>
+      </div>
+    )},
     { accessorKey: "required_for_tag", header: "Tag", cell: ({ row }) => <Badge variant="outline" className="text-xs capitalize">{row.original.required_for_tag}</Badge> },
     { accessorKey: "target_date", header: "Target", cell: ({ row }) => <span className="text-xs">{row.original.target_date || "—"}</span> },
     { accessorKey: "actual_completion_date", header: "Completed", cell: ({ row }) => <span className="text-xs">{row.original.actual_completion_date || "—"}</span> },
