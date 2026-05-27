@@ -135,7 +135,7 @@ export default function LoginPage() {
         )}
       </div>
       <p className="absolute bottom-6 text-[11px] tracking-wider text-muted-foreground/40 z-10">
-        Proudly by LB®
+        Proudly by LB
       </p>
     </div>
   );
