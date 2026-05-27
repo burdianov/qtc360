@@ -225,10 +225,12 @@ export default function NewWIRPage() {
       }
       return res;
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
       queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
-      router.push("/qaqc/wir");
+      if (!editId && res?.data?.id) {
+        router.replace(`/qaqc/wir/new?id=${res.data.id}`);
+      }
     },
   });
 
@@ -550,6 +552,18 @@ export default function NewWIRPage() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
+            {editId && (
+              <Button type="button" variant="outline" onClick={async () => {
+                try {
+                  const res = await api.post(`/reports/generate/WIR`, { document_id: editId, project_id: project!.id }, { responseType: "blob" });
+                  const url = URL.createObjectURL(res.data);
+                  window.open(url, "_blank");
+                  setTimeout(() => URL.revokeObjectURL(url), 60000);
+                } catch { toast.error("PDF generation failed"); }
+              }}>
+                Preview PDF
+              </Button>
+            )}
             <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
             <Button type="submit" variant="secondary" disabled={mutation.isPending}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}

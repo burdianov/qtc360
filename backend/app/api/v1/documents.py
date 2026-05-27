@@ -240,7 +240,7 @@ async def delete_document(
 async def notify_signatories(
     doc_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: Any = Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     from app.models.notification import Notification
 
@@ -251,11 +251,11 @@ async def notify_signatories(
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
 
-    link = f"/qaqc/{doc.document_type.lower()}/{doc_id}"
+    link = f"/qaqc/{doc.document_type.lower()}/new?id={doc_id}"
     notified = []
 
     for user_id in [doc.site_engineer_id, doc.qaqc_engineer_id]:
-        if user_id:
+        if user_id and user_id != user.id:
             notification = Notification(
                 user_id=user_id,
                 title="Signature Required",
