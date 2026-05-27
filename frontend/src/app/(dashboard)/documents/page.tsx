@@ -70,6 +70,7 @@ export default function DocumentsPage() {
       return <Badge className={statusColors[status] || ""}>{label}</Badge>;
     }},
     { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
+    { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="text-xs text-muted-foreground">{new Date(row.original.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}</span> },
   ];
 
   if (isLoading) return <div className="p-6">Loading...</div>;
