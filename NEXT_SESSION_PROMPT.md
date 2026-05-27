@@ -122,19 +122,26 @@ POST/GET    /api/v1/commissioning/gate-overrides
 - ✅ Requirement Templates CRUD page
 - ✅ Commissioning Tracking page (progress + tag badges)
 - ✅ Asset Requirements page (per-asset view)
-- ✅ Tag Targets page (target date management)
-- ✅ WIR form with commissioning linkage + work breakdown
+- ✅ Tag Targets page (target date management + bulk assign)
+- ✅ WIR/CIR/MIR full forms with commissioning linkage + work breakdown
 - ✅ Reference number auto-generation
-- ✅ Stale project auto-correction
+- ✅ Approval workflow UI (assign approvers, record responses, sequential chain)
+- ✅ Document revision system (resubmit rejected docs)
+- ✅ Gate check API (verify level completion before proceeding)
+- ✅ Notifications page (read/unread, mark-all-read)
+- ✅ Dashboard with commissioning progress charts
+- ✅ Document approval → work items approved → requirement recalculated → tag achieved
+- ✅ All Select dropdowns show labels not IDs
 - ✅ LF line endings enforced
 
 ## Next Priorities
 
-1. **Approval workflow UI** — After both signatories sign, show approval chain progress, allow approvers to respond
-2. **Commissioning dashboard charts** — Visual progress bars per level, at-risk indicators
-3. **Bulk tag target assignment** — Set target dates for all assets of a type at once
-4. **Gate override warning UI** — Show warning when submitting L2B Final with incomplete prerequisites
-5. **Document revision system** — Auto-increment revision on resubmission after rejection
+1. **Gate override warning UI** — In CIR form, when selecting L2B-FINAL requirement, call gate-check API and show warning dialog if incomplete
+2. **Document list status detail** — Show "Pending Approver 2 (AESG)" instead of just "submitted"
+3. **Asset type filter on assets page** — Filter by type/service for easier navigation
+4. **Commissioning tracking filters** — Filter by discipline, service, level, tag status
+5. **Export commissioning report** — CSV/PDF export of asset progress
+6. **Audit log** — Track who changed what and when
 
 ## Login Credentials
 
