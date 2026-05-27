@@ -97,7 +97,31 @@ async def recalculate_requirement_status(
 async def recalculate_requirements_for_document(
     db: AsyncSession, document_id: uuid.UUID
 ) -> None:
-    """Recalculate all requirements linked to a document."""
+    """When a document status changes, update linked work items and recalculate requirements."""
+    # Get the document status
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = doc_result.scalar_one_or_none()
+    if not doc:
+        return
+
+    # If document is approved, mark all linked work items as approved
+    if doc.status in ("approved", "approved_with_comments"):
+        links_result = await db.execute(
+            select(DocumentRequirementLink).where(DocumentRequirementLink.document_id == document_id)
+        )
+        for link in links_result.scalars().all():
+            if link.requirement_work_item_id:
+                wi_result = await db.execute(
+                    select(RequirementWorkItem).where(RequirementWorkItem.id == link.requirement_work_item_id)
+                )
+                wi = wi_result.scalar_one_or_none()
+                if wi and wi.status != "approved":
+                    wi.status = "approved"
+                    wi.approved_date = date.today()
+                    wi.linked_document_id = document_id
+        await db.flush()
+
+    # Recalculate all linked requirements
     result = await db.execute(
         select(DocumentRequirementLink.asset_requirement_id)
         .where(DocumentRequirementLink.document_id == document_id)
