@@ -555,6 +555,20 @@ export default function NewWIRPage() {
         <Card>
           <CardContent className="pt-6">
             <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
+            {existingDoc.status === "rejected" && (
+              <div className="mt-4 pt-4 border-t">
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    const res = await api.post(`/documents/${editId}/resubmit`);
+                    toast.success(`Resubmitted as revision ${res.data.revision_no}`);
+                    router.push(`/qaqc/wir/new?id=${res.data.id}`);
+                  }}
+                >
+                  Resubmit as New Revision
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
