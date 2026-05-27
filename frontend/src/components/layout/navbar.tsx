@@ -4,6 +4,7 @@ import { Bell, LogOut, Menu, Moon, Search, Settings, Sun, User } from "lucide-re
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
@@ -16,6 +17,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 import { ProjectSwitcher } from "@/components/layout/project-switcher";
+import api from "@/lib/api";
 
 interface NavbarProps {
   onSearchClick: () => void;
@@ -43,6 +45,11 @@ export function Navbar({ onSearchClick }: NavbarProps) {
   const { data: user } = useCurrentUser();
   const logout = useLogout();
   const router = useRouter();
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: async () => (await api.get("/notifications/unread-count")).data,
+    refetchInterval: 30000,
+  });
 
   const initials = user?.full_name
     ?.split(" ")
@@ -105,8 +112,13 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         <div className="flex items-center gap-1">
         <ThemeToggle />
 
-        <Button variant="ghost" size="icon" className="relative h-8 w-8">
+        <Button variant="ghost" size="icon" className="relative h-8 w-8" onClick={() => router.push("/notifications")}>
           <Bell className="h-4 w-4" />
+          {(unreadData?.count ?? 0) > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+              {unreadData!.count > 9 ? "9+" : unreadData!.count}
+            </span>
+          )}
           <span className="sr-only">Notifications</span>
         </Button>
 

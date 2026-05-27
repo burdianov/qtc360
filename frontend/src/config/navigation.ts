@@ -61,7 +61,7 @@ export const navigation: NavGroup[] = [
   {
     label: "QA/QC",
     items: [
-      { title: "Documents", url: "/qaqc/documents", icon: FileStack },
+      { title: "All Documents", url: "/documents", icon: FileStack },
       { title: "MIR", url: "/qaqc/mir", icon: FileText },
       { title: "WIR", url: "/qaqc/wir", icon: HardHat },
       { title: "CIR", url: "/qaqc/cir", icon: FileSearch },
