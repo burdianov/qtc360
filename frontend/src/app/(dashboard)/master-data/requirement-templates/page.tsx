@@ -143,7 +143,7 @@ export default function RequirementTemplatesPage() {
                 <FormField control={form.control} name="level_code" render={({ field }) => (
                   <FormItem><FormLabel>Level</FormLabel><FormControl>
                     <Select value={field.value} onValueChange={(v: any) => field.onChange(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select level" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select level">{field.value || ""}</SelectValue></SelectTrigger>
                       <SelectContent>{LEVELS.map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormControl><FormMessage /></FormItem>
@@ -151,7 +151,7 @@ export default function RequirementTemplatesPage() {
                 <FormField control={form.control} name="requirement_category" render={({ field }) => (
                   <FormItem><FormLabel>Category</FormLabel><FormControl>
                     <Select value={field.value} onValueChange={(v: any) => field.onChange(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select category">{field.value ? field.value.replace(/_/g, " ") : ""}</SelectValue></SelectTrigger>
                       <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormControl><FormMessage /></FormItem>
@@ -159,7 +159,7 @@ export default function RequirementTemplatesPage() {
                 <FormField control={form.control} name="evidence_document_type" render={({ field }) => (
                   <FormItem><FormLabel>Evidence Type</FormLabel><FormControl>
                     <Select value={field.value} onValueChange={(v: any) => field.onChange(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select type">{field.value || ""}</SelectValue></SelectTrigger>
                       <SelectContent>{EVIDENCE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormControl><FormMessage /></FormItem>

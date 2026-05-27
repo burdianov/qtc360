@@ -126,7 +126,7 @@ export default function ServicesPage() {
                 <FormItem>
                   <FormLabel>Discipline</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select discipline" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select discipline">{field.value ? projectDisciplines.find((d) => d.id === field.value)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                     <SelectContent>
                       {projectDisciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
                     </SelectContent>

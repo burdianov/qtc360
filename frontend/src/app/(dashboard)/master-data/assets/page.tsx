@@ -119,7 +119,7 @@ export default function AssetsPage() {
               <FormField control={form.control} name="asset_type_id" render={({ field }) => (
                 <FormItem><FormLabel>Asset Type</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select type">{field.value ? assetTypes.find((t) => t.id === field.value)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                     <SelectContent>{assetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>

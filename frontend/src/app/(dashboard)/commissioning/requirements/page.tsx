@@ -93,7 +93,7 @@ export default function CommissioningRequirementsPage() {
       <div className="max-w-sm">
         <label className="text-xs text-muted-foreground mb-1.5 block">Select Asset</label>
         <Select value={selectedAssetId} onValueChange={(v: any) => setSelectedAssetId(v)}>
-          <SelectTrigger><SelectValue placeholder="Choose an asset..." /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Choose an asset...">{selectedAssetId ? (() => { const a = assets.find((x) => x.id === selectedAssetId); return a ? `${a.tag_number} — ${a.name}` : ""; })() : ""}</SelectValue></SelectTrigger>
           <SelectContent>
             {assets.map((a) => <SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>)}
           </SelectContent>

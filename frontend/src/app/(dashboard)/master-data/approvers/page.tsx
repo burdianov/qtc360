@@ -119,7 +119,7 @@ export default function ApproversPage() {
                 <FormItem>
                   <FormLabel>Title</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select title" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select title">{field.value ? titles.find((t) => t.id === field.value)?.title : ""}</SelectValue></SelectTrigger></FormControl>
                     <SelectContent>
                       {titles.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
                     </SelectContent>
