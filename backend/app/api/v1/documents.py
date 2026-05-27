@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel as PydanticModel
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -393,7 +394,7 @@ async def respond_approval(
     return approval
 
 
-# --- Attachments ---
+# --- Attachments (file path references only, no upload) ---
 
 @router.get("/{doc_id}/attachments")
 async def list_attachments(
@@ -407,37 +408,33 @@ async def list_attachments(
         .where(DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False)  # noqa: E712
         .order_by(DocumentAttachment.sort_order)
     )
-    return [{"id": str(a.id), "filename": a.filename, "content_type": a.content_type, "size": a.size, "sort_order": a.sort_order} for a in result.scalars().all()]
+    return [{"id": str(a.id), "filename": a.filename, "file_path": a.file_path, "sort_order": a.sort_order} for a in result.scalars().all()]
+
+
+class AttachmentCreate(PydanticModel):
+    filename: str
+    file_path: str
+    sort_order: int = 0
 
 
 @router.post("/{doc_id}/attachments", status_code=201)
-async def upload_attachment(
+async def add_attachment(
     doc_id: UUID,
-    file: UploadFile = File(...),
+    body: AttachmentCreate,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(get_current_user),
 ):
     from app.models.document_attachment import DocumentAttachment
-    data = await file.read()
-    if len(data) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
-    # Get next sort order
-    count_result = await db.execute(
-        select(func.count()).select_from(DocumentAttachment).where(DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False)  # noqa: E712
-    )
-    sort_order = (count_result.scalar() or 0)
     att = DocumentAttachment(
         document_id=doc_id,
-        filename=file.filename or "unnamed",
-        content_type=file.content_type or "application/octet-stream",
-        file=data,
-        size=len(data),
-        sort_order=sort_order,
+        filename=body.filename,
+        file_path=body.file_path,
+        sort_order=body.sort_order,
     )
     db.add(att)
     await db.commit()
     await db.refresh(att)
-    return {"id": str(att.id), "filename": att.filename, "size": att.size}
+    return {"id": str(att.id), "filename": att.filename, "file_path": att.file_path}
 
 
 @router.delete("/{doc_id}/attachments/{att_id}", status_code=204)

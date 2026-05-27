@@ -238,7 +238,16 @@ async def generate_report(
     attachments = att_result.scalars().all()
 
     if attachments:
-        pdf_bytes = _merge_attachments(pdf_bytes, attachments)
+        pdf_bytes, missing = _merge_attachments_with_status(pdf_bytes, attachments)
+        if missing:
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{doc_type.upper()}_{document.reference_no or "draft"}.pdf"',
+                    "X-Missing-Attachments": ", ".join(missing),
+                },
+            )
 
     return Response(
         content=pdf_bytes,
@@ -379,58 +388,55 @@ def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         return pdf_path.read_bytes()
 
 
-def _merge_attachments(main_pdf: bytes, attachments) -> bytes:
-    """Merge attachment PDFs/images into the main PDF."""
+def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes, list[str]]:
+    """Merge attachment files (from file paths) into the main PDF. Returns (pdf, missing_filenames)."""
     try:
         from pypdf import PdfReader, PdfWriter
     except ImportError:
-        # If pypdf not available, return main PDF only
-        return main_pdf
+        return main_pdf, []
 
     writer = PdfWriter()
-
-    # Add main document pages
     reader = PdfReader(io.BytesIO(main_pdf))
     for page in reader.pages:
         writer.add_page(page)
 
-    # Add each attachment
+    missing_files = []
     for att in attachments:
-        if att.content_type == "application/pdf":
+        file_path = Path(att.file_path)
+        if not file_path.exists():
+            missing_files.append(att.filename)
+            continue
+
+        if file_path.suffix.lower() == ".pdf":
             try:
-                att_reader = PdfReader(io.BytesIO(att.file))
+                att_reader = PdfReader(str(file_path))
                 for page in att_reader.pages:
                     writer.add_page(page)
             except Exception:
-                pass  # Skip corrupt PDFs
-        elif att.content_type.startswith("image/"):
-            # Convert image to PDF page
+                missing_files.append(att.filename)
+        elif file_path.suffix.lower() in (".jpg", ".jpeg", ".png"):
             try:
                 from PIL import Image as PILImage
                 from reportlab.lib.pagesizes import A4
                 from reportlab.pdfgen import canvas as rl_canvas
+                from reportlab.lib.utils import ImageReader
 
-                img = PILImage.open(io.BytesIO(att.file))
+                img = PILImage.open(str(file_path))
                 img_buf = io.BytesIO()
                 c = rl_canvas.Canvas(img_buf, pagesize=A4)
-                # Scale image to fit A4 with margins
                 max_w, max_h = A4[0] - 72, A4[1] - 72
                 ratio = min(max_w / img.width, max_h / img.height)
                 w, h = img.width * ratio, img.height * ratio
-                # Save as temp for reportlab
-                tmp_img = io.BytesIO()
-                img.save(tmp_img, format="PNG")
-                tmp_img.seek(0)
-                from reportlab.lib.utils import ImageReader
-                c.drawImage(ImageReader(tmp_img), 36, A4[1] - h - 36, w, h)
+                c.drawImage(ImageReader(str(file_path)), 36, A4[1] - h - 36, w, h)
                 c.save()
                 img_buf.seek(0)
                 img_reader = PdfReader(img_buf)
                 for page in img_reader.pages:
                     writer.add_page(page)
             except Exception:
-                pass  # Skip if image processing fails
+                missing_files.append(att.filename)
 
     output = io.BytesIO()
     writer.write(output)
-    return output.getvalue()
+
+    return output.getvalue(), missing_files

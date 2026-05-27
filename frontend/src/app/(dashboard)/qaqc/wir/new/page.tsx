@@ -51,7 +51,7 @@ export default function NewWIRPage() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [attachments, setAttachments] = useState<{ file: File; name: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ filename: string; file_path: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
@@ -230,13 +230,13 @@ export default function NewWIRPage() {
           }).catch(() => {});
         }
       }
-      // Upload attachments
+      // Save attachment paths
       if (attachments.length > 0 && docId) {
-        for (const att of attachments) {
-          const formData = new FormData();
-          formData.append("file", att.file);
-          await api.post(`/documents/${docId}/attachments`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
+        for (let i = 0; i < attachments.length; i++) {
+          await api.post(`/documents/${docId}/attachments`, {
+            filename: attachments[i].filename,
+            file_path: attachments[i].file_path,
+            sort_order: i,
           });
         }
       }
@@ -291,19 +291,13 @@ export default function NewWIRPage() {
     setSelectedAssets(selectedAssets.filter((a) => a.id !== assetId));
   };
 
+  const [newAttPath, setNewAttPath] = useState("");
+
   const addAttachment = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.accept = ".pdf,.jpg,.jpeg,.png";
-    input.onchange = (e) => {
-      const files = (e.target as HTMLInputElement).files;
-      if (files) {
-        const newAttachments = Array.from(files).map((f) => ({ file: f, name: f.name }));
-        setAttachments([...attachments, ...newAttachments]);
-      }
-    };
-    input.click();
+    if (!newAttPath.trim()) return;
+    const filename = newAttPath.split(/[/\\]/).pop() || newAttPath;
+    setAttachments([...attachments, { filename, file_path: newAttPath.trim() }]);
+    setNewAttPath("");
   };
 
   const removeAttachment = (index: number) => {
@@ -537,16 +531,9 @@ export default function NewWIRPage() {
 
           {/* Attachments */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Attachments</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={addAttachment}>
-                <Plus className="h-4 w-4 mr-1" />Add Files
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {attachments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No attachments added yet.</p>
-              ) : (
+            <CardHeader><CardTitle className="text-base">Attachments</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {attachments.length > 0 && (
                 <div className="space-y-2">
                   {attachments.map((att, i) => (
                     <div
@@ -566,7 +553,10 @@ export default function NewWIRPage() {
                       className="flex items-center gap-3 rounded-md border border-border px-3 py-2 transition-colors hover:bg-accent/50"
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
-                      <span className="flex-1 text-sm truncate">{att.name}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{att.filename}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{att.file_path}</p>
+                      </div>
                       <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -574,6 +564,19 @@ export default function NewWIRPage() {
                   ))}
                 </div>
               )}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="\\\\server\\share\\path\\to\\file.pdf"
+                  value={newAttPath}
+                  onChange={(e) => setNewAttPath(e.target.value)}
+                  className="flex-1 text-sm font-mono"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAttachment(); } }}
+                />
+                <Button type="button" variant="outline" size="sm" disabled={!newAttPath.trim()} onClick={addAttachment}>
+                  <Plus className="h-4 w-4 mr-1" />Add
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">Enter the full path to the file on the company server. Files will be included in the generated PDF.</p>
             </CardContent>
           </Card>
 
