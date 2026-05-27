@@ -136,12 +136,12 @@ POST/GET    /api/v1/commissioning/gate-overrides
 
 ## Next Priorities
 
-1. **Gate override warning UI** — In CIR form, when selecting L2B-FINAL requirement, call gate-check API and show warning dialog if incomplete
-2. **Document list status detail** — Show "Pending Approver 2 (AESG)" instead of just "submitted"
-3. **Asset type filter on assets page** — Filter by type/service for easier navigation
-4. **Commissioning tracking filters** — Filter by discipline, service, level, tag status
-5. **Export commissioning report** — CSV/PDF export of asset progress
-6. **Audit log** — Track who changed what and when
+1. **Gate override warning dialog** — When user proceeds despite warning, show confirmation dialog that stores acknowledgement via POST /commissioning/gate-overrides
+2. **Asset type filter on commissioning tracking** — Filter by discipline/service/type
+3. **Audit log page** — Track who changed what and when (use existing created_at/updated_by fields)
+4. **Document PDF generation** — Test end-to-end with LibreOffice
+5. **Server-side pagination** — For large datasets (assets, documents)
+6. **FAT document form** — Specific form for FAT with asset type selection
 
 ## Login Credentials
 
