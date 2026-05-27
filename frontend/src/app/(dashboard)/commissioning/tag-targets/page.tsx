@@ -111,6 +111,10 @@ export default function TagTargetsPage() {
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Target</Button>
       </div>
       <DataTable columns={columns} data={targets} searchKey="asset_id" searchPlaceholder="Search..." />
+
+      {/* Bulk Assign */}
+      <BulkTagTargets assets={assets} onDone={() => queryClient.invalidateQueries({ queryKey: ["tag-targets"] })} />
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? "Edit Tag Target" : "New Tag Target"}</DialogTitle></DialogHeader>
@@ -152,6 +156,58 @@ export default function TagTargetsPage() {
           </Form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function BulkTagTargets({ assets, onDone }: { assets: Asset[]; onDone: () => void }) {
+  const [tagCode, setTagCode] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleBulkAssign = async () => {
+    if (!tagCode || !targetDate || assets.length === 0) return;
+    setLoading(true);
+    try {
+      let count = 0;
+      for (const asset of assets) {
+        try {
+          await api.post("/commissioning/tag-targets", { asset_id: asset.id, tag_code: tagCode, target_date: targetDate });
+          count++;
+        } catch { /* skip duplicates */ }
+      }
+      toast.success(`Assigned ${tagCode} tag target to ${count} assets`);
+      onDone();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <p className="text-sm font-medium">Bulk Assign Tag Targets</p>
+      <p className="text-xs text-muted-foreground">Set the same target date for all assets at once.</p>
+      <div className="flex gap-3 items-end">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Tag</label>
+          <Select value={tagCode} onValueChange={(v: any) => setTagCode(v)}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Select tag">{tagCode || ""}</SelectValue></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="red">Red Tag</SelectItem>
+              <SelectItem value="yellow">Yellow Tag</SelectItem>
+              <SelectItem value="green">Green Tag</SelectItem>
+              <SelectItem value="blue">Blue Tag</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Target Date</label>
+          <DatePicker value={targetDate} onChange={setTargetDate} />
+        </div>
+        <Button disabled={!tagCode || !targetDate || loading} onClick={handleBulkAssign}>
+          {loading ? "Assigning..." : `Assign to All ${assets.length} Assets`}
+        </Button>
+      </div>
     </div>
   );
 }
