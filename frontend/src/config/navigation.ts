@@ -1,8 +1,6 @@
 import {
   LayoutDashboard,
   Bell,
-  BarChart3,
-  Activity,
   Users,
   FolderKanban,
   Compass,
@@ -44,8 +42,6 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
       { title: "Notifications", url: "/notifications", icon: Bell },
-      { title: "Analytics", url: "/analytics", icon: BarChart3 },
-      { title: "Activity", url: "/activity", icon: Activity },
     ],
   },
   {
