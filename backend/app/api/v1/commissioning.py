@@ -354,6 +354,47 @@ async def create_gate_override(
     return override
 
 
+@router.get("/gate-check")
+async def check_gate_requirements(
+    asset_id: uuid.UUID = Query(...),
+    level_code: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Check if all requirements for a level are complete. Returns incomplete ones."""
+    from app.models.commissioning import RequirementTemplate
+
+    result = await db.execute(
+        select(AssetRequirement)
+        .where(AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False)  # noqa: E712
+    )
+    reqs = result.scalars().all()
+
+    # Get templates to filter by level
+    tmpl_ids = [r.requirement_template_id for r in reqs]
+    if not tmpl_ids:
+        return {"complete": True, "incomplete": []}
+
+    tmpl_result = await db.execute(
+        select(RequirementTemplate).where(RequirementTemplate.id.in_(tmpl_ids))
+    )
+    templates = {t.id: t for t in tmpl_result.scalars().all()}
+
+    incomplete = []
+    for req in reqs:
+        tmpl = templates.get(req.requirement_template_id)
+        if tmpl and tmpl.level_code == level_code and not tmpl.is_optional and req.status != "achieved":
+            incomplete.append({
+                "requirement_id": str(req.id),
+                "template_name": tmpl.name,
+                "template_code": tmpl.code,
+                "status": req.status,
+                "progress_percent": req.progress_percent,
+            })
+
+    return {"complete": len(incomplete) == 0, "incomplete": incomplete}
+
+
 @router.get("/gate-overrides", response_model=list[GateOverrideOut])
 async def list_gate_overrides(
     asset_id: uuid.UUID | None = None,

@@ -166,6 +166,59 @@ async def update_document(
     return doc
 
 
+@router.post("/{doc_id}/resubmit", response_model=DocumentResponse)
+async def resubmit_document(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Resubmit a rejected document with incremented revision."""
+    result = await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    if doc.status != "rejected":
+        raise HTTPException(status_code=400, detail="Only rejected documents can be resubmitted")
+
+    # Mark current as superseded
+    doc.status = "superseded"
+    await db.flush()
+
+    # Create new revision
+    new_doc = Document(
+        project_id=doc.project_id,
+        document_type=doc.document_type,
+        reference_no=doc.reference_no,
+        title=doc.title,
+        description=doc.description,
+        revision_no=doc.revision_no + 1,
+        discipline_id=doc.discipline_id,
+        location=doc.location,
+        floor_level=doc.floor_level,
+        rams_ref=doc.rams_ref,
+        drawing_ref=doc.drawing_ref,
+        delivery_note=doc.delivery_note,
+        asset_type_id=doc.asset_type_id,
+        created_by=user.id,
+    )
+    db.add(new_doc)
+    await db.flush()
+
+    # Copy asset links
+    from sqlalchemy import select as sa_select
+    assets_result = await db.execute(
+        document_assets.select().where(document_assets.c.document_id == doc_id)
+    )
+    for row in assets_result.all():
+        await db.execute(document_assets.insert().values(document_id=new_doc.id, asset_id=row.asset_id))
+
+    await db.commit()
+    await db.refresh(new_doc)
+    return new_doc
+
+
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     doc_id: UUID,

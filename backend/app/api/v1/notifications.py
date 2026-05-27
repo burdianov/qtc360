@@ -55,6 +55,21 @@ async def mark_read(
     return {"status": "ok"}
 
 
+@router.patch("/mark-all-read")
+async def mark_all_read(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark all notifications as read."""
+    await db.execute(
+        update(Notification)
+        .where(Notification.user_id == user.id, Notification.is_read == False)  # noqa: E712
+        .values(is_read=True)
+    )
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/unread-count")
 async def unread_count(
     db: AsyncSession = Depends(get_db),
