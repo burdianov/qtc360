@@ -1,7 +1,7 @@
 """Commissioning engine API endpoints."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -143,6 +143,49 @@ async def bulk_create_asset_requirements(
     return reqs
 
 
+@router.post("/asset-requirements/bulk-by-type", status_code=status.HTTP_201_CREATED)
+async def bulk_assign_by_asset_type(
+    asset_type_id: uuid.UUID = Query(...),
+    requirement_template_id: uuid.UUID = Query(...),
+    required_for_tag: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Assign a requirement to all assets of a given type (including subtypes)."""
+    from app.models.asset import Asset
+    from app.models.asset_type import AssetType
+
+    # Get all asset type IDs (parent + subtypes)
+    type_ids = [asset_type_id]
+    subtypes = await db.execute(select(AssetType.id).where(AssetType.parent_type_id == asset_type_id))
+    type_ids.extend([row[0] for row in subtypes.all()])
+
+    # Get all assets of those types
+    assets_result = await db.execute(
+        select(Asset).where(Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False)  # noqa: E712
+    )
+    assets = assets_result.scalars().all()
+
+    count = 0
+    for asset in assets:
+        existing = await db.execute(
+            select(AssetRequirement).where(
+                AssetRequirement.asset_id == asset.id,
+                AssetRequirement.requirement_template_id == requirement_template_id,
+            )
+        )
+        if not existing.scalar_one_or_none():
+            db.add(AssetRequirement(
+                asset_id=asset.id,
+                requirement_template_id=requirement_template_id,
+                required_for_tag=required_for_tag,
+            ))
+            count += 1
+
+    await db.commit()
+    return {"assigned": count, "total_assets": len(assets)}
+
+
 # --- Work Items ---
 
 @router.get("/work-items", response_model=list[RequirementWorkItemOut])
@@ -188,6 +231,25 @@ async def update_work_item(
     await db.commit()
     await db.refresh(item)
     return item
+
+
+@router.delete("/work-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_work_item(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(RequirementWorkItem).where(RequirementWorkItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found")
+    if item.status == "approved":
+        raise HTTPException(status_code=400, detail="Cannot delete approved work item")
+    item.is_deleted = True
+    await db.commit()
+    # Recalculate parent requirement status
+    await recalculate_requirement_status(db, item.asset_requirement_id)
+    await db.commit()
 
 
 # --- Document Requirement Links ---
