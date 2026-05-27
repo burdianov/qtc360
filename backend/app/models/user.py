@@ -26,6 +26,8 @@ class User(BaseModel):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     password_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    signature_font: Mapped[str | None] = mapped_column(String(50), default="dancing_script")
+    signature_text: Mapped[str | None] = mapped_column(String(255), default=None)
 
     roles: Mapped[list["Role"]] = relationship(  # noqa: F821
         secondary="user_roles", back_populates="users"

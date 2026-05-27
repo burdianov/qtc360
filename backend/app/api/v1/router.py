@@ -6,8 +6,9 @@ from app.api.v1.admin import router as admin_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.fats import router as fats_router
-from app.api.v1.templates import router as templates_router
-from app.api.v1.pdf import router as pdf_router
+from app.api.v1.reports import router as reports_router
+from app.api.v1.notifications import router as notifications_router
+from app.api.v1.ref_config import router as ref_config_router
 
 router = APIRouter(prefix="/api/v1")
 
@@ -23,5 +24,6 @@ router.include_router(admin_router)
 router.include_router(dashboard_router)
 router.include_router(documents_router)
 router.include_router(fats_router)
-router.include_router(templates_router)
-router.include_router(pdf_router)
+router.include_router(reports_router)
+router.include_router(notifications_router)
+router.include_router(ref_config_router)

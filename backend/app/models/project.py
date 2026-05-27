@@ -13,6 +13,7 @@ class Project(BaseModel):
 
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    external_code: Mapped[str | None] = mapped_column(String(50))
     description: Mapped[str | None] = mapped_column(String(1000))
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, completed, on_hold
     start_date: Mapped[date | None] = mapped_column(Date)

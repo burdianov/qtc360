@@ -73,7 +73,7 @@ export default function RolesPage() {
   const columns: ColumnDef<RoleItem, unknown>[] = [
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     { accessorKey: "description", header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />, cell: ({ row }) => row.getValue("description") || "—" },
-    { id: "permissions", accessorFn: (row) => row.permissions.map((p) => p.code).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Permissions" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.permissions.map((p) => <Badge key={p.id} variant="outline">{p.code}</Badge>)}</div> },
+    { id: "permissions", accessorFn: (row) => row.permissions.map((p) => p.code).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Permission" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.permissions.map((p) => <Badge key={p.id} variant="outline">{p.code}</Badge>)}</div>, meta: { title: "Permission" } },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

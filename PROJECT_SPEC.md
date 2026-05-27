@@ -645,3 +645,56 @@ The final result must feel:
 - Intentionally engineered
 
 The platform should feel like a professional SaaS product from day one.
+
+
+---
+
+## IMPLEMENTATION STATUS (Updated 2026-05-27)
+
+### Architecture Decision: Report Generation
+- Word DOCX templates uploaded per project+doc_type
+- `docxtpl` fills placeholders with form data
+- LibreOffice headless converts DOCX → PDF
+- Signatures rendered as PNG images using script fonts (DocuSign-style)
+- Templates stored in DB (binary), generated files served on-demand
+
+### Reference Number System
+- Pattern: `{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}`
+- Example: `MERC-JMJV-EL-WIR-0031`
+- Serial counts per project+discipline+doc_type combination
+- Configurable via Admin Settings per project
+
+### Project Model
+- `code`: project number (e.g. "1728")
+- `external_code`: third-party code (e.g. "M1610") — maps to template placeholder `{{ nm }}`
+
+### WIR Form & Workflow
+- Full-page form with all fields mapped to Word template placeholders
+- Inspected By 1 & 2 with DocuSign-style signatures (9 script fonts)
+- Sub-activity completion tracking per document
+- Milestone auto-detection (all sub-activities complete = milestone achieved)
+- Inline sub-activity creation from WIR form
+- Save as Draft / Save & Notify Signatories
+- Signature restricted to current user only
+- In-app notifications to signatories with link to form
+
+### Signature System
+- Users choose signature font + custom text in Profile page
+- 9 fonts: Dancing Script, Great Vibes, Allura, Alex Brush, Parisienne, Mrs Saint Delafield, Herr Von Muellerhoff, Meddon, Sacramento
+- Rendered as PNG via Pillow, injected into DOCX via InlineImage
+
+### WIR Template Placeholders
+{{ ref_no }}, {{ revision }}, {{ prj_no }}, {{ nm }}, {{ date }}, {{ subject }},
+{{ description_of_inspection }}, {{ gen_loc }}, {{ floor_level_room }},
+{{ appr_rams }}, {{ dwg_ref }}, {{ arch_cb }}...{{ others_cb }},
+{{ inspected_by_1 }}, {{ designation_1 }}, {{ insp_sign_1 }}, {{ date_1 }}, {{ time_1 }}, {{ remarks_1 }},
+{{ inspected_by_2 }}, {{ designation_2 }}, {{ insp_sign_2 }}, {{ date_2 }}, {{ time_2 }}, {{ remarks_2 }}
+
+### Remaining Work
+1. Submit workflow — can only submit when all signatories have signed
+2. Approval chain — after submit, goes through project approvers
+3. Revision system — auto-increment per workflow
+4. MIR and CIR forms — similar to WIR
+5. Commissioning level tracking
+6. Asset milestone tracking across levels
+7. Dashboard charts and analytics

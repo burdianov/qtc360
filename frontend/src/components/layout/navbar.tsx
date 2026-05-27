@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, LogOut, Menu, Moon, Search, Settings, Sun } from "lucide-react";
+import { Bell, LogOut, Menu, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
@@ -41,6 +42,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
   const { toggleSidebar } = useSidebar();
   const { data: user } = useCurrentUser();
   const logout = useLogout();
+  const router = useRouter();
 
   const initials = user?.full_name
     ?.split(" ")
@@ -124,6 +126,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/profile")}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
             <DropdownMenuItem><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout}><LogOut className="mr-2 h-4 w-4" />Log out</DropdownMenuItem>

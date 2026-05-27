@@ -8,113 +8,92 @@ We're building QTC360 — an enterprise QA/QC + Commissioning management platfor
 
 PROJECT_SPEC.md in the root has the full specification. Screenshots are at D:\QTC360\screenshots\.
 
-## CURRENT STATUS — Phase 3+ (Template Builder + WIR Form — In Progress)
+## CURRENT STATUS — Phase 4 (WIR Workflow + Report Generation)
 
-We are still working on fixing and refining the Template Builder and WIR form.
+### Architecture Decision: Word Template-Based Reports
+- ❌ OLD: Custom template builder (HTML→PDF, WeasyPrint) — REMOVED
+- ✅ NEW: Upload Word DOCX templates → docxtpl fills placeholders → LibreOffice converts to PDF
+- Templates stored in DB per project+doc_type
+- Signatures rendered as PNG images using script fonts (DocuSign-style)
 
 ### Backend (FastAPI + SQLAlchemy 2.x async + PostgreSQL)
-- ✅ Auth: JWT access/refresh tokens, login endpoint, get_current_user dependency
-- ✅ Password policy: min 8 chars, 1 uppercase, 1 number. Admin reset sets temp password (1hr expiry), user must change on login
-- ✅ Registration is admin-only (requires superuser token)
-- ✅ RBAC: User, Role, Permission models with many-to-many, require_permission dependency
-- ✅ Roles seeded: super_admin, admin, site_engineer, qaqc_engineer, qaqc_manager
-- ✅ Users seeded: dev@jlwme.com/Dev12345, admin@jlwme.com/Admin123, site@jlwme.com/Site1234, qaqc@jlwme.com/Qaqc1234, jerry@jlwme.com/Jerry123
-- ✅ Master tables: Client, Project, ApproverTitle, Approver, ProjectApprover, Discipline, Service, AssetType, Asset, ApprovalStatus, Activity, SubActivity, Test, System, Contractor
-- ✅ Users table includes phone + position (Employee table merged into Users — no separate employees)
-- ✅ Document models: Document (single table for MIR/WIR/CIR with doc_type), DocumentApproval, document_assets, FAT, fat_assets
-- ✅ Template models: DocumentTemplate (JSONB schema for cover sheet layout), ReferenceNumberConfig (pattern-based auto-numbering)
-- ✅ ProjectHeaderImage model: stores header images per project+cell_id (LargeBinary in DB)
-- ✅ Generic CRUD router factory + dedicated document/FAT/template endpoints
-- ✅ Header image endpoints: POST/GET /templates/header-image/{project_id}/{cell_id}
-- ✅ PDF generation: POST /pdf/generate — WeasyPrint server-side rendering with binary search for expand-to-footer rows
-- ✅ Template create is upsert (handles duplicate project+doc_type gracefully)
-- ✅ Document workflow: sign (site_engineer/qaqc_engineer), approval chain (respond → advance/reject)
-- ✅ Reference number generation: /templates/ref-config/generate
-- ✅ Dashboard stats endpoint: /dashboard/stats?project_id=
-- ✅ Alembic migrations applied (11 total)
-- ✅ Seed get_or_create restores soft-deleted records
+- ✅ Auth: JWT access/refresh tokens, login, register (admin-only), change password
+- ✅ RBAC: User, Role, Permission with many-to-many
+- ✅ Users: email, full_name, phone, position, signature_font, signature_text
+- ✅ Master tables: Client, Project (code + external_code), Discipline, Service, Activity, SubActivity, Test, System, Contractor, Asset, Approver, ApproverTitle, ProjectApprover, ApprovalStatus
+- ✅ Document model: single table for MIR/WIR/CIR with doc_type, includes location, floor_level, rams_ref, drawing_ref, inspection_date, site_engineer_signed, qaqc_engineer_signed
+- ✅ DocTemplate model: stores uploaded DOCX templates per project+doc_type (binary in DB)
+- ✅ ReferenceNumberConfig: pattern-based auto-numbering per project+doc_type (e.g. MERC-JMJV-EL-WIR-0031)
+- ✅ Notification model: in-app notifications with user_id, title, message, link, is_read
+- ✅ Report generation: POST /reports/generate/{doc_type} — docxtpl + LibreOffice headless
+- ✅ Signature service: 9 script fonts, renders name as PNG, injected via InlineImage
+- ✅ Reference number: GET /documents/generate-ref-number — serial per project+discipline+doc_type
+- ✅ Ref config CRUD: GET/POST/DELETE /ref-config
+- ✅ Notifications: GET /notifications, PATCH /{id}/read, GET /unread-count
+- ✅ Document notify: POST /documents/{id}/notify-signatories
+- ✅ PDF health check: GET /reports/pdf-engine/health
+- ✅ User preferences: PATCH /auth/me (signature_font, signature_text)
+- ✅ LibreOffice: configurable via LIBREOFFICE_PATH env var
 
 ### Frontend (Next.js 16 + React 19 + shadcn/ui + @base-ui/react)
-- ✅ Dark/light theme with Zenith-inspired design
-- ✅ Login page: SVG background, theme toggle, password change flow, "Proudly by LB®"
-- ✅ Responsive sidebar: collapses to icons on tablet, Sheet overlay on mobile
-- ✅ Auth: useLogin, useCurrentUser, useLogout, useChangePassword hooks
-- ✅ API layer: Axios instance with JWT interceptor + auto-refresh on 401
-- ✅ React Query provider + project_id in query keys
-- ✅ Project selection: modal after login (localStorage), ProjectSwitcher in navbar
-- ✅ DataTable system: sorting, search, pagination, column visibility, row actions, bulk actions, CSV export/import
-- ✅ Form system: RHF + Zod, Select uses value (controlled)
+- ✅ Dark/light theme, responsive sidebar, auth flow
+- ✅ DataTable: sorting, search, pagination, column visibility+reorder (persisted to localStorage), row actions, bulk actions, CSV export/import, row click navigation
 - ✅ Master table pages: Projects, Clients, Disciplines, Services, Approvers, Assets, Activities, Sub-Activities, Tests, Systems, Contractors
-- ✅ Admin pages: Users, Roles, Permissions, Settings
-- ✅ Dashboard page: 7 stat cards with colored icon badges, placeholder charts
-- ✅ QA/QC pages: MIR, WIR (list + full-page form at /qaqc/wir/new), CIR, FAT Reports
-- ✅ WIR form (in progress):
-  - Full width layout, grid-based form fields
-  - DatePicker component (react-day-picker + popover calendar)
-  - Discipline, subject, description, location, floor, RAMS, drawing ref
-  - Service/activity/sub-activity cascade selects
+- ✅ Admin pages: Users (with designation, bulk upload/download), Roles, Permissions, Settings (ref number config)
+- ✅ Document Templates page: upload/list/delete DOCX templates per project
+- ✅ Profile page: signature font picker (9 fonts), custom signature text, live preview
+- ✅ WIR list page: row click opens form, Generate PDF action, delete with confirmation
+- ✅ WIR form (/qaqc/wir/new?id=...): 
+  - Create new or edit existing (loads data when ?id= present)
+  - All fields: date, discipline, subject, description, location, floor, RAMS, drawing ref
+  - Service → Activity → Sub-Activity cascade selects
   - Multi-asset selection with badges
-  - 2 inspectors with click-to-sign (uses Users, not separate employees)
-  - Attachments
-- ✅ Template Builder: /documents/templates/builder (in progress)
-  - Auto-save (debounced 800ms) — no manual save button
-  - Header: rows/cells structure, each cell has individual image upload + scale slider
-  - Header images stored in DB per project+cell_id
-  - Settings: name, doc_type, font (select dropdown), fontSize, margins
-  - Footer editor (repeats on all pages)
-  - Sections: collapsible, labeled, individual gap per section
-  - Rows: Row Height, isTitle + color, expandToFooter, internalBorders toggle, Row Background (color picker with gray swatches)
-  - Cells: draggable borders between cells to resize, Reset Widths button, type (label/data), variant (text/checkbox), fieldKey binding
-  - When gap=0 between sections, they share one border line (margin-top:-1px)
-  - Floating preview button (blue, with tooltip) — calls server-side PDF generation
-  - Close button with navigation
-  - Toast notifications (sonner, theme-aware)
-- ✅ PDF Preview: server-side WeasyPrint generation
-  - position:fixed header/footer repeats on every page
-  - Expand-to-footer rows: binary search (25 iterations) finds exact max height via WeasyPrint's own layout engine — no hardcoded values
-  - Header images embedded as base64 data URIs
-  - Background colors, font sizes, internal borders all rendered correctly
-  - print-color-adjust: exact for background colors
-- ✅ Select/DropdownMenu: modal={false}, alignItemWithTrigger={false} to prevent scroll lock
-- ✅ Delete confirmation on all row actions
-- ✅ Toaster: sonner with theme="system", custom popover styling
+  - Inspected By 1 & 2: shows Name: Designation in dropdown, displays name when selected
+  - Signature fields: only current user can sign their own, shows actual font-rendered signature
+  - Link to signature profile for active signatory
+  - Save as Draft / Save & Notify Signatories buttons
+  - Dirty form check on navigation
+  - Signatures persisted (site_engineer_signed, qaqc_engineer_signed)
+- ✅ Navbar: user dropdown with Profile link
+- ✅ Input/Textarea: white text in dark mode globally
 
-### Important Rules
-- After any database migration or seed, create a database dump into `backend/db_dump/` — each table as a separate CSV file.
+### WIR Template Placeholders (uploaded DOCX)
+{{ ref_no }}, {{ revision }}, {{ prj_no }}, {{ nm }}, {{ date }}, {{ subject }},
+{{ description_of_inspection }}, {{ gen_loc }}, {{ floor_level_room }},
+{{ appr_rams }}, {{ dwg_ref }}, {{ arch_cb }}...{{ others_cb }},
+{{ inspected_by_1 }}, {{ designation_1 }}, {{ insp_sign_1 }}, {{ date_1 }}, {{ time_1 }}, {{ remarks_1 }},
+{{ inspected_by_2 }}, {{ designation_2 }}, {{ insp_sign_2 }}, {{ date_2 }}, {{ time_2 }}, {{ remarks_2 }}
 
-### What's Next (after Template Builder + WIR are finalized)
-- Signature system refinement (script fonts, Docusign-style)
-- Reference number config UI in project settings
-- Milestone tracking system
-- Commissioning level tracking
-- MIR and CIR full-page forms (similar to WIR)
+### Remaining Tasks (Priority Order)
+1. **Sub-activity inline creation** — create new sub-activities from WIR form (must have >1 to split)
+2. **Sub-activity completion tracking** — show which sub-activities are done vs pending per activity
+3. **Milestone auto-detection** — all sub-activities complete for an activity = milestone achieved
+4. **Revision system** — auto-increment per workflow spec
+5. **Submit workflow** — can only submit when all signatories have signed
+6. **Approval chain** — after submit, goes through approvers
+7. **MIR and CIR forms** — similar to WIR
+8. **Commissioning tracking** — levels, systems, handover
 
 ### Key Files
-- frontend/src/components/layout/app-sidebar.tsx — sidebar
-- frontend/src/app/(dashboard)/layout.tsx — dashboard layout
-- frontend/src/config/navigation.ts — nav items
-- frontend/src/app/globals.css — theme tokens, scrollbar styles
-- frontend/src/lib/api.ts — Axios instance with JWT interceptor
-- frontend/src/hooks/use-project.ts — project selection (localStorage)
-- frontend/src/components/data-table/ — reusable DataTable system
-- frontend/src/components/ui/card.tsx — Card
-- frontend/src/components/ui/select.tsx — Select with modal={false}
-- frontend/src/components/ui/dropdown-menu.tsx — DropdownMenu with modal={false}
-- frontend/src/components/ui/date-picker.tsx — DatePicker (react-day-picker + popover)
-- frontend/src/app/(dashboard)/dashboard/page.tsx — dashboard with stats
-- frontend/src/app/(dashboard)/qaqc/wir/new/page.tsx — WIR full-page form
-- frontend/src/app/(dashboard)/documents/templates/builder/page.tsx — template builder UI
+- backend/app/api/v1/reports.py — report generation (docxtpl + LibreOffice)
+- backend/app/api/v1/documents.py — document CRUD + ref number + notify
+- backend/app/api/v1/ref_config.py — reference number config CRUD
+- backend/app/api/v1/notifications.py — notifications API
+- backend/app/services/signature.py — signature PNG rendering
 - backend/app/models/document.py — Document model
-- backend/app/models/document_template.py — DocumentTemplate (JSONB schema)
-- backend/app/models/project_header_image.py — ProjectHeaderImage (project_id + cell_id + image bytes)
-- backend/app/api/v1/templates.py — template CRUD + header image upload
-- backend/app/api/v1/pdf.py — PDF generation (WeasyPrint + binary search for expand rows)
-- backend/app/api/v1/documents.py — document CRUD + sign + approval workflow
-- backend/app/seed.py — seed script
+- backend/app/models/doc_template.py — DocTemplate model
+- backend/app/models/notification.py — Notification model
+- backend/app/models/reference_number_config.py — ReferenceNumberConfig
+- frontend/src/app/(dashboard)/qaqc/wir/new/page.tsx — WIR form
+- frontend/src/app/(dashboard)/qaqc/wir/page.tsx — WIR list
+- frontend/src/app/(dashboard)/documents/templates/page.tsx — template upload
+- frontend/src/app/(dashboard)/profile/page.tsx — signature settings
+- frontend/src/app/(dashboard)/admin/settings/page.tsx — ref number config
+- frontend/src/components/data-table/ — reusable DataTable system
 
 ### Running the Project
 ```bash
-# Start Docker services (PostgreSQL + pgAdmin)
+# Docker (PostgreSQL + pgAdmin)
 cd D:\QTC360\qtc360 && docker compose up -d
 
 # Backend

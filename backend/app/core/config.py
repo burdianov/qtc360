@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     postgres_user: str = "qtc360"
     postgres_password: str = "qtc360_dev"
 
+    # LibreOffice
+    libreoffice_path: str = "soffice"
+
     # Auth
     secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 15

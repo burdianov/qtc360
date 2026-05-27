@@ -1,44 +1,24 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { Badge } from "@/components/ui/badge";
 
-interface Activity { id: string; name: string; code: string; }
 interface Document {
   id: string;
   number: string;
   title: string;
   revision: number;
   status: string;
-  activity_id: string | null;
-  is_milestone_activity: boolean | null;
   created_at: string;
 }
-
-const schema = z.object({
-  number: z.string().min(1, "Number is required"),
-  title: z.string().min(1, "Title is required"),
-  activity_id: z.string().optional(),
-  is_milestone_activity: z.boolean().optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -51,8 +31,6 @@ export default function WIRPage() {
   const router = useRouter();
   const project = useSelectedProject();
   const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Document | null>(null);
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ["documents", "WIR", project?.id],
@@ -60,43 +38,27 @@ export default function WIRPage() {
     enabled: !!project,
   });
 
-  const { data: activities = [] } = useQuery<Activity[]>({
-    queryKey: ["activities"],
-    queryFn: async () => (await api.get("/activities")).data,
-  });
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { number: "", title: "", activity_id: "", is_milestone_activity: false },
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      const payload = { ...values, activity_id: values.activity_id || null };
-      if (editing) return api.patch(`/documents/${editing.id}`, payload);
-      return api.post("/documents", { ...payload, project_id: project!.id, doc_type: "WIR" });
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["documents", "WIR", project?.id] }); closeDialog(); },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/documents/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", "WIR", project?.id] }),
   });
 
-  const openCreate = () => { setEditing(null); form.reset({ number: "", title: "", activity_id: "", is_milestone_activity: false }); setDialogOpen(true); };
-  const openEdit = (item: Document) => { setEditing(item); form.reset({ number: item.number, title: item.title, activity_id: item.activity_id || "", is_milestone_activity: item.is_milestone_activity || false }); setDialogOpen(true); };
-  const closeDialog = () => { setDialogOpen(false); setEditing(null); };
-
   const rowActions: RowAction<Document>[] = [
-    { label: "Edit", onClick: openEdit },
+    { label: "Edit", onClick: (row) => router.push(`/qaqc/wir/${row.id}`) },
+    { label: "Generate PDF", onClick: async (row) => {
+      try {
+        const res = await api.post(`/reports/generate/WIR`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" });
+        const url = URL.createObjectURL(res.data);
+        window.open(url, "_blank");
+      } catch { toast.error("PDF generation failed"); }
+    }},
     { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
   ];
 
   const columns: ColumnDef<Document, unknown>[] = [
     { accessorKey: "number", header: ({ column }) => <DataTableColumnHeader column={column} title="Number" /> },
     { accessorKey: "title", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
-    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" /> },
+    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" />, meta: { title: "Rev" } },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace("_", " ")}</Badge> },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
@@ -112,40 +74,13 @@ export default function WIRPage() {
         </div>
         <Button onClick={() => router.push("/qaqc/wir/new")}><Plus className="mr-2 h-4 w-4" />New WIR</Button>
       </div>
-      <DataTable columns={columns} data={documents} searchKey="title" searchPlaceholder="Search by title..." />
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit WIR" : "New WIR"}</DialogTitle></DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
-              <FormField control={form.control} name="number" render={({ field }) => (<FormItem><FormLabel>Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="title" render={({ field }) => (<FormItem><FormLabel>Title</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="activity_id" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Activity</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select activity" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      {activities.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="is_milestone_activity" render={({ field }) => (
-                <FormItem className="flex items-center gap-2">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <FormLabel className="!mt-0">Milestone Activity</FormLabel>
-                </FormItem>
-              )} />
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <DataTable
+        columns={columns}
+        data={documents}
+        searchKey="title"
+        searchPlaceholder="Search by title..."
+        onRowClick={(row) => router.push(`/qaqc/wir/${row.id}`)}
+      />
     </div>
   );
 }

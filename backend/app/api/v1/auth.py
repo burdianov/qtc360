@@ -100,6 +100,21 @@ async def me(user: User = Depends(get_current_user)):
     return user
 
 
+@router.patch("/me")
+async def update_me(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Update current user preferences (e.g. signature_font, signature_text)."""
+    allowed = {"signature_font", "signature_text"}
+    for k, v in body.items():
+        if k in allowed:
+            setattr(user, k, v)
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/me/projects", response_model=list[ProjectSummaryResponse])
 async def my_projects(user: User = Depends(get_current_user)):
     return [{"id": p.id, "name": p.name, "code": p.code} for p in user.projects]

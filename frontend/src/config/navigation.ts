@@ -22,7 +22,6 @@ import {
   Gauge,
   FileUp,
   FileStack,
-  Upload,
   Shield,
   Lock,
   Settings,
@@ -89,7 +88,6 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Documents", url: "/documents", icon: FileText },
       { title: "Templates", url: "/documents/templates", icon: FileUp },
-      { title: "Uploads", url: "/documents/uploads", icon: Upload },
     ],
   },
   {

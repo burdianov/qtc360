@@ -73,7 +73,7 @@ export default function AssetsPage() {
   ];
 
   const columns: ColumnDef<Asset, unknown>[] = [
-    { accessorKey: "tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" /> },
+    { accessorKey: "tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, meta: { title: "Tag" } },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     { id: "type", accessorFn: (row) => assetTypes.find((t) => t.id === row.asset_type_id)?.name ?? "—", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" /> },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <span className="capitalize">{row.getValue("status")}</span> },

@@ -8,6 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,11 +19,12 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { Badge } from "@/components/ui/badge";
 
 interface Role { id: string; name: string; description: string | null; }
-interface UserItem { id: string; email: string; full_name: string; is_active: boolean; is_superuser: boolean; roles: Role[]; }
+interface UserItem { id: string; email: string; full_name: string; position: string | null; is_active: boolean; is_superuser: boolean; roles: Role[]; }
 
 const schema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email"),
   full_name: z.string().min(1, "Name is required"),
+  position: z.string().optional(),
   password: z.string(),
   is_active: z.boolean(),
   is_superuser: z.boolean(),
@@ -54,7 +57,7 @@ export default function UsersPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", full_name: "", password: "", is_active: true, is_superuser: false, role_ids: [] },
+    defaultValues: { email: "", full_name: "", position: "", password: "", is_active: true, is_superuser: false, role_ids: [] },
   });
 
   const resetForm = useForm<ResetFormValues>({
@@ -67,11 +70,18 @@ export default function UsersPage() {
       const payload: Record<string, unknown> = { ...values };
       if (editing) {
         delete payload.password;
+        if (!payload.position) payload.position = null;
         return api.patch(`/admin/users/${editing.id}`, payload);
       }
       return api.post("/admin/users", payload);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-users"] }); closeDialog(); },
+    onError: (e: any) => { 
+      const detail = e.response?.data?.detail;
+      const status = e.response?.status;
+      toast.error(detail || `Failed to save user (${status || 'network error'})`);
+      console.error("User save error:", e.response?.status, e.response?.data);
+    },
   });
 
   const resetMutation = useMutation({
@@ -86,8 +96,8 @@ export default function UsersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
-  const openCreate = () => { setEditing(null); form.reset({ email: "", full_name: "", password: "", is_active: true, is_superuser: false, role_ids: [] }); setDialogOpen(true); };
-  const openEdit = (item: UserItem) => { setEditing(item); form.reset({ email: item.email, full_name: item.full_name, password: "", is_active: item.is_active, is_superuser: item.is_superuser, role_ids: item.roles.map((r) => r.id) }); setDialogOpen(true); };
+  const openCreate = () => { setEditing(null); form.reset({ email: "", full_name: "", position: "", password: "", is_active: true, is_superuser: false, role_ids: [] }); setDialogOpen(true); };
+  const openEdit = (item: UserItem) => { setEditing(item); form.reset({ email: item.email, full_name: item.full_name, position: item.position || "", password: "", is_active: item.is_active, is_superuser: item.is_superuser, role_ids: item.roles.map((r) => r.id) }); setDialogOpen(true); };
   const openReset = (item: UserItem) => { setResettingUser(item); resetForm.reset({ password: "" }); setResetDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
 
@@ -98,10 +108,11 @@ export default function UsersPage() {
   ];
 
   const columns: ColumnDef<UserItem, unknown>[] = [
-    { accessorKey: "full_name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
+    { accessorKey: "full_name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />, meta: { title: "Name" } },
     { accessorKey: "email", header: ({ column }) => <DataTableColumnHeader column={column} title="Email" /> },
-    { id: "roles", accessorFn: (row) => row.roles.map((r) => r.name).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Roles" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.roles.map((r) => <Badge key={r.id} variant="secondary">{r.name}</Badge>)}</div> },
-    { accessorKey: "is_active", header: ({ column }) => <DataTableColumnHeader column={column} title="Active" />, cell: ({ row }) => row.getValue("is_active") ? "Yes" : "No" },
+    { accessorKey: "position", header: ({ column }) => <DataTableColumnHeader column={column} title="Designation" />, cell: ({ row }) => row.original.position || "—", meta: { title: "Designation" } },
+    { id: "roles", accessorFn: (row) => row.roles.map((r) => r.name).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.roles.map((r) => <Badge key={r.id} variant="secondary">{r.name}</Badge>)}</div>, meta: { title: "Role" } },
+    { accessorKey: "is_active", header: ({ column }) => <DataTableColumnHeader column={column} title="Active" />, cell: ({ row }) => row.getValue("is_active") ? "Yes" : "No", meta: { title: "Active" } },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
@@ -116,7 +127,23 @@ export default function UsersPage() {
         </div>
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add User</Button>
       </div>
-      <DataTable columns={columns} data={users} searchKey="full_name" searchPlaceholder="Search by name..." />
+      <DataTable
+        columns={columns}
+        data={users}
+        searchKey="full_name"
+        searchPlaceholder="Search by name..."
+        onExport={(rows) => exportToCsv(rows.map(({ id, email, full_name, position, is_active, is_superuser, roles }) => ({ email, full_name, position: position || "", is_active, is_superuser, roles: roles.map((r) => r.name).join(";") })), "users")}
+        onImport={async (file) => {
+          const rows = await parseCsv(file);
+          await Promise.allSettled(rows.map((row) => {
+            const roleNames = (row.role || "").split(";").map((r: string) => r.trim().toLowerCase()).filter(Boolean);
+            const matchedRoleIds = roles.filter((r) => roleNames.includes(r.name.toLowerCase())).map((r) => r.id);
+            return api.post("/admin/users", { email: row.email, full_name: row.full_name, position: row.position || null, password: row.password || "Temp1234", is_active: true, is_superuser: false, role_ids: matchedRoleIds });
+          }));
+          queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+        }}
+        onDownloadTemplate={() => downloadTemplate(["email", "full_name", "position", "password", "role"], "users")}
+      />
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -125,6 +152,7 @@ export default function UsersPage() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
               <FormField control={form.control} name="full_name" render={({ field }) => (<FormItem><FormLabel>Full Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="position" render={({ field }) => (<FormItem><FormLabel>Designation</FormLabel><FormControl><Input {...field} placeholder="e.g. QA/QC Engineer" /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="email" render={({ field }) => (<FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>)} />
               {!editing && <FormField control={form.control} name="password" render={({ field }) => (<FormItem><FormLabel>Password</FormLabel><FormControl><Input type="password" {...field} /></FormControl><FormMessage /></FormItem>)} />}
               <FormField control={form.control} name="is_active" render={({ field }) => (

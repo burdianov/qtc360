@@ -41,6 +41,8 @@ class UserResponse(BaseModel):
     full_name: str
     is_active: bool
     is_superuser: bool
+    signature_font: str | None = None
+    signature_text: str | None = None
 
     model_config = {"from_attributes": True}
 

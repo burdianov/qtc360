@@ -16,5 +16,6 @@ dependencies = [
     "python-multipart>=0.0.29",
     "sqlalchemy[asyncio]>=2.0.50",
     "uvicorn[standard]>=0.48.0",
-    "weasyprint>=68.1",
+    "docxtpl>=0.18.0",
+    "pillow>=12.2.0",
 ]

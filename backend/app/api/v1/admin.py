@@ -34,7 +34,7 @@ async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db))
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, is_active=body.is_active, is_superuser=body.is_superuser, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
+    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, position=body.position, is_active=body.is_active, is_superuser=body.is_superuser, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
     if body.role_ids:
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
         user.roles = list(roles)
@@ -45,13 +45,15 @@ async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db))
 
 @router.patch("/users/{user_id}", response_model=UserAdminResponse)
 async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = Depends(get_db)):
-    user = (await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))).scalar_one_or_none()  # noqa: E712
+    user = (await db.execute(select(User).where(User.id == user_id, User.is_deleted == False).options(selectinload(User.roles)))).scalar_one_or_none()  # noqa: E712
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if body.email is not None:
         user.email = body.email
     if body.full_name is not None:
         user.full_name = body.full_name
+    if body.position is not None:
+        user.position = body.position
     if body.is_active is not None:
         user.is_active = body.is_active
     if body.is_superuser is not None:
@@ -64,8 +66,8 @@ async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = D
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
         user.roles = list(roles)
     await db.commit()
-    await db.refresh(user)
-    return user
+    result = await db.execute(select(User).where(User.id == user_id).options(selectinload(User.roles)))
+    return result.scalar_one()
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: UUID, db: AsyncSession = Depends(get_db)):

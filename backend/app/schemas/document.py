@@ -20,11 +20,21 @@ class DocumentCreate(BaseModel):
     activity_id: UUID | None = None
     sub_activity_id: UUID | None = None
     is_milestone_activity: bool | None = None
+    location: str | None = None
+    floor_level: str | None = None
+    rams_ref: str | None = None
+    drawing_ref: str | None = None
+    inspection_date: datetime | None = None
+    site_engineer_id: UUID | None = None
+    qaqc_engineer_id: UUID | None = None
+    site_engineer_signed: bool = False
+    qaqc_engineer_signed: bool = False
     # CIR
     test_id: UUID | None = None
     is_milestone_test: bool | None = None
-    # Assets
+    # Assets & Sub-activities
     asset_ids: list[UUID] = []
+    completed_sub_activity_ids: list[UUID] = []
 
 
 class DocumentUpdate(BaseModel):
@@ -36,9 +46,19 @@ class DocumentUpdate(BaseModel):
     activity_id: UUID | None = None
     sub_activity_id: UUID | None = None
     is_milestone_activity: bool | None = None
+    location: str | None = None
+    floor_level: str | None = None
+    rams_ref: str | None = None
+    drawing_ref: str | None = None
+    inspection_date: datetime | None = None
+    site_engineer_id: UUID | None = None
+    qaqc_engineer_id: UUID | None = None
+    site_engineer_signed: bool | None = None
+    qaqc_engineer_signed: bool | None = None
     test_id: UUID | None = None
     is_milestone_test: bool | None = None
     asset_ids: list[UUID] | None = None
+    completed_sub_activity_ids: list[UUID] | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -53,6 +73,8 @@ class DocumentResponse(BaseModel):
     status: str
     site_engineer_id: UUID | None
     qaqc_engineer_id: UUID | None
+    site_engineer_signed: bool
+    qaqc_engineer_signed: bool
     signed_at: datetime | None
     current_approver_order: int | None
     submitted_at: datetime | None
@@ -62,6 +84,11 @@ class DocumentResponse(BaseModel):
     activity_id: UUID | None
     sub_activity_id: UUID | None
     is_milestone_activity: bool | None
+    location: str | None
+    floor_level: str | None
+    rams_ref: str | None
+    drawing_ref: str | None
+    inspection_date: datetime | None
     test_id: UUID | None
     is_milestone_test: bool | None
     created_at: datetime

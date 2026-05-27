@@ -75,7 +75,7 @@ export default function ActivitiesPage() {
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     { id: "service", accessorFn: (row) => services.find((s) => s.id === row.service_id)?.name ?? "—", header: ({ column }) => <DataTableColumnHeader column={column} title="Service" /> },
-    { accessorKey: "is_milestone", header: ({ column }) => <DataTableColumnHeader column={column} title="Milestone" />, cell: ({ row }) => row.getValue("is_milestone") ? "Yes" : "No" },
+    { accessorKey: "is_milestone", header: ({ column }) => <DataTableColumnHeader column={column} title="Milestone" />, cell: ({ row }) => row.getValue("is_milestone") ? "Yes" : "No", meta: { title: "Milestone" } },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

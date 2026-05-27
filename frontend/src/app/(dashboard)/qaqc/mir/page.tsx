@@ -86,7 +86,7 @@ export default function MIRPage() {
   const columns: ColumnDef<Document, unknown>[] = [
     { accessorKey: "number", header: ({ column }) => <DataTableColumnHeader column={column} title="Number" /> },
     { accessorKey: "title", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
-    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" /> },
+    { accessorKey: "revision", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" />, meta: { title: "Rev" } },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace("_", " ")}</Badge> },
     { accessorKey: "delivery_note", header: ({ column }) => <DataTableColumnHeader column={column} title="Delivery Note" /> },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },

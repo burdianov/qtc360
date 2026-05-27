@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { ArrowLeft, GripVertical, Plus, Trash2, X, Send, PenLine } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -19,11 +22,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
+import { Checkbox } from "@/components/ui/checkbox";
+
 interface Discipline { id: string; name: string; code: string; }
 interface Activity { id: string; name: string; code: string; service_id: string; }
 interface SubActivity { id: string; name: string; code: string; activity_id: string; }
 interface Service { id: string; name: string; code: string; }
-interface User { id: string; full_name: string; position: string | null; }
+interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
 const schema = z.object({
@@ -44,13 +49,66 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+function SubActivityPanel({ activityId, projectId, completedIds, onToggle, onCreated }: {
+  activityId: string;
+  projectId: string;
+  completedIds: string[];
+  onToggle: (id: string) => void;
+  onCreated: () => void;
+}) {
+  const [newName, setNewName] = useState("");
+  const [newCode, setNewCode] = useState("");
+
+  const { data: statusData = [] } = useQuery<{ id: string; name: string; code: string; completed: boolean }[]>({
+    queryKey: ["sub-activity-status", activityId, projectId],
+    queryFn: async () => (await api.get(`/documents/sub-activity-status?activity_id=${activityId}&project_id=${projectId}`)).data,
+    enabled: !!activityId && !!projectId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => api.post("/sub-activities", { name: newName, code: newCode, activity_id: activityId }),
+    onSuccess: () => { setNewName(""); setNewCode(""); onCreated(); },
+  });
+
+  return (
+    <div className="rounded-lg border p-3 space-y-2">
+      <p className="text-xs font-medium text-muted-foreground uppercase">Sub-Activity Completion</p>
+      {statusData.length === 0 && <p className="text-xs text-muted-foreground">No sub-activities for this activity.</p>}
+      <div className="space-y-1">
+        {statusData.map((s) => {
+          const checked = completedIds.includes(s.id) || s.completed;
+          return (
+            <label key={s.id} className="flex items-center gap-2 text-sm">
+              <Checkbox checked={checked} disabled={s.completed && !completedIds.includes(s.id)} onCheckedChange={() => onToggle(s.id)} />
+              <span className={checked ? "line-through text-muted-foreground" : ""}>{s.name}</span>
+              {s.completed && !completedIds.includes(s.id) && <Badge variant="outline" className="text-[10px] ml-auto">Done in another WIR</Badge>}
+            </label>
+          );
+        })}
+      </div>
+      {/* Inline create */}
+      <div className="flex gap-2 items-end pt-2">
+        <Input placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className="h-7 text-xs flex-1" />
+        <Input placeholder="Code" value={newCode} onChange={(e) => setNewCode(e.target.value)} className="h-7 text-xs w-20" />
+        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!newName || !newCode} onClick={() => createMutation.mutate()}>
+          <Plus className="h-3 w-3 mr-1" />Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function NewWIRPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
   const project = useSelectedProject();
+  const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
+  const [completedSubActivityIds, setCompletedSubActivityIds] = useState<string[]>([]);
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -101,16 +159,74 @@ export default function NewWIRPage() {
     },
   });
 
+  // Load existing document if editing
+  const { data: existingDoc } = useQuery({
+    queryKey: ["document", editId],
+    queryFn: async () => (await api.get(`/documents/${editId}`)).data,
+    enabled: !!editId,
+  });
+
+  useEffect(() => {
+    if (existingDoc) {
+      form.reset({
+        subject: existingDoc.title || "",
+        discipline_id: existingDoc.discipline_id || "",
+        description: existingDoc.description || "",
+        general_location: existingDoc.location || "",
+        floor_level_room: existingDoc.floor_level || "",
+        approved_rams: existingDoc.rams_ref || "",
+        drawing_reference: existingDoc.drawing_ref || "",
+        service_id: "",
+        activity_id: existingDoc.activity_id || "",
+        sub_activity_id: existingDoc.sub_activity_id || "",
+        inspector_1_id: existingDoc.site_engineer_id || "",
+        inspector_2_id: existingDoc.qaqc_engineer_id || "",
+        date: existingDoc.inspection_date ? existingDoc.inspection_date.split("T")[0] : "",
+      });
+      if (existingDoc.site_engineer_signed || existingDoc.qaqc_engineer_signed) {
+        setSigned({
+          inspector1: !!existingDoc.site_engineer_signed,
+          inspector2: !!existingDoc.qaqc_engineer_signed,
+        });
+      }
+    }
+  }, [existingDoc]);
+
   const serviceId = form.watch("service_id");
   const activityId = form.watch("activity_id");
+  const disciplineId = form.watch("discipline_id");
+  const subActivityId = form.watch("sub_activity_id");
+  const inspector1Id = form.watch("inspector_1_id");
+  const inspector2Id = form.watch("inspector_2_id");
   const filteredActivities = serviceId ? activities.filter((a) => a.service_id === serviceId) : activities;
   const filteredSubActivities = activityId ? subActivities.filter((s) => s.activity_id === activityId) : [];
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      if (editId) {
+        // Update existing
+        const payload = {
+          title: values.subject,
+          description: values.description,
+          discipline_id: values.discipline_id,
+          activity_id: values.activity_id || null,
+          sub_activity_id: values.sub_activity_id || null,
+          location: values.general_location || null,
+          floor_level: values.floor_level_room || null,
+          rams_ref: values.approved_rams || null,
+          drawing_ref: values.drawing_reference || null,
+          inspection_date: values.date || null,
+          site_engineer_id: values.inspector_1_id || null,
+          qaqc_engineer_id: values.inspector_2_id || null,
+          site_engineer_signed: signed.inspector1,
+          qaqc_engineer_signed: signed.inspector2,
+          completed_sub_activity_ids: completedSubActivityIds,
+        };
+        return api.patch(`/documents/${editId}`, payload);
+      }
+      // Create new
       const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
-      // Generate reference number
-      const refRes = await api.get("/templates/ref-config/generate", {
+      const refRes = await api.get("/documents/generate-ref-number", {
         params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
       });
       const payload = {
@@ -123,15 +239,92 @@ export default function NewWIRPage() {
         activity_id: values.activity_id || null,
         sub_activity_id: values.sub_activity_id || null,
         is_milestone_activity: !!values.activity_id,
+        location: values.general_location || null,
+        floor_level: values.floor_level_room || null,
+        rams_ref: values.approved_rams || null,
+        drawing_ref: values.drawing_reference || null,
+        inspection_date: values.date || null,
+        site_engineer_id: values.inspector_1_id || null,
+        qaqc_engineer_id: values.inspector_2_id || null,
+        site_engineer_signed: signed.inspector1,
+        qaqc_engineer_signed: signed.inspector2,
         asset_ids: selectedAssets.map((a) => a.id),
+        completed_sub_activity_ids: completedSubActivityIds,
       };
       return api.post("/documents", payload);
     },
     onSuccess: () => {
+      toast.success(editId ? "WIR updated" : "WIR saved as draft");
       queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
       router.push("/qaqc/wir");
     },
   });
+
+  const notifyMutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      let docId = editId;
+      if (!docId) {
+        // Create first
+        const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
+        const refRes = await api.get("/documents/generate-ref-number", {
+          params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
+        });
+        const payload = {
+          project_id: project!.id,
+          doc_type: "WIR",
+          number: refRes.data.reference_number,
+          title: values.subject,
+          description: values.description,
+          discipline_id: values.discipline_id,
+          activity_id: values.activity_id || null,
+          sub_activity_id: values.sub_activity_id || null,
+          is_milestone_activity: !!values.activity_id,
+          location: values.general_location || null,
+          floor_level: values.floor_level_room || null,
+          rams_ref: values.approved_rams || null,
+          drawing_ref: values.drawing_reference || null,
+          inspection_date: values.date || null,
+          site_engineer_id: values.inspector_1_id || null,
+          qaqc_engineer_id: values.inspector_2_id || null,
+          asset_ids: selectedAssets.map((a) => a.id),
+        };
+        const res = await api.post("/documents", payload);
+        docId = res.data.id;
+      } else {
+        // Update first
+        await api.patch(`/documents/${docId}`, {
+          title: values.subject,
+          description: values.description,
+          discipline_id: values.discipline_id,
+          activity_id: values.activity_id || null,
+          sub_activity_id: values.sub_activity_id || null,
+          location: values.general_location || null,
+          floor_level: values.floor_level_room || null,
+          rams_ref: values.approved_rams || null,
+          drawing_ref: values.drawing_reference || null,
+          inspection_date: values.date || null,
+          site_engineer_id: values.inspector_1_id || null,
+          qaqc_engineer_id: values.inspector_2_id || null,
+        });
+      }
+      await api.post(`/documents/${docId}/notify-signatories`);
+    },
+    onSuccess: () => {
+      toast.success("WIR saved and signatories notified");
+      queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
+      router.push("/qaqc/wir");
+    },
+  });
+
+  const handleBack = () => {
+    if (form.formState.isDirty) {
+      if (confirm("You have unsaved changes. Save as draft before leaving?")) {
+        form.handleSubmit((v) => mutation.mutate(v))();
+        return;
+      }
+    }
+    router.push("/qaqc/wir");
+  };
 
   const addAsset = (assetId: string) => {
     const asset = assets.find((a) => a.id === assetId);
@@ -166,11 +359,11 @@ export default function NewWIRPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/qaqc/wir")}>
+        <Button variant="ghost" size="sm" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4 mr-1" />Back
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">New Work Inspection Request</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{editId ? "Edit Work Inspection Request" : "New Work Inspection Request"}</h1>
           <p className="text-sm text-muted-foreground">Fill in the WIR submission form</p>
         </div>
       </div>
@@ -189,7 +382,7 @@ export default function NewWIRPage() {
                 <FormItem>
                   <FormLabel>Discipline *</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select discipline" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select discipline">{disciplineId ? disciplines.find((d) => d.id === disciplineId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                     <SelectContent>{disciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
                   </Select>
                   <FormMessage />
@@ -229,7 +422,7 @@ export default function NewWIRPage() {
                   <FormItem>
                     <FormLabel>Service</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select service">{serviceId ? services.find((s) => s.id === serviceId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
@@ -238,7 +431,7 @@ export default function NewWIRPage() {
                   <FormItem>
                     <FormLabel>Activity</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select activity" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select activity">{activityId ? activities.find((a) => a.id === activityId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{filteredActivities.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
@@ -247,12 +440,23 @@ export default function NewWIRPage() {
                   <FormItem>
                     <FormLabel>Sub-Activity</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select sub-activity" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select sub-activity">{subActivityId ? subActivities.find((s) => s.id === subActivityId)?.name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{filteredSubActivities.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </FormItem>
                 )} />
               </div>
+
+              {/* Sub-activity status & inline creation */}
+              {activityId && (
+                <SubActivityPanel
+                  activityId={activityId}
+                  projectId={project?.id || ""}
+                  completedIds={completedSubActivityIds}
+                  onToggle={(id) => setCompletedSubActivityIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
+                  onCreated={() => queryClient.invalidateQueries({ queryKey: ["sub-activities"] })}
+                />
+              )}
 
               <Separator />
 
@@ -287,7 +491,7 @@ export default function NewWIRPage() {
 
           {/* Inspectors & Signatures */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Inspectors & Signatures</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-3">
@@ -295,47 +499,98 @@ export default function NewWIRPage() {
                     <FormItem>
                       <FormLabel>Inspected by 1</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select inspector" /></SelectTrigger></FormControl>
-                        <SelectContent>{users.map((e) => <SelectItem key={e.id} value={e.id}>{e.full_name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
+                        <FormControl><SelectTrigger className="w-full min-w-[280px]"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              <span className="inline-flex items-baseline gap-2 w-full">
+                                <span>{u.full_name}:</span>
+                                <span className="text-muted-foreground">{u.position || "—"}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </FormItem>
                   )} />
-                  {/* Signature field */}
                   <div
-                    className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${signed.inspector1 ? "border-emerald-500/50 bg-emerald-500/5" : "border-border hover:border-primary/50"}`}
-                    onClick={() => form.getValues("inspector_1_id") && setSigned((s) => ({ ...s, inspector1: !s.inspector1 }))}
+                    className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
+                      signed.inspector1
+                        ? "border-emerald-500/50 bg-emerald-500/5"
+                        : currentUser?.id === inspector1Id
+                          ? "border-border hover:border-primary/50 cursor-pointer"
+                          : "border-border opacity-50 cursor-not-allowed"
+                    }`}
+                    onClick={() => {
+                      if (currentUser?.id === inspector1Id) setSigned((s) => ({ ...s, inspector1: !s.inspector1 }));
+                    }}
                   >
                     {signed.inspector1 ? (
-                      <span className="text-lg italic font-serif text-emerald-500">
-                        {users.find((e) => e.id === form.getValues("inspector_1_id"))?.full_name || "Signed"}
-                      </span>
+                      <img
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        alt="Signature"
+                        className="h-10 object-contain"
+                      />
                     ) : (
-                      <span className="text-sm text-muted-foreground">Click to sign</span>
+                      <span className="text-sm text-muted-foreground">
+                        {currentUser?.id === inspector1Id ? "Click to sign" : "Awaiting signature"}
+                      </span>
                     )}
                   </div>
+                  {currentUser?.id === inspector1Id && (
+                    <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                      <PenLine className="h-3 w-3" />Change signature style
+                    </Link>
+                  )}
                 </div>
                 <div className="space-y-3">
                   <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Inspected by 2</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select inspector" /></SelectTrigger></FormControl>
-                        <SelectContent>{users.map((e) => <SelectItem key={e.id} value={e.id}>{e.full_name}{e.position ? ` — ${e.position}` : ""}</SelectItem>)}</SelectContent>
+                        <FormControl><SelectTrigger className="w-full min-w-[280px]"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              <span className="inline-flex items-baseline gap-2 w-full">
+                                <span>{u.full_name}:</span>
+                                <span className="text-muted-foreground">{u.position || "—"}</span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </FormItem>
                   )} />
                   <div
-                    className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${signed.inspector2 ? "border-emerald-500/50 bg-emerald-500/5" : "border-border hover:border-primary/50"}`}
-                    onClick={() => form.getValues("inspector_2_id") && setSigned((s) => ({ ...s, inspector2: !s.inspector2 }))}
+                    className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
+                      signed.inspector2
+                        ? "border-emerald-500/50 bg-emerald-500/5"
+                        : currentUser?.id === inspector2Id
+                          ? "border-border hover:border-primary/50 cursor-pointer"
+                          : "border-border opacity-50 cursor-not-allowed"
+                    }`}
+                    onClick={() => {
+                      if (currentUser?.id === inspector2Id) setSigned((s) => ({ ...s, inspector2: !s.inspector2 }));
+                    }}
                   >
                     {signed.inspector2 ? (
-                      <span className="text-lg italic font-serif text-emerald-500">
-                        {users.find((e) => e.id === form.getValues("inspector_2_id"))?.full_name || "Signed"}
-                      </span>
+                      <img
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        alt="Signature"
+                        className="h-10 object-contain"
+                      />
                     ) : (
-                      <span className="text-sm text-muted-foreground">Click to sign</span>
+                      <span className="text-sm text-muted-foreground">
+                        {currentUser?.id === inspector2Id ? "Click to sign" : "Awaiting signature"}
+                      </span>
                     )}
                   </div>
+                  {currentUser?.id === inspector2Id && (
+                    <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+                      <PenLine className="h-3 w-3" />Change signature style
+                    </Link>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -370,9 +625,12 @@ export default function NewWIRPage() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => router.push("/qaqc/wir")}>Cancel</Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
+            <Button type="submit" variant="secondary" disabled={mutation.isPending}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
+            </Button>
+            <Button type="button" disabled={notifyMutation.isPending || !inspector1Id || !inspector2Id} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
+              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
             </Button>
           </div>
         </form>

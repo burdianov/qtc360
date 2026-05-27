@@ -7,6 +7,7 @@ class UserAdminCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+    position: str | None = None
     is_active: bool = True
     is_superuser: bool = False
     role_ids: list[UUID] = []
@@ -14,6 +15,7 @@ class UserAdminCreate(BaseModel):
 class UserAdminUpdate(BaseModel):
     email: EmailStr | None = None
     full_name: str | None = None
+    position: str | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None
     password: str | None = None
@@ -29,6 +31,9 @@ class UserAdminResponse(BaseModel):
     id: UUID
     email: str
     full_name: str
+    position: str | None = None
+    signature_text: str | None = None
+    signature_font: str | None = None
     is_active: bool
     is_superuser: bool
     roles: list[RoleResponse] = []
