@@ -16,6 +16,7 @@ interface Document {
   title: string;
   revision_no: number;
   status: string;
+  current_approver_order: number | null;
   delivery_note: string | null;
   created_at: string;
 }
@@ -26,6 +27,7 @@ const statusColors: Record<string, string> = {
   approved: "bg-emerald-500/15 text-emerald-500",
   approved_with_comments: "bg-emerald-500/15 text-emerald-500",
   rejected: "bg-red-500/15 text-red-500",
+  superseded: "bg-muted text-muted-foreground",
 };
 
 export default function MIRPage() {
@@ -54,7 +56,11 @@ export default function MIRPage() {
     { accessorKey: "title", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
     { accessorKey: "delivery_note", header: ({ column }) => <DataTableColumnHeader column={column} title="Delivery Note" /> },
     { accessorKey: "revision_no", header: ({ column }) => <DataTableColumnHeader column={column} title="Rev" /> },
-    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace(/_/g, " ")}</Badge> },
+    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => {
+      const { status, current_approver_order } = row.original;
+      const label = status === "submitted" && current_approver_order ? `Pending Approver ${current_approver_order}` : status.replace(/_/g, " ");
+      return <Badge className={statusColors[status] || ""}>{label}</Badge>;
+    }},
     { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

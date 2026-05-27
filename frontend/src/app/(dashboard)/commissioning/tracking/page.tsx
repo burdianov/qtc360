@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type ColumnDef } from "@tanstack/react-table";
+import { Download } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { exportToCsv } from "@/lib/csv";
 
 interface AssetRequirement {
   id: string;
@@ -128,9 +131,14 @@ export default function CommissioningTrackingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Commissioning Tracking</h1>
-        <p className="text-sm text-muted-foreground">Asset progress through commissioning levels</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Commissioning Tracking</h1>
+          <p className="text-sm text-muted-foreground">Asset progress through commissioning levels</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => exportToCsv(progressData.map((p) => ({ tag_number: p.asset.tag_number, name: p.asset.name, progress: `${p.progress}%`, achieved: `${p.achieved}/${p.total}`, red_tag: p.red_tag ? "Yes" : "No", yellow_tag: p.yellow_tag ? "Yes" : "No", green_tag: p.green_tag ? "Yes" : "No", blue_tag: p.blue_tag ? "Yes" : "No" })), "commissioning-progress")}>
+          <Download className="h-4 w-4 mr-1" />Export CSV
+        </Button>
       </div>
 
       {/* Filter */}
