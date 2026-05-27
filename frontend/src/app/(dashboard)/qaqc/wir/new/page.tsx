@@ -53,6 +53,7 @@ export default function NewWIRPage() {
   const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
+  const [referenceNo, setReferenceNo] = useState<string>("");
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -110,17 +111,27 @@ export default function NewWIRPage() {
         inspector1: !!existingDoc.site_engineer_signed,
         inspector2: !!existingDoc.qaqc_engineer_signed,
       });
+      setReferenceNo(existingDoc.reference_no || "");
     }
   }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
+  useEffect(() => {
+    if (!editId && disciplineId && project?.id) {
+      const disciplineCode = disciplines.find((d) => d.id === disciplineId)?.code || "";
+      api.get("/documents/generate-ref-number", {
+        params: { project_id: project.id, doc_type: "WIR", discipline_code: disciplineCode },
+      }).then((res) => setReferenceNo(res.data.reference_number));
+    }
+  }, [editId, disciplineId, project?.id, disciplines]); // eslint-disable-line react-hooks/exhaustive-deps
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
   const buildPayload = (values: FormValues, refNo?: string) => ({
     project_id: project!.id,
     document_type: "WIR",
-    reference_no: refNo || existingDoc?.reference_no || "",
+    reference_no: refNo || referenceNo || "",
     title: values.subject,
     description: values.description,
     discipline_id: values.discipline_id,
@@ -143,11 +154,7 @@ export default function NewWIRPage() {
         const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
         res = await api.patch(`/documents/${editId}`, updatePayload);
       } else {
-        const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
-        const refRes = await api.get("/documents/generate-ref-number", {
-          params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
-        });
-        res = await api.post("/documents", buildPayload(values, refRes.data.reference_number));
+        res = await api.post("/documents", buildPayload(values));
       }
       const docId = res.data?.id || editId;
       // Save commissioning linkage
@@ -189,11 +196,7 @@ export default function NewWIRPage() {
     mutationFn: async (values: FormValues) => {
       let docId = editId;
       if (!docId) {
-        const disciplineCode = disciplines.find((d) => d.id === values.discipline_id)?.code || "";
-        const refRes = await api.get("/documents/generate-ref-number", {
-          params: { project_id: project!.id, doc_type: "WIR", discipline_code: disciplineCode },
-        });
-        const res = await api.post("/documents", buildPayload(values, refRes.data.reference_number));
+        const res = await api.post("/documents", buildPayload(values));
         docId = res.data.id;
       } else {
         const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
@@ -267,6 +270,12 @@ export default function NewWIRPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <FormItem>
+                  <FormLabel>Reference Number</FormLabel>
+                  <Input value={referenceNo} disabled className="font-mono bg-muted" placeholder="Select discipline to generate..." />
+                </FormItem>
+              </div>
               <FormField control={form.control} name="date" render={({ field }) => (
                 <FormItem><FormLabel>Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>
               )} />
