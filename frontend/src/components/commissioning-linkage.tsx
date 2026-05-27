@@ -19,6 +19,7 @@ interface RequirementTemplate {
   level_code: string;
   requirement_category: string;
   evidence_document_type: string;
+  is_gate_requirement: boolean;
 }
 
 interface ExistingWorkItem {
@@ -73,6 +74,15 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
   });
 
   const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
+
+  // Gate check: if selected template is a gate requirement, check for incomplete prerequisites
+  const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
+    queryKey: ["gate-check", selectedAssetIds[0], selectedTemplate?.level_code],
+    queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: selectedAssetIds[0], level_code: selectedTemplate!.level_code } })).data,
+    enabled: !!selectedTemplate?.is_gate_requirement && selectedAssetIds.length > 0,
+  });
+
+  const isGateWarning = selectedTemplate?.is_gate_requirement && gateCheck && !gateCheck.complete;
 
   const handleToggle = (on: boolean) => {
     setEnabled(on);
@@ -162,6 +172,24 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
 
           {templates.length === 0 && (
             <p className="text-xs text-muted-foreground">No {documentType} requirement templates found.</p>
+          )}
+
+          {/* Gate warning */}
+          {isGateWarning && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-500/5 p-3 space-y-2">
+              <p className="text-sm font-medium text-amber-500">⚠ Incomplete Prerequisites</p>
+              <p className="text-xs text-muted-foreground">The following {selectedTemplate?.level_code} requirements are not yet achieved:</p>
+              <ul className="space-y-1">
+                {gateCheck!.incomplete.map((r, i) => (
+                  <li key={i} className="text-xs flex items-center gap-2">
+                    <span className="font-mono text-muted-foreground">{r.template_code}</span>
+                    <span>{r.template_name}</span>
+                    <Badge variant="outline" className="text-[10px] ml-auto">{r.status} ({r.progress_percent}%)</Badge>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-500/80">You may proceed, but the tag will not be achieved until all requirements are completed.</p>
+            </div>
           )}
 
           {value?.requirementTemplateId && (
