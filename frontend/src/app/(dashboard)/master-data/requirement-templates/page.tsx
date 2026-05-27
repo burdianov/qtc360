@@ -109,7 +109,10 @@ export default function RequirementTemplatesPage() {
   const columns: ColumnDef<RequirementTemplate, unknown>[] = [
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { accessorKey: "level_code", header: ({ column }) => <DataTableColumnHeader column={column} title="Level" />, cell: ({ row }) => <Badge>{row.original.level_code}</Badge> },
+    { accessorKey: "level_code", header: ({ column }) => <DataTableColumnHeader column={column} title="Level" />, cell: ({ row }) => {
+      const colors: Record<string, string> = { L1: "bg-red-500/15 text-red-500", L2A: "bg-red-500/15 text-red-500", L2B: "bg-yellow-500/15 text-yellow-600", L3: "bg-emerald-500/15 text-emerald-500", L4: "bg-blue-500/15 text-blue-500" };
+      return <Badge className={colors[row.original.level_code] || ""}>{row.original.level_code}</Badge>;
+    }},
     { accessorKey: "requirement_category", header: ({ column }) => <DataTableColumnHeader column={column} title="Category" />, cell: ({ row }) => row.original.requirement_category.replace(/_/g, " ") },
     { accessorKey: "evidence_document_type", header: ({ column }) => <DataTableColumnHeader column={column} title="Evidence Type" /> },
     { accessorKey: "is_gate_requirement", header: ({ column }) => <DataTableColumnHeader column={column} title="Gate" />, cell: ({ row }) => row.original.is_gate_requirement ? "Yes" : "—" },
@@ -120,7 +123,7 @@ export default function RequirementTemplatesPage() {
   if (isLoading) return <div className="p-6">Loading...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Requirement Templates</h1>

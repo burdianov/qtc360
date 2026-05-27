@@ -175,6 +175,7 @@ async def preview_signature(
 class GenerateReportRequest(PydanticModel):
     document_id: UUID
     project_id: UUID
+    template_id: UUID | None = None
 
 
 @router.post("/generate/{doc_type}")
@@ -184,16 +185,21 @@ async def generate_report(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(get_current_user),
 ):
-    """Generate PDF from document data + active Word template."""
-    # Get active template for this project
-    result = await db.execute(
-        select(DocTemplate).where(
-            DocTemplate.project_id == body.project_id,
-            DocTemplate.doc_type == doc_type.upper(),
-            DocTemplate.is_active == True,  # noqa: E712
-            DocTemplate.is_deleted == False,  # noqa: E712
+    """Generate PDF from document data + Word template. Appends attachments."""
+    # Get template (specific or active)
+    if body.template_id:
+        result = await db.execute(
+            select(DocTemplate).where(DocTemplate.id == body.template_id, DocTemplate.is_deleted == False)  # noqa: E712
         )
-    )
+    else:
+        result = await db.execute(
+            select(DocTemplate).where(
+                DocTemplate.project_id == body.project_id,
+                DocTemplate.doc_type == doc_type.upper(),
+                DocTemplate.is_active == True,  # noqa: E712
+                DocTemplate.is_deleted == False,  # noqa: E712
+            )
+        )
     template = result.scalar_one_or_none()
     if not template:
         raise HTTPException(status_code=404, detail=f"No active {doc_type.upper()} template")
@@ -216,11 +222,23 @@ async def generate_report(
     # Build context from document
     context = _build_context(document)
 
-    # Fill template (with signature images)
+    # Fill template (with signature images only for signed inspectors)
     docx_bytes = _fill_template(template.file, context, document)
 
     # Convert to PDF
     pdf_bytes = _convert_to_pdf(docx_bytes)
+
+    # Append attachments as additional pages
+    from app.models.document_attachment import DocumentAttachment
+    att_result = await db.execute(
+        select(DocumentAttachment)
+        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.is_deleted == False)  # noqa: E712
+        .order_by(DocumentAttachment.sort_order)
+    )
+    attachments = att_result.scalars().all()
+
+    if attachments:
+        pdf_bytes = _merge_attachments(pdf_bytes, attachments)
 
     return Response(
         content=pdf_bytes,
@@ -304,7 +322,11 @@ def _build_context(document: Document) -> dict:
     # Project number
     if document.project:
         ctx["prj_no"] = document.project.code or ""
-        ctx["nm"] = document.project.external_code or ""
+        ctx["ec"] = document.project.external_code or ""
+        ctx["nm"] = document.project.external_code or ""  # backward compat
+
+    # Discipline name
+    ctx["discipline"] = document.discipline.name if document.discipline else ""
 
     return ctx
 
@@ -313,10 +335,11 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     """Fill a DOCX template with context data and signature images."""
     doc = DocxTemplate(io.BytesIO(template_bytes))
 
-    # Render signature images for inspectors
+    # Render signature images only for inspectors who have actually signed
+    signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         key = f"insp_sign_{i}"
-        if inspector:
+        if inspector and signed_flags[i - 1]:
             font_id = inspector.signature_font or "dancing_script"
             sig_name = inspector.signature_text or inspector.full_name
             sig_png = render_signature(sig_name, font_id)
@@ -354,3 +377,60 @@ def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         if not pdf_path.exists():
             raise HTTPException(status_code=500, detail="PDF not generated")
         return pdf_path.read_bytes()
+
+
+def _merge_attachments(main_pdf: bytes, attachments) -> bytes:
+    """Merge attachment PDFs/images into the main PDF."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        # If pypdf not available, return main PDF only
+        return main_pdf
+
+    writer = PdfWriter()
+
+    # Add main document pages
+    reader = PdfReader(io.BytesIO(main_pdf))
+    for page in reader.pages:
+        writer.add_page(page)
+
+    # Add each attachment
+    for att in attachments:
+        if att.content_type == "application/pdf":
+            try:
+                att_reader = PdfReader(io.BytesIO(att.file))
+                for page in att_reader.pages:
+                    writer.add_page(page)
+            except Exception:
+                pass  # Skip corrupt PDFs
+        elif att.content_type.startswith("image/"):
+            # Convert image to PDF page
+            try:
+                from PIL import Image as PILImage
+                from reportlab.lib.pagesizes import A4
+                from reportlab.pdfgen import canvas as rl_canvas
+
+                img = PILImage.open(io.BytesIO(att.file))
+                img_buf = io.BytesIO()
+                c = rl_canvas.Canvas(img_buf, pagesize=A4)
+                # Scale image to fit A4 with margins
+                max_w, max_h = A4[0] - 72, A4[1] - 72
+                ratio = min(max_w / img.width, max_h / img.height)
+                w, h = img.width * ratio, img.height * ratio
+                # Save as temp for reportlab
+                tmp_img = io.BytesIO()
+                img.save(tmp_img, format="PNG")
+                tmp_img.seek(0)
+                from reportlab.lib.utils import ImageReader
+                c.drawImage(ImageReader(tmp_img), 36, A4[1] - h - 36, w, h)
+                c.save()
+                img_buf.seek(0)
+                img_reader = PdfReader(img_buf)
+                for page in img_reader.pages:
+                    writer.add_page(page)
+            except Exception:
+                pass  # Skip if image processing fails
+
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()

@@ -52,7 +52,7 @@ APPROVERS = [
 
 PROJECTS = [
     {"name": "AUH-08", "code": "1733", "client_code": "ALDAR"},
-    {"name": "DU Mercury", "code": "1728", "client_code": "MERAAS"},
+    {"name": "DU Mercury", "code": "1728", "client_code": "MERAAS", "external_code": "M1610"},
 ]
 
 # Project 1728 approvers: AESG=cxm, CORE=cxa, RED=dc, SDLS=ta
@@ -138,7 +138,7 @@ async def seed():
 
         project_map = {}
         for p in PROJECTS:
-            proj, _ = await get_or_create(session, Project, "code", p["code"], name=p["name"], client_id=client_map[p["client_code"]].id)
+            proj, _ = await get_or_create(session, Project, "code", p["code"], name=p["name"], client_id=client_map[p["client_code"]].id, external_code=p.get("external_code"))
             project_map[p["code"]] = proj
         await session.commit()
 

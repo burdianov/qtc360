@@ -18,4 +18,5 @@ dependencies = [
     "uvicorn[standard]>=0.48.0",
     "docxtpl>=0.18.0",
     "pillow>=12.2.0",
+    "pypdf>=6.12.2",
 ]

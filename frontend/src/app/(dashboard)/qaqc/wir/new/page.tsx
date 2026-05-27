@@ -51,10 +51,11 @@ export default function NewWIRPage() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [attachments, setAttachments] = useState<{ name: string; path: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ file: File; name: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -69,6 +70,12 @@ export default function NewWIRPage() {
   const { data: assets = [] } = useQuery<Asset[]>({
     queryKey: ["assets"],
     queryFn: async () => (await api.get("/assets")).data,
+  });
+
+  const { data: docTemplates = [] } = useQuery<{ id: string; name: string; version: number; is_active: boolean }[]>({
+    queryKey: ["doc-templates", project?.id, "WIR"],
+    queryFn: async () => (await api.get("/reports/templates", { params: { project_id: project!.id, doc_type: "WIR" } })).data,
+    enabled: !!project?.id,
   });
 
   const form = useForm<FormValues>({
@@ -223,6 +230,16 @@ export default function NewWIRPage() {
           }).catch(() => {});
         }
       }
+      // Upload attachments
+      if (attachments.length > 0 && docId) {
+        for (const att of attachments) {
+          const formData = new FormData();
+          formData.append("file", att.file);
+          await api.post(`/documents/${docId}/attachments`, formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        }
+      }
       return res;
     },
     onSuccess: (res) => {
@@ -278,10 +295,11 @@ export default function NewWIRPage() {
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
+    input.accept = ".pdf,.jpg,.jpeg,.png";
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
       if (files) {
-        const newAttachments = Array.from(files).map((f) => ({ name: f.name, path: f.name }));
+        const newAttachments = Array.from(files).map((f) => ({ file: f, name: f.name }));
         setAttachments([...attachments, ...newAttachments]);
       }
     };
@@ -312,10 +330,19 @@ export default function NewWIRPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+              <div>
                 <FormItem>
                   <FormLabel>Reference Number</FormLabel>
                   <Input value={referenceNo} disabled className="font-mono bg-muted" placeholder="Select discipline to generate..." />
+                </FormItem>
+              </div>
+              <div>
+                <FormItem>
+                  <FormLabel>Template</FormLabel>
+                  <Select value={selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : "")} onValueChange={(v: any) => setSelectedTemplateId(v)} disabled={docTemplates.length <= 1}>
+                    <SelectTrigger><SelectValue placeholder="Select template">{(() => { const t = docTemplates.find((t) => t.id === (selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : ""))); return t ? `${t.name} (v${t.version})` : ""; })()}</SelectValue></SelectTrigger>
+                    <SelectContent>{docTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name} (v{t.version}){t.is_active ? " ✓" : ""}</SelectItem>)}</SelectContent>
+                  </Select>
                 </FormItem>
               </div>
               <FormField control={form.control} name="date" render={({ field }) => (
@@ -555,7 +582,9 @@ export default function NewWIRPage() {
             {editId && (
               <Button type="button" variant="outline" onClick={async () => {
                 try {
-                  const res = await api.post(`/reports/generate/WIR`, { document_id: editId, project_id: project!.id }, { responseType: "blob" });
+                  const payload: any = { document_id: editId, project_id: project!.id };
+                  if (selectedTemplateId) payload.template_id = selectedTemplateId;
+                  const res = await api.post(`/reports/generate/WIR`, payload, { responseType: "blob" });
                   const url = URL.createObjectURL(res.data);
                   window.open(url, "_blank");
                   setTimeout(() => URL.revokeObjectURL(url), 60000);

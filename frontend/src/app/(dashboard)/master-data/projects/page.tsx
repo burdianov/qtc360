@@ -34,6 +34,7 @@ interface Project {
   id: string;
   name: string;
   code: string;
+  external_code: string | null;
   description: string | null;
   status: string;
   start_date: string | null;
@@ -45,6 +46,7 @@ interface Project {
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   code: z.string().min(1, "Code is required"),
+  external_code: z.string().optional(),
   description: z.string(),
   status: z.string().min(1, "Status is required"),
   start_date: z.string(),
@@ -71,7 +73,7 @@ export default function ProjectsPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", code: "", description: "", status: "active", start_date: "", end_date: "", client_id: "" },
+    defaultValues: { name: "", code: "", external_code: "", description: "", status: "active", start_date: "", end_date: "", client_id: "" },
   });
 
   const { isDirty } = form.formState;
@@ -117,6 +119,7 @@ export default function ProjectsPage() {
     form.reset({
       name: project.name,
       code: project.code,
+      external_code: project.external_code || "",
       description: project.description || "",
       status: project.status,
       start_date: project.start_date || "",
@@ -230,6 +233,9 @@ export default function ProjectsPage() {
                 )} />
                 <FormField control={form.control} name="code" render={({ field }) => (
                   <FormItem><FormLabel>Code</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField control={form.control} name="external_code" render={({ field }) => (
+                  <FormItem><FormLabel>External Code</FormLabel><FormControl><Input {...field} placeholder="e.g. M1610" /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
               <FormField control={form.control} name="description" render={({ field }) => (
