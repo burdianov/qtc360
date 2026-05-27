@@ -130,13 +130,11 @@ POST/GET    /api/v1/commissioning/gate-overrides
 
 ## Next Priorities
 
-1. **CIR form** — Similar to WIR, add CommissioningLinkagePanel with `documentType="CIR"`
-2. **MIR form** — Full form like WIR (currently just a dialog), add commissioning linkage for delivery requirements
-3. **Approval workflow UI** — After both signatories sign, show approval chain progress
-4. **Document status change → recalculation** — When document is approved, work items linked to it should be marked approved, triggering status recalc
-5. **Commissioning dashboard charts** — Visual progress bars per level, at-risk indicators
-6. **Bulk tag target assignment** — Set target dates for all assets of a type at once
-7. **Gate override warning UI** — Show warning when submitting L2B Final with incomplete prerequisites
+1. **Approval workflow UI** — After both signatories sign, show approval chain progress, allow approvers to respond
+2. **Commissioning dashboard charts** — Visual progress bars per level, at-risk indicators
+3. **Bulk tag target assignment** — Set target dates for all assets of a type at once
+4. **Gate override warning UI** — Show warning when submitting L2B Final with incomplete prerequisites
+5. **Document revision system** — Auto-increment revision on resubmission after rejection
 
 ## Login Credentials
 

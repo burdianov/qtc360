@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
+import { ApprovalChain } from "@/components/approval-chain";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
@@ -548,6 +549,15 @@ export default function NewWIRPage() {
           </div>
         </form>
       </Form>
+
+      {/* Approval Chain (shown when editing a submitted document) */}
+      {editId && existingDoc && existingDoc.status !== "draft" && (
+        <Card>
+          <CardContent className="pt-6">
+            <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
