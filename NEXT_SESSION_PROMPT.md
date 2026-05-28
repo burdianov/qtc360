@@ -183,6 +183,12 @@ This session implemented the full Aconex-mirrored external approval workflow des
   - Stale legacy `<ApprovalChain>` deleted.
 - ✅ **MIR/CIR feature parity with WIR**
   - Both forms now have: template selector, attachments with drag-reorder, Preview PDF, Save & Notify Signatories, isDirty tracking + handleBack unsaved-changes prompt, linkage-first flow with applicable template/asset filtering, asset filter+search+checkbox panel, restore linkage and attachments on edit, confirm-disable-linkage dialog. Match WIR feature set.
+- ✅ **Role-based permission system** — 13 permissions across 5 categories seeded, permission matrix UI on Roles page with checkboxes, `require_permission` enforces per-role access, `get_current_user` eagerly loads Role.permissions
+- ✅ **Viewer role** — read-only role, blocked from all write operations and signing
+- ✅ **Signing logic simplified** — any non-viewer user can sign either inspector slot in any order; only checks `documents.sign` permission
+- ✅ **Template upload restricted** — `reports.templates` permission required (admin/super_admin only)
+- ✅ **Signature preview public** — removed auth from `/reports/signature-preview` so `<img>` tags work
+- ✅ **Work items restored on reload** — all forms (WIR/CIR/MIR/FAT) detect existing work items and set `isPartialScope: true`
 
 ## Next Priorities
 

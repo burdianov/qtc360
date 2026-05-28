@@ -83,6 +83,12 @@ function NewFATPageContent() {
     queryFn: async () => (await api.get("/assets")).data,
   });
 
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
+  });
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -141,6 +147,31 @@ function NewFATPageContent() {
       if (existingDoc.asset_ids) setSelectedAssetIds(existingDoc.asset_ids);
     }
   }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore commissioning linkage
+  useEffect(() => {
+    if (!editId || allAssetRequirements.length === 0 || commissioningLinkage) return;
+    api.get("/commissioning/document-links", { params: { document_id: editId } }).then(async (res) => {
+      const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+      if (links.length === 0) return;
+      const firstArId = links[0].asset_requirement_id;
+      const ar = allAssetRequirements.find((r) => r.id === firstArId);
+      if (!ar) return;
+      const hasLinkedWorkItems = links.some((l) => l.requirement_work_item_id != null);
+      let isPartial = hasLinkedWorkItems;
+      if (!isPartial) {
+        const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: firstArId } });
+        isPartial = wiRes.data.length > 0;
+      }
+      setCommissioningLinkage({
+        requirementTemplateId: ar.requirement_template_id,
+        isPartialScope: isPartial,
+        checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!),
+        deleteExistingIds: [],
+        newItems: [],
+      });
+    }).catch(() => {});
+  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-generate reference number
   useEffect(() => {

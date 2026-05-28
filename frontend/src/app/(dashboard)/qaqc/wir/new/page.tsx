@@ -175,13 +175,19 @@ function NewWIRPageContent() {
   // Restore commissioning linkage from server
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage) return;
-    api.get("/commissioning/document-links", { params: { document_id: editId } }).then((res) => {
+    api.get("/commissioning/document-links", { params: { document_id: editId } }).then(async (res) => {
       const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
       if (links.length === 0) return;
       const firstArId = links[0].asset_requirement_id;
       const ar = allAssetRequirements.find((r) => r.id === firstArId);
       if (!ar) return;
-      const isPartial = links.some((l) => l.requirement_work_item_id != null);
+      const hasLinkedWorkItems = links.some((l) => l.requirement_work_item_id != null);
+      // Check if work items exist even if not individually linked
+      let isPartial = hasLinkedWorkItems;
+      if (!isPartial) {
+        const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: firstArId } });
+        isPartial = wiRes.data.length > 0;
+      }
       setCommissioningLinkage({
         requirementTemplateId: ar.requirement_template_id,
         isPartialScope: isPartial,

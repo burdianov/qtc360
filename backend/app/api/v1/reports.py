@@ -192,9 +192,8 @@ async def preview_signature(
     name: str,
     font_id: str = "dancing_script",
     color: str = "#1a237e",
-    _: User = Depends(get_current_user),
 ):
-    """Preview a signature rendering. Auth required to prevent forgery prep."""
+    """Preview a signature rendering."""
     if len(name) > 200:
         raise HTTPException(status_code=400, detail="Name too long")
     # Validate color is a #RRGGBB hex string.
