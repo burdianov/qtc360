@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,7 @@ import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/componen
 import { ApprovalChain } from "@/components/approval-chain";
 
 interface Discipline { id: string; name: string; code: string; }
-interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
+interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
 const schema = z.object({
@@ -41,6 +41,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NewMIRPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
+      <NewMIRPageContent />
+    </Suspense>
+  );
+}
+
+function NewMIRPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
@@ -89,7 +97,7 @@ export default function NewMIRPage() {
     if (!editId && disciplineId && project?.id && disciplines.length > 0) {
       const code = disciplines.find((d) => d.id === disciplineId)?.code || "";
       api.get("/documents/generate-ref-number", { params: { project_id: project.id, doc_type: "MIR", discipline_code: code } })
-        .then((res) => setReferenceNo(res.data.reference_number)).catch(() => {});
+        .then((res) => setReferenceNo(res.data.reference_number)).catch(() => toast.error("Failed to generate reference number"));
     }
   }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -128,7 +136,24 @@ export default function NewMIRPage() {
           const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
           const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId);
           if (!assetReq) continue;
-          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id });
+          if (commissioningLinkage.isPartialScope) {
+            for (const delId of commissioningLinkage.deleteExistingIds) {
+              await api.delete(`/commissioning/work-items/${delId}`);
+            }
+            const createdIds: string[] = [];
+            for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
+              const wiRes = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: commissioningLinkage.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+              if (commissioningLinkage.newItems[i].checked) createdIds.push(wiRes.data.id);
+            }
+            for (const wiId of commissioningLinkage.checkedExistingIds) {
+              await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
+            }
+            for (const wiId of createdIds) {
+              await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
+            }
+          } else {
+            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id });
+          }
         }
       }
       return res;
@@ -208,7 +233,7 @@ export default function NewMIRPage() {
                         <FormItem><FormLabel>{label}</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="Select">{inspId ? users.find((u) => u.id === inspId)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                            <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.full_name}: {u.position || "—"}</SelectItem>))}</SelectContent>
+                            <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.full_name}: {u.designation?.name || "—"}</SelectItem>))}</SelectContent>
                           </Select>
                         </FormItem>
                       )} />

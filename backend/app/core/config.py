@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # LibreOffice
     libreoffice_path: str = "soffice"
 
+    # File storage
+    upload_dir: str = "./uploads"
+
     # Auth
     secret_key: str  # REQUIRED — must be set in .env
     access_token_expire_minutes: int = 15

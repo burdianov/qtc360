@@ -20,6 +20,7 @@ import {
   Shield,
   Lock,
   Settings,
+  BadgeCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +56,7 @@ export const navigation: NavGroup[] = [
       { title: "Contractors", url: "/master-data/contractors", icon: Building2 },
       { title: "Client", url: "/master-data/clients", icon: UserCheck },
       { title: "Approvers", url: "/master-data/approvers", icon: ClipboardCheck },
+      { title: "Designations", url: "/master-data/designations", icon: BadgeCheck },
     ],
   },
   {

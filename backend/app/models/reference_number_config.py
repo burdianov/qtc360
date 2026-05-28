@@ -20,7 +20,7 @@ class ReferenceNumberConfig(BaseModel):
     __table_args__ = (UniqueConstraint("project_id", "doc_type", name="uq_refnum_project_doctype"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
-    doc_type: Mapped[str] = mapped_column(String(10), index=True)  # WIR, MIR, CIR
+    doc_type: Mapped[str] = mapped_column(String(10), index=True)  # WIR, MIR, CIR, FAT
     pattern: Mapped[str] = mapped_column(String(500))
     project_code: Mapped[str] = mapped_column(String(50))  # e.g. "MERC"
     contractor_code: Mapped[str] = mapped_column(String(50), default="")  # e.g. "JMJV"

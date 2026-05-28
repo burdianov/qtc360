@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/componen
 import { ApprovalChain } from "@/components/approval-chain";
 
 interface Discipline { id: string; name: string; code: string; }
-interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
+interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
 const schema = z.object({
@@ -44,6 +44,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NewWIRPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
+      <NewWIRPageContent />
+    </Suspense>
+  );
+}
+
+function NewWIRPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
@@ -51,7 +59,7 @@ export default function NewWIRPage() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [attachments, setAttachments] = useState<{ filename: string; file_path: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ file: File; name: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
@@ -131,7 +139,7 @@ export default function NewWIRPage() {
       api.get("/documents/generate-ref-number", {
         params: { project_id: project.id, doc_type: "WIR", discipline_code: disciplineCode },
       }).then((res) => setReferenceNo(res.data.reference_number))
-        .catch(() => {});
+        .catch(() => toast.error("Failed to generate reference number"));
     }
   }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const inspector1Id = form.watch("inspector_1_id");
@@ -156,6 +164,65 @@ export default function NewWIRPage() {
     asset_ids: selectedAssets.map((a) => a.id),
   });
 
+  const saveCommissioningLinkage = async (docId: string | null) => {
+    if (!commissioningLinkage || !docId || selectedAssets.length === 0) return;
+    for (const asset of selectedAssets) {
+      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
+      const assetReq = (arRes.data as any[]).find(
+        (ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId
+      );
+      if (!assetReq) continue;
+
+      if (commissioningLinkage.isPartialScope) {
+        for (const delId of commissioningLinkage.deleteExistingIds) {
+          await api.delete(`/commissioning/work-items/${delId}`);
+        }
+        const createdIds: string[] = [];
+        for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
+          const wiRes = await api.post("/commissioning/work-items", {
+            asset_requirement_id: assetReq.id,
+            name: commissioningLinkage.newItems[i].name,
+            sequence_no: i + 100,
+            created_dynamically: true,
+          });
+          if (commissioningLinkage.newItems[i].checked) {
+            createdIds.push(wiRes.data.id);
+          }
+        }
+        for (const wiId of commissioningLinkage.checkedExistingIds) {
+          await api.post("/commissioning/document-links", {
+            document_id: docId,
+            asset_requirement_id: assetReq.id,
+            requirement_work_item_id: wiId,
+          });
+        }
+        for (const wiId of createdIds) {
+          await api.post("/commissioning/document-links", {
+            document_id: docId,
+            asset_requirement_id: assetReq.id,
+            requirement_work_item_id: wiId,
+          });
+        }
+      } else {
+        await api.post("/commissioning/document-links", {
+          document_id: docId,
+          asset_requirement_id: assetReq.id,
+        });
+      }
+    }
+    if (commissioningLinkage.gateWarningAcknowledged) {
+      for (const asset of selectedAssets) {
+        await api.post("/commissioning/gate-overrides", {
+          asset_id: asset.id,
+          document_id: docId,
+          level_code: commissioningLinkage.gateLevelCode || "L2B",
+          incomplete_requirements: commissioningLinkage.incompleteRequirements || [],
+          notes: commissioningLinkage.gateOverrideNotes || null,
+        }).catch(() => toast.error("Failed to record gate override acknowledgement"));
+      }
+    }
+  };
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
@@ -166,77 +233,14 @@ export default function NewWIRPage() {
         res = await api.post("/documents", buildPayload(values));
       }
       const docId = res.data?.id || editId;
-      // Save commissioning linkage for all assets
-      if (commissioningLinkage && docId && selectedAssets.length > 0) {
-        for (const asset of selectedAssets) {
-          const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
-          const assetReq = (arRes.data as any[]).find(
-            (ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId
-          );
-          if (!assetReq) continue;
-
-          if (commissioningLinkage.isPartialScope) {
-            // Delete marked items
-            for (const delId of commissioningLinkage.deleteExistingIds) {
-              await api.patch(`/commissioning/work-items/${delId}`, { status: "not_started" });
-              // Soft-delete by marking — or we could add a delete endpoint
-            }
-            // Create new items (all of them, checked or not)
-            const createdIds: string[] = [];
-            for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-              const wiRes = await api.post("/commissioning/work-items", {
-                asset_requirement_id: assetReq.id,
-                name: commissioningLinkage.newItems[i].name,
-                sequence_no: i + 100,
-                created_dynamically: true,
-              });
-              if (commissioningLinkage.newItems[i].checked) {
-                createdIds.push(wiRes.data.id);
-              }
-            }
-            // Link checked existing items to this document
-            for (const wiId of commissioningLinkage.checkedExistingIds) {
-              await api.post("/commissioning/document-links", {
-                document_id: docId,
-                asset_requirement_id: assetReq.id,
-                requirement_work_item_id: wiId,
-              });
-            }
-            // Link checked new items to this document
-            for (const wiId of createdIds) {
-              await api.post("/commissioning/document-links", {
-                document_id: docId,
-                asset_requirement_id: assetReq.id,
-                requirement_work_item_id: wiId,
-              });
-            }
-          } else {
-            // Full scope - link document directly to requirement
-            await api.post("/commissioning/document-links", {
-              document_id: docId,
-              asset_requirement_id: assetReq.id,
-            });
-          }
-        }
-      }
-      // Store gate override acknowledgement if applicable
-      if (commissioningLinkage?.gateWarningAcknowledged && docId) {
-        for (const asset of selectedAssets) {
-          await api.post("/commissioning/gate-overrides", {
-            asset_id: asset.id,
-            document_id: docId,
-            level_code: "L2B", // gate overrides are for level gates
-            incomplete_requirements: commissioningLinkage.incompleteRequirements || [],
-          }).catch(() => {});
-        }
-      }
-      // Save attachment paths
+      await saveCommissioningLinkage(docId);
+      // Upload attachments to server
       if (attachments.length > 0 && docId) {
-        for (let i = 0; i < attachments.length; i++) {
-          await api.post(`/documents/${docId}/attachments`, {
-            filename: attachments[i].filename,
-            file_path: attachments[i].file_path,
-            sort_order: i,
+        for (const att of attachments) {
+          const formData = new FormData();
+          formData.append("file", att.file);
+          await api.post(`/documents/${docId}/attachments`, formData, {
+            headers: { "Content-Type": undefined },
           });
         }
       }
@@ -260,6 +264,17 @@ export default function NewWIRPage() {
       } else {
         const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
         await api.patch(`/documents/${docId}`, updatePayload);
+      }
+      await saveCommissioningLinkage(docId);
+      // Upload attachments before notifying
+      if (attachments.length > 0 && docId) {
+        for (const att of attachments) {
+          const formData = new FormData();
+          formData.append("file", att.file);
+          await api.post(`/documents/${docId}/attachments`, formData, {
+            headers: { "Content-Type": undefined },
+          });
+        }
       }
       await api.post(`/documents/${docId}/notify-signatories`);
     },
@@ -291,13 +306,18 @@ export default function NewWIRPage() {
     setSelectedAssets(selectedAssets.filter((a) => a.id !== assetId));
   };
 
-  const [newAttPath, setNewAttPath] = useState("");
-
   const addAttachment = () => {
-    if (!newAttPath.trim()) return;
-    const filename = newAttPath.split(/[/\\]/).pop() || newAttPath;
-    setAttachments([...attachments, { filename, file_path: newAttPath.trim() }]);
-    setNewAttPath("");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".pdf,.jpg,.jpeg,.png";
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) {
+        setAttachments([...attachments, ...Array.from(files).map((f) => ({ file: f, name: f.name }))]);
+      }
+    };
+    input.click();
   };
 
   const removeAttachment = (index: number) => {
@@ -438,7 +458,7 @@ export default function NewWIRPage() {
                             <SelectItem key={u.id} value={u.id}>
                               <span className="inline-flex items-baseline gap-2 w-full">
                                 <span>{u.full_name}:</span>
-                                <span className="text-muted-foreground">{u.position || "—"}</span>
+                                <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
                               </span>
                             </SelectItem>
                           ))}
@@ -487,7 +507,7 @@ export default function NewWIRPage() {
                             <SelectItem key={u.id} value={u.id}>
                               <span className="inline-flex items-baseline gap-2 w-full">
                                 <span>{u.full_name}:</span>
-                                <span className="text-muted-foreground">{u.position || "—"}</span>
+                                <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
                               </span>
                             </SelectItem>
                           ))}
@@ -531,9 +551,16 @@ export default function NewWIRPage() {
 
           {/* Attachments */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Attachments</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {attachments.length > 0 && (
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Attachments</CardTitle>
+              <Button type="button" variant="outline" size="sm" onClick={addAttachment}>
+                <Plus className="h-4 w-4 mr-1" />Add Files
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {attachments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No attachments added yet. Accepted: PDF, JPG, PNG.</p>
+              ) : (
                 <div className="space-y-2">
                   {attachments.map((att, i) => (
                     <div
@@ -553,10 +580,8 @@ export default function NewWIRPage() {
                       className="flex items-center gap-3 rounded-md border border-border px-3 py-2 transition-colors hover:bg-accent/50"
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{att.filename}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">{att.file_path}</p>
-                      </div>
+                      <span className="flex-1 text-sm truncate">{att.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{(att.file.size / 1024).toFixed(0)} KB</span>
                       <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -564,19 +589,6 @@ export default function NewWIRPage() {
                   ))}
                 </div>
               )}
-              <div className="flex gap-2">
-                <Input
-                  placeholder="\\\\server\\share\\path\\to\\file.pdf"
-                  value={newAttPath}
-                  onChange={(e) => setNewAttPath(e.target.value)}
-                  className="flex-1 text-sm font-mono"
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAttachment(); } }}
-                />
-                <Button type="button" variant="outline" size="sm" disabled={!newAttPath.trim()} onClick={addAttachment}>
-                  <Plus className="h-4 w-4 mr-1" />Add
-                </Button>
-              </div>
-              <p className="text-[10px] text-muted-foreground">Enter the full path to the file on the company server. Files will be included in the generated PDF.</p>
             </CardContent>
           </Card>
 
@@ -619,7 +631,7 @@ export default function NewWIRPage() {
                   onClick={async () => {
                     const res = await api.post(`/documents/${editId}/resubmit`);
                     toast.success(`Resubmitted as revision ${res.data.revision_no}`);
-                    router.push(`/qaqc/wir/new?id=${res.data.id}`);
+                    router.replace(`/qaqc/wir/new?id=${res.data.id}`);
                   }}
                 >
                   Resubmit as New Revision

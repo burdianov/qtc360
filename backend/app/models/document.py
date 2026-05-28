@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,9 @@ from app.models.base import BaseModel
 
 class Document(BaseModel):
     __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("project_id", "reference_no", name="uq_document_project_refno"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
     document_type: Mapped[str] = mapped_column(String(10), index=True)  # FAT, MIR, WIR, CIR

@@ -34,7 +34,7 @@ export default function SettingsPage() {
 
   const { data: configs = [] } = useQuery<RefConfig[]>({
     queryKey: ["ref-configs", projectId],
-    queryFn: async () => (await api.get(`/ref-config?project_id=${projectId}`)).data,
+    queryFn: async () => (await api.get("/ref-config", { params: { project_id: projectId } })).data,
     enabled: !!projectId,
   });
 
@@ -92,6 +92,7 @@ export default function SettingsPage() {
                   <SelectItem value="WIR">WIR</SelectItem>
                   <SelectItem value="MIR">MIR</SelectItem>
                   <SelectItem value="CIR">CIR</SelectItem>
+                  <SelectItem value="FAT">FAT</SelectItem>
                 </SelectContent>
               </Select>
             </div>

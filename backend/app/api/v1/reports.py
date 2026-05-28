@@ -211,8 +211,8 @@ async def generate_report(
         .options(
             selectinload(Document.discipline),
             selectinload(Document.project),
-            selectinload(Document.site_engineer),
-            selectinload(Document.qaqc_engineer),
+            selectinload(Document.site_engineer).selectinload(User.designation),
+            selectinload(Document.qaqc_engineer).selectinload(User.designation),
         )
     )
     document = doc_result.scalar_one_or_none()
@@ -313,11 +313,20 @@ def _build_context(document: Document) -> dict:
     ctx["firefighting_cb"] = cb("firefighting" in doc_discipline or "fire" in doc_discipline)
     ctx["others_cb"] = cb("others" in doc_discipline or "other" in doc_discipline)
 
+    # Discipline labels (checkbox + name combined for reliable rendering)
+    ctx["arch"] = f"{ctx['arch_cb']} Architectural"
+    ctx["civil_struct"] = f"{ctx['civil_struct_cb']} Civil/Structural"
+    ctx["mechanical"] = f"{ctx['mechanical_cb']} Mechanical"
+    ctx["electrical"] = f"{ctx['electrical_cb']} Electrical"
+    ctx["plumbing"] = f"{ctx['plumbing_cb']} Plumbing"
+    ctx["firefighting"] = f"{ctx['firefighting_cb']} Firefighting"
+    ctx["others"] = f"{ctx['others_cb']} Others"
+
     # Inspector fields
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         if inspector:
             ctx[f"inspected_by_{i}"] = inspector.full_name
-            ctx[f"designation_{i}"] = inspector.position or ""
+            ctx[f"designation_{i}"] = inspector.designation.name if inspector.designation else ""
             ctx[f"date_{i}"] = document.submitted_date.strftime("%d/%m/%Y") if document.submitted_date else ""
             ctx[f"time_{i}"] = document.submitted_date.strftime("%H:%M") if document.submitted_date else ""
             ctx[f"remarks_{i}"] = ""
@@ -389,11 +398,13 @@ def _convert_to_pdf(docx_bytes: bytes) -> bytes:
 
 
 def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes, list[str]]:
-    """Merge attachment files (from file paths) into the main PDF. Returns (pdf, missing_filenames)."""
+    """Merge attachment files from web server storage into the main PDF."""
     try:
         from pypdf import PdfReader, PdfWriter
     except ImportError:
         return main_pdf, []
+
+    from app.core.config import settings
 
     writer = PdfWriter()
     reader = PdfReader(io.BytesIO(main_pdf))
@@ -402,7 +413,7 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
 
     missing_files = []
     for att in attachments:
-        file_path = Path(att.file_path)
+        file_path = Path(settings.upload_dir) / att.storage_path
         if not file_path.exists():
             missing_files.append(att.filename)
             continue

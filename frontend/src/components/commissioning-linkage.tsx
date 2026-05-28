@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface RequirementTemplate {
   id: string;
@@ -36,6 +38,8 @@ export interface CommissioningLinkage {
   deleteExistingIds: string[];
   newItems: { name: string; checked: boolean }[];
   gateWarningAcknowledged?: boolean;
+  gateOverrideNotes?: string;
+  gateLevelCode?: string;
   incompleteRequirements?: { requirement_id: string; status: string }[];
 }
 
@@ -50,6 +54,8 @@ interface Props {
 export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documentType, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(!!value);
   const [newItemName, setNewItemName] = useState("");
+  const [gateDialogOpen, setGateDialogOpen] = useState(false);
+  const [gateNotes, setGateNotes] = useState("");
 
   const { data: templates = [] } = useQuery<RequirementTemplate[]>({
     queryKey: ["requirement-templates", projectId, documentType],
@@ -61,10 +67,11 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
   });
 
   // Fetch existing work items for first asset's requirement (representative)
+  const firstAssetId = selectedAssetIds.length > 0 ? selectedAssetIds[0] : "";
   const { data: existingWorkItems = [] } = useQuery<ExistingWorkItem[]>({
-    queryKey: ["work-items", selectedAssetIds[0], value?.requirementTemplateId],
+    queryKey: ["work-items", firstAssetId, value?.requirementTemplateId],
     queryFn: async () => {
-      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: selectedAssetIds[0] } });
+      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: firstAssetId } });
       const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === value?.requirementTemplateId);
       if (!ar) return [];
       return (await api.get("/commissioning/work-items", { params: { asset_requirement_id: ar.id } })).data;
@@ -76,8 +83,8 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
 
   // Gate check: if selected template is a gate requirement, check for incomplete prerequisites
   const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { requirement_id: string; template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
-    queryKey: ["gate-check", selectedAssetIds[0], selectedTemplate?.level_code],
-    queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: selectedAssetIds[0], level_code: selectedTemplate!.level_code } })).data,
+    queryKey: ["gate-check", firstAssetId, selectedTemplate?.level_code],
+    queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: firstAssetId, level_code: selectedTemplate!.level_code } })).data,
     enabled: !!selectedTemplate?.is_gate_requirement && selectedAssetIds.length > 0,
   });
 
@@ -189,15 +196,66 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
               </ul>
               <p className="text-xs text-amber-500/80">You may proceed, but the tag will not be achieved until all requirements are completed.</p>
               {!value?.gateWarningAcknowledged ? (
-                <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10" onClick={() => {
-                  if (!value) return;
-                  onChange({ ...value, gateWarningAcknowledged: true, incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })) });
-                }}>
+                <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10" onClick={() => setGateDialogOpen(true)}>
                   I acknowledge — proceed anyway
                 </Button>
               ) : (
-                <p className="text-xs text-emerald-500">✓ Acknowledged</p>
+                <p className="text-xs text-emerald-500">✓ Acknowledged{value.gateOverrideNotes ? ` — "${value.gateOverrideNotes}"` : ""}</p>
               )}
+
+              <Dialog open={gateDialogOpen} onOpenChange={setGateDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-amber-500" />
+                      Confirm Gate Override
+                    </DialogTitle>
+                    <DialogDescription>
+                      You are proceeding with incomplete {selectedTemplate?.level_code} prerequisites. This action will be recorded in the audit trail.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div className="rounded-md border p-3 space-y-1 max-h-40 overflow-y-auto">
+                      {gateCheck!.incomplete.map((r, i) => (
+                        <div key={i} className="text-xs flex items-center gap-2">
+                          <span className="font-mono text-muted-foreground">{r.template_code}</span>
+                          <span className="flex-1">{r.template_name}</span>
+                          <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Reason for proceeding</label>
+                      <Textarea
+                        placeholder="Explain why you are proceeding despite incomplete prerequisites..."
+                        value={gateNotes}
+                        onChange={(e) => setGateNotes(e.target.value)}
+                        rows={3}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setGateDialogOpen(false)}>Cancel</Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        if (!value) return;
+                        onChange({
+                          ...value,
+                          gateWarningAcknowledged: true,
+                          gateOverrideNotes: gateNotes || undefined,
+                          gateLevelCode: selectedTemplate?.level_code,
+                          incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })),
+                        });
+                        setGateDialogOpen(false);
+                      }}
+                    >
+                      Confirm & Proceed
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           )}
 

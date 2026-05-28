@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,7 @@ import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/componen
 import { ApprovalChain } from "@/components/approval-chain";
 
 interface Discipline { id: string; name: string; code: string; }
-interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
+interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
 interface AssetType { id: string; name: string; code: string; parent_type_id?: string | null; }
 interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; }
 
@@ -34,13 +34,21 @@ const schema = z.object({
   discipline_id: z.string().min(1, "Discipline is required"),
   asset_type_id: z.string().min(1, "Asset type is required"),
   date: z.string().optional(),
-  inspector_1_id: z.string().optional(),
-  inspector_2_id: z.string().optional(),
+  site_engineer_id: z.string().optional(),
+  qaqc_engineer_id: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
 
 export default function NewFATPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
+      <NewFATPageContent />
+    </Suspense>
+  );
+}
+
+function NewFATPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
@@ -80,15 +88,15 @@ export default function NewFATPage() {
       discipline_id: "",
       asset_type_id: "",
       date: new Date().toISOString().split("T")[0],
-      inspector_1_id: "",
-      inspector_2_id: "",
+      site_engineer_id: "",
+      qaqc_engineer_id: "",
     },
   });
 
   const assetTypeId = form.watch("asset_type_id");
   const disciplineId = form.watch("discipline_id");
-  const inspector1Id = form.watch("inspector_1_id");
-  const inspector2Id = form.watch("inspector_2_id");
+  const inspector1Id = form.watch("site_engineer_id");
+  const inspector2Id = form.watch("qaqc_engineer_id");
 
   // Filter assets by selected asset type (include subtypes via parent_type_id)
   const filteredAssets = assetTypeId
@@ -119,12 +127,12 @@ export default function NewFATPage() {
         discipline_id: existingDoc.discipline_id || "",
         asset_type_id: existingDoc.asset_type_id || "",
         date: existingDoc.inspection_date ? existingDoc.inspection_date.split("T")[0] : "",
-        inspector_1_id: existingDoc.inspector_1_id || "",
-        inspector_2_id: existingDoc.inspector_2_id || "",
+        site_engineer_id: existingDoc.site_engineer_id || "",
+        qaqc_engineer_id: existingDoc.qaqc_engineer_id || "",
       });
       setSigned({
-        inspector1: !!existingDoc.inspector_1_signed,
-        inspector2: !!existingDoc.inspector_2_signed,
+        inspector1: !!existingDoc.site_engineer_signed,
+        inspector2: !!existingDoc.qaqc_engineer_signed,
       });
       setReferenceNo(existingDoc.reference_no || "");
       if (existingDoc.asset_ids) setSelectedAssetIds(existingDoc.asset_ids);
@@ -137,7 +145,7 @@ export default function NewFATPage() {
       const disciplineCode = disciplines.find((d) => d.id === disciplineId)?.code || "";
       api.get("/documents/generate-ref-number", {
         params: { project_id: project.id, doc_type: "FAT", discipline_code: disciplineCode },
-      }).then((res) => setReferenceNo(res.data.reference_number)).catch(() => {});
+      }).then((res) => setReferenceNo(res.data.reference_number)).catch(() => toast.error("Failed to generate reference number"));
     }
   }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -156,10 +164,10 @@ export default function NewFATPage() {
     discipline_id: values.discipline_id,
     asset_type_id: values.asset_type_id,
     inspection_date: values.date || null,
-    inspector_1_id: values.inspector_1_id || null,
-    inspector_2_id: values.inspector_2_id || null,
-    inspector_1_signed: signed.inspector1,
-    inspector_2_signed: signed.inspector2,
+    site_engineer_id: values.site_engineer_id || null,
+    qaqc_engineer_id: values.qaqc_engineer_id || null,
+    site_engineer_signed: signed.inspector1,
+    qaqc_engineer_signed: signed.inspector2,
     asset_ids: selectedAssetIds,
   });
 
@@ -292,7 +300,7 @@ export default function NewFATPage() {
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-3">
-                  <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
+                  <FormField control={form.control} name="site_engineer_id" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Inspector 1</FormLabel>
                       <Select onValueChange={(v: any) => field.onChange(v)} value={field.value}>
@@ -300,7 +308,7 @@ export default function NewFATPage() {
                         <SelectContent>
                           {users.map((u) => (
                             <SelectItem key={u.id} value={u.id}>
-                              <span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.position || "—"}</span></span>
+                              <span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -332,7 +340,7 @@ export default function NewFATPage() {
                   )}
                 </div>
                 <div className="space-y-3">
-                  <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
+                  <FormField control={form.control} name="qaqc_engineer_id" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Inspector 2</FormLabel>
                       <Select onValueChange={(v: any) => field.onChange(v)} value={field.value}>
@@ -340,7 +348,7 @@ export default function NewFATPage() {
                         <SelectContent>
                           {users.map((u) => (
                             <SelectItem key={u.id} value={u.id}>
-                              <span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.position || "—"}</span></span>
+                              <span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span>
                             </SelectItem>
                           ))}
                         </SelectContent>

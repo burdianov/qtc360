@@ -90,13 +90,11 @@ export function DataTableViewOptions<TData>({ table, storageKey }: DataTableView
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <Button variant="outline" size="sm" className="ml-auto hidden h-8 lg:flex">
-          <Settings2 className="mr-2 h-4 w-4" />
-          Columns
-        </Button>
+      <DropdownMenuTrigger className="ml-auto hidden h-8 lg:inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-sm font-medium ring-offset-background hover:bg-accent hover:text-accent-foreground">
+        <Settings2 className="h-4 w-4" />
+        Columns
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px]">
+      <DropdownMenuContent align="end" sideOffset={8} className="w-[200px]">
         <DropdownMenuGroup>
           <DropdownMenuLabel>Toggle & reorder</DropdownMenuLabel>
         </DropdownMenuGroup>

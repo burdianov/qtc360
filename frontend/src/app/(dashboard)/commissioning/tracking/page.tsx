@@ -71,8 +71,9 @@ export default function CommissioningTrackingPage() {
   });
 
   const { data: requirements = [] } = useQuery<AssetRequirement[]>({
-    queryKey: ["asset-requirements-all"],
-    queryFn: async () => (await api.get("/commissioning/asset-requirements")).data,
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: templates = [] } = useQuery<RequirementTemplate[]>({

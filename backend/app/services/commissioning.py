@@ -104,21 +104,32 @@ async def recalculate_requirements_for_document(
     if not doc:
         return
 
-    # If document is approved, mark all linked work items as approved
-    if doc.status in ("approved", "approved_with_comments"):
-        links_result = await db.execute(
-            select(DocumentRequirementLink).where(DocumentRequirementLink.document_id == document_id)
+    # Get all links for this document
+    links_result = await db.execute(
+        select(DocumentRequirementLink).where(DocumentRequirementLink.document_id == document_id)
+    )
+    links = links_result.scalars().all()
+    wi_ids = [lnk.requirement_work_item_id for lnk in links if lnk.requirement_work_item_id]
+
+    if wi_ids:
+        wi_result = await db.execute(
+            select(RequirementWorkItem).where(RequirementWorkItem.id.in_(wi_ids))
         )
-        for link in links_result.scalars().all():
-            if link.requirement_work_item_id:
-                wi_result = await db.execute(
-                    select(RequirementWorkItem).where(RequirementWorkItem.id == link.requirement_work_item_id)
-                )
-                wi = wi_result.scalar_one_or_none()
-                if wi and wi.status != "approved":
+        work_items = wi_result.scalars().all()
+
+        if doc.status in ("approved", "approved_with_comments"):
+            for wi in work_items:
+                if wi.status != "approved":
                     wi.status = "approved"
                     wi.approved_date = date.today()
                     wi.linked_document_id = document_id
+        elif doc.status == "rejected":
+            for wi in work_items:
+                if wi.linked_document_id == document_id:
+                    wi.status = "not_started"
+                    wi.approved_date = None
+                    wi.linked_document_id = None
+
         await db.flush()
 
     # Recalculate all linked requirements

@@ -38,7 +38,7 @@ export default function TemplatesPage() {
       const form = new FormData();
       form.append("file", file);
       await api.post(`/reports/templates/upload?project_id=${projectId}&doc_type=${docType}&name=${encodeURIComponent(name)}`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: { "Content-Type": undefined },
       });
       toast.success("Template uploaded");
       setFile(null);
@@ -70,6 +70,7 @@ export default function TemplatesPage() {
                   <SelectItem value="WIR">WIR</SelectItem>
                   <SelectItem value="MIR">MIR</SelectItem>
                   <SelectItem value="CIR">CIR</SelectItem>
+                  <SelectItem value="FAT">FAT</SelectItem>
                 </SelectContent>
               </Select>
             </div>

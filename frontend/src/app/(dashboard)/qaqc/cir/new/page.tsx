@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ import { ApprovalChain } from "@/components/approval-chain";
 import { X } from "lucide-react";
 
 interface Discipline { id: string; name: string; code: string; }
-interface User { id: string; full_name: string; position: string | null; signature_text: string | null; signature_font: string | null; }
+interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
 interface Asset { id: string; name: string; tag_number: string; }
 
 const schema = z.object({
@@ -41,6 +41,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NewCIRPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
+      <NewCIRPageContent />
+    </Suspense>
+  );
+}
+
+function NewCIRPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
@@ -88,7 +96,7 @@ export default function NewCIRPage() {
     if (!editId && disciplineId && project?.id && disciplines.length > 0) {
       const code = disciplines.find((d) => d.id === disciplineId)?.code || "";
       api.get("/documents/generate-ref-number", { params: { project_id: project.id, doc_type: "CIR", discipline_code: code } })
-        .then((res) => setReferenceNo(res.data.reference_number)).catch(() => {});
+        .then((res) => setReferenceNo(res.data.reference_number)).catch(() => toast.error("Failed to generate reference number"));
     }
   }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -223,7 +231,7 @@ export default function NewCIRPage() {
                         <FormItem><FormLabel>{label}</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="Select">{inspId ? users.find((u) => u.id === inspId)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                            <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.full_name}: {u.position || "—"}</SelectItem>))}</SelectContent>
+                            <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.full_name}: {u.designation?.name || "—"}</SelectItem>))}</SelectContent>
                           </Select>
                         </FormItem>
                       )} />

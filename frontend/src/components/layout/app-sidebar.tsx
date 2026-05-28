@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronLeft } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ChevronDown, ChevronLeft, LogOut, Settings, User } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,15 +22,24 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { navigation } from "@/config/navigation";
 import { cn } from "@/lib/utils";
-import { useCurrentUser } from "@/hooks/use-auth";
+import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { toggleSidebar } = useSidebar();
   const { data: user } = useCurrentUser();
+  const logout = useLogout();
   const initials = user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
@@ -166,21 +175,36 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-border py-2 px-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip={user?.full_name || "Profile"} className="h-10 pointer-events-none">
-              <div className="flex h-4 w-4 items-center justify-center">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-              <div className="flex flex-col ml-1 group-data-[collapsible=icon]:hidden">
-                <span className="text-sm">{user?.full_name || "User"}</span>
-                <span className="text-xs text-muted-foreground">
-                  {user?.email || ""}
-                </span>
-              </div>
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="w-full">
+                <SidebarMenuButton tooltip={user?.full_name || "Profile"} className="h-10">
+                  <div className="flex h-4 w-4 items-center justify-center">
+                    <Avatar className="h-7 w-7">
+                      <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="flex flex-col ml-1 group-data-[collapsible=icon]:hidden">
+                    <span className="text-sm">{user?.full_name || "User"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {user?.email || ""}
+                    </span>
+                  </div>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-48">
+                <div className="px-2 py-1.5">
+                  <p className="text-sm font-medium">{user?.full_name}</p>
+                  <p className="text-xs text-muted-foreground">{user?.email}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push("/profile")}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
+                <DropdownMenuItem><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout}><LogOut className="mr-2 h-4 w-4" />Log out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

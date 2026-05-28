@@ -263,3 +263,19 @@ class ApprovalStatusResponse(BaseModel):
     action: str
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+
+# --- Designation ---
+
+class DesignationCreate(BaseModel):
+    name: str
+
+class DesignationUpdate(BaseModel):
+    name: str | None = None
+
+class DesignationResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    model_config = {"from_attributes": True}

@@ -54,7 +54,7 @@ export function downloadTemplate(columns: string[], filename: string) {
  * values are simple strings/UUIDs without embedded commas.
  */
 export function parseCsv(file: File): Promise<Record<string, string>[]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
@@ -67,6 +67,7 @@ export function parseCsv(file: File): Promise<Record<string, string>[]> {
       });
       resolve(rows);
     };
+    reader.onerror = () => reject(new Error("Failed to read CSV file"));
     reader.readAsText(file);
   });
 }

@@ -13,6 +13,7 @@ from app.models.asset import Asset
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.approval_status import ApprovalStatus
+from app.models.designation import Designation
 from app.schemas.master import (
     ClientCreate, ClientUpdate, ClientResponse,
     ApproverTitleCreate, ApproverTitleUpdate, ApproverTitleResponse,
@@ -26,6 +27,7 @@ from app.schemas.master import (
     SystemCreate, SystemUpdate, SystemResponse,
     ContractorCreate, ContractorUpdate, ContractorResponse,
     ApprovalStatusCreate, ApprovalStatusUpdate, ApprovalStatusResponse,
+    DesignationCreate, DesignationUpdate, DesignationResponse,
 )
 
 router = APIRouter()
@@ -42,3 +44,4 @@ router.include_router(create_crud_router(prefix="/assets", tag="assets", model=A
 router.include_router(create_crud_router(prefix="/systems", tag="systems", model=System, create_schema=SystemCreate, update_schema=SystemUpdate, response_schema=SystemResponse))
 router.include_router(create_crud_router(prefix="/contractors", tag="contractors", model=Contractor, create_schema=ContractorCreate, update_schema=ContractorUpdate, response_schema=ContractorResponse))
 router.include_router(create_crud_router(prefix="/approval-statuses", tag="approval-statuses", model=ApprovalStatus, create_schema=ApprovalStatusCreate, update_schema=ApprovalStatusUpdate, response_schema=ApprovalStatusResponse))
+router.include_router(create_crud_router(prefix="/designations", tag="designations", model=Designation, create_schema=DesignationCreate, update_schema=DesignationUpdate, response_schema=DesignationResponse))

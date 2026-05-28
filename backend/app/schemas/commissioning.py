@@ -1,8 +1,14 @@
 """Pydantic schemas for commissioning engine."""
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+LEVEL_CODES = Literal["L1", "L2A", "L2B", "L3", "L4", "L5"]
+REQUIREMENT_CATEGORIES = Literal["fat", "delivery", "activity", "test", "integration_test", "final_level_test"]
+EVIDENCE_DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR"]
+TAG_CODES = Literal["red", "yellow", "green", "blue"]
 
 
 # --- RequirementTemplate ---
@@ -12,9 +18,9 @@ class RequirementTemplateCreate(BaseModel):
     name: str
     code: str
     description: str | None = None
-    level_code: str
-    requirement_category: str
-    evidence_document_type: str
+    level_code: LEVEL_CODES
+    requirement_category: REQUIREMENT_CATEGORIES
+    evidence_document_type: EVIDENCE_DOCUMENT_TYPES
     requires_work_breakdown: bool = False
     is_gate_requirement: bool = False
     is_optional: bool = False
@@ -25,9 +31,9 @@ class RequirementTemplateUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     description: str | None = None
-    level_code: str | None = None
-    requirement_category: str | None = None
-    evidence_document_type: str | None = None
+    level_code: LEVEL_CODES | None = None
+    requirement_category: REQUIREMENT_CATEGORIES | None = None
+    evidence_document_type: EVIDENCE_DOCUMENT_TYPES | None = None
     requires_work_breakdown: bool | None = None
     is_gate_requirement: bool | None = None
     is_optional: bool | None = None
@@ -60,7 +66,7 @@ class RequirementTemplateOut(BaseModel):
 class AssetRequirementCreate(BaseModel):
     asset_id: uuid.UUID
     requirement_template_id: uuid.UUID
-    required_for_tag: str
+    required_for_tag: TAG_CODES
     target_date: date | None = None
     notes: str | None = None
 
@@ -69,8 +75,15 @@ class AssetRequirementBulkCreate(BaseModel):
     """Assign a requirement template to multiple assets at once."""
     asset_ids: list[uuid.UUID]
     requirement_template_id: uuid.UUID
-    required_for_tag: str
+    required_for_tag: TAG_CODES
     target_date: date | None = None
+
+
+class AssetRequirementBulkByTypeCreate(BaseModel):
+    """Assign a requirement to all assets of a given type."""
+    asset_type_id: uuid.UUID
+    requirement_template_id: uuid.UUID
+    required_for_tag: TAG_CODES
 
 
 class AssetRequirementOut(BaseModel):
@@ -151,7 +164,7 @@ class DocumentRequirementLinkOut(BaseModel):
 
 class AssetTagTargetCreate(BaseModel):
     asset_id: uuid.UUID
-    tag_code: str
+    tag_code: TAG_CODES
     target_date: date
 
 
@@ -177,7 +190,7 @@ class AssetTagTargetOut(BaseModel):
 class GateOverrideCreate(BaseModel):
     asset_id: uuid.UUID
     document_id: uuid.UUID
-    level_code: str
+    level_code: LEVEL_CODES
     incomplete_requirements: list[dict]
     notes: str | None = None
 

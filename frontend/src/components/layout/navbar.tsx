@@ -1,21 +1,12 @@
 "use client";
 
-import { Bell, LogOut, Menu, Moon, Search, Settings, Sun, User } from "lucide-react";
+import { Bell, Menu, Moon, Search, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 import { ProjectSwitcher } from "@/components/layout/project-switcher";
 import api from "@/lib/api";
 
@@ -42,21 +33,12 @@ function ThemeToggle() {
 
 export function Navbar({ onSearchClick }: NavbarProps) {
   const { toggleSidebar } = useSidebar();
-  const { data: user } = useCurrentUser();
-  const logout = useLogout();
   const router = useRouter();
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["notifications", "unread-count"],
     queryFn: async () => (await api.get("/notifications/unread-count")).data,
     refetchInterval: 30000,
   });
-
-  const initials = user?.full_name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() ?? "U";
 
   return (
     <header className="flex h-16 shrink-0 items-center border-b border-border px-4 md:px-6 gap-3">
@@ -107,8 +89,6 @@ export function Navbar({ onSearchClick }: NavbarProps) {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2 md:ml-auto">
-        <ProjectSwitcher />
-
         <div className="flex items-center gap-1">
         <ThemeToggle />
 
@@ -121,30 +101,9 @@ export function Navbar({ onSearchClick }: NavbarProps) {
           )}
           <span className="sr-only">Notifications</span>
         </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="icon" className="h-8 w-8 ml-1">
-                <Avatar className="h-7 w-7">
-                  <AvatarFallback className="text-xs bg-primary text-primary-foreground">{initials}</AvatarFallback>
-                </Avatar>
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-48">
-            <div className="px-2 py-1.5">
-              <p className="text-sm font-medium">{user?.full_name}</p>
-              <p className="text-xs text-muted-foreground">{user?.email}</p>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/profile")}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
-            <DropdownMenuItem><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout}><LogOut className="mr-2 h-4 w-4" />Log out</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
         </div>
+
+        <ProjectSwitcher />
       </div>
     </header>
   );

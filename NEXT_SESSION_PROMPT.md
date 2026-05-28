@@ -40,6 +40,7 @@ RequirementTemplate → AssetRequirement → RequirementWorkItem
 Document → DocumentRequirementLink → AssetRequirement/WorkItem
 AssetTagTarget (calculated tag achievement)
 GateOverrideAcknowledgement (audit trail)
+Designation (master lookup for user job titles)
 ```
 
 ### Key Rules
@@ -48,18 +49,22 @@ GateOverrideAcknowledgement (audit trail)
 2. `AssetRequirement.status` is NEVER user-editable — calculated by backend from document approvals + work item completion.
 3. Tags (red/yellow/green/blue) are calculated, never manually assigned.
 4. Work breakdown items are created dynamically during WIR/CIR preparation.
-5. Soft gate requirements = warnings only, no hard DB constraints.
+5. Soft gate requirements = warnings only, no hard DB constraints. Override acknowledgements stored in audit trail.
 6. `requirement_category` ≠ `evidence_document_type` — both fields serve different purposes.
+7. Document status transitions are enforced via state machine (draft→submitted→approved/rejected).
+8. Serial numbers are scoped per (project + document_type + discipline) combination.
+9. Work items are rolled back when a document is rejected.
+10. RBAC permissions are enforced on write endpoints (`require_permission`).
 
 ### Backend Structure
 
 ```
 backend/app/
 ├── api/v1/          # Routers: auth, master, admin, documents, commissioning, reports, notifications, ref_config
-├── models/          # ORM: commissioning.py, document.py, gate_override.py, + core entities
-├── schemas/         # Pydantic: commissioning.py, document.py, master.py, auth.py, admin.py
+├── models/          # ORM: commissioning.py, document.py, gate_override.py, designation.py, + core entities
+├── schemas/         # Pydantic: commissioning.py (with Literal types), document.py (with state machine), master.py, auth.py, admin.py
 ├── services/        # commissioning.py (status calculation engine), signature.py
-├── core/            # config, database, deps, security
+├── core/            # config, database, deps (require_permission), security
 └── seed.py / seed_commissioning.py
 ```
 
@@ -69,13 +74,13 @@ backend/app/
 frontend/src/
 ├── app/(dashboard)/
 │   ├── commissioning/   # tracking, requirements, tag-targets
-│   ├── master-data/     # projects, disciplines, services, assets, approvers, requirement-templates, etc.
-│   ├── qaqc/            # wir (form + list), mir, cir
+│   ├── master-data/     # projects, disciplines, services, assets, approvers, requirement-templates, designations, etc.
+│   ├── qaqc/            # wir (form + list), mir, cir, fat
 │   ├── documents/       # templates
 │   ├── admin/           # users, roles, permissions, settings
 │   └── dashboard/
 ├── components/
-│   ├── commissioning-linkage.tsx  # Reusable panel for WIR/CIR/MIR requirement linking + work breakdown
+│   ├── commissioning-linkage.tsx  # Reusable panel for WIR/CIR/MIR/FAT requirement linking + work breakdown + gate override dialog
 │   ├── data-table/                # Reusable DataTable system
 │   ├── layout/                    # Sidebar, navbar, project switcher
 │   └── ui/                        # shadcn components + progress, switch
@@ -98,50 +103,103 @@ POST        /api/v1/commissioning/asset-requirements/bulk-by-type
 GET/POST/DELETE /api/v1/commissioning/work-items
 POST/GET    /api/v1/commissioning/document-links
 GET/POST/PATCH /api/v1/commissioning/tag-targets
+GET         /api/v1/commissioning/progress  (server-side calculated)
+GET         /api/v1/commissioning/gate-check
 POST/GET    /api/v1/commissioning/gate-overrides
+
+GET/POST/PATCH/DELETE /api/v1/designations
 ```
+
+### Security Model
+
+- `require_permission("commissioning.manage")` — template/requirement CRUD
+- `require_permission("documents.submit")` — document creation, work items
+- Approval order enforced (can't skip queue)
+- Sign endpoint validates user has appropriate role (site_engineer/qaqc_engineer)
+- Document status state machine prevents invalid transitions
 
 ### WIR Form Flow
 
-1. General info (ref number auto-generated, date, discipline, subject, description, location fields)
+1. General info (ref number auto-generated per project+discipline+doc_type, date, discipline, subject, description, location fields)
 2. Assets (multi-select with badges)
 3. Commissioning Linkage (optional toggle):
    - Select requirement template (filtered by evidence_document_type=WIR)
    - Full scope OR partial scope
    - Partial: shows existing work items (approved=disabled, pending=checkable/deletable), add new items
    - Only checked items get linked to this document
+   - Gate override: confirmation dialog with notes field, stored in audit trail
 4. Inspectors & signatures (DocuSign-style)
 5. Attachments (drag-and-drop reorder)
+6. Both "Save as Draft" and "Save & Notify" process commissioning linkage
 
 ## Completed This Session
 
 - ✅ Full commissioning engine refactor (backend + frontend)
 - ✅ Domain spec + architecture decisions docs
-- ✅ Fresh schema with 2 clean migrations
+- ✅ Fresh schema with clean migrations
 - ✅ Realistic data center MEP seed data (36 assets, 26 requirement templates, 455 assignments)
 - ✅ Requirement Templates CRUD page
 - ✅ Commissioning Tracking page (progress + tag badges)
 - ✅ Asset Requirements page (per-asset view)
 - ✅ Tag Targets page (target date management + bulk assign)
-- ✅ WIR/CIR/MIR full forms with commissioning linkage + work breakdown
-- ✅ Reference number auto-generation
+- ✅ WIR/CIR/MIR/FAT full forms with commissioning linkage + work breakdown
+- ✅ Reference number auto-generation (serial per project+discipline+doc_type)
 - ✅ Approval workflow UI (assign approvers, record responses, sequential chain)
 - ✅ Document revision system (resubmit rejected docs)
-- ✅ Gate check API (verify level completion before proceeding)
+- ✅ Gate check API + gate override confirmation dialog with notes
 - ✅ Notifications page (read/unread, mark-all-read)
 - ✅ Dashboard with commissioning progress charts
 - ✅ Document approval → work items approved → requirement recalculated → tag achieved
+- ✅ Work item rollback on document rejection
 - ✅ All Select dropdowns show labels not IDs
 - ✅ LF line endings enforced
+- ✅ **Designation master table** — replaces free-text position field with lookup dropdown
+- ✅ **Comprehensive bug fixes** (see below)
+
+### Bug Fixes Applied This Session
+
+**Critical:**
+- C1: Work items rolled back on document rejection (prevents stuck "achieved" status)
+- C2+C3: Race condition in ref number generation fixed (FOR UPDATE lock + unique constraint)
+- C4: Document status state machine with valid transitions enforced
+- FAT form field names fixed (inspector_1_id → site_engineer_id)
+- FAT added to doc type selectors in Settings and Templates pages
+- "Save & Notify" now processes commissioning linkage (was skipping it)
+
+**Security:**
+- H1+H2: `require_permission` wired to commissioning and document write endpoints
+- H3: Approval order validation (can't skip queue, can't respond twice)
+- H4: Sign endpoint validates user has appropriate RBAC role
+- H5+H6: Literal type constraints on all enum fields (level_code, doc_type, categories, tags)
+
+**Data Integrity:**
+- H7: Document delete triggers requirement recalculation
+- H8: bulk-by-type POST uses Pydantic body (not Query params)
+- H9: N+1 query eliminated in recalculate_requirements_for_document
+- M1: Server-side ref number generation on document create
+- M2: Signed fields removed from DocumentUpdate (only via /sign endpoint)
+- M5: Discipline fallback raises 400 instead of silently counting all
+- M6: Unique approver_order per document validated
+- M7+M8: Gate override immutability enforced + type annotation fixed
+
+**New Endpoints:**
+- GET /commissioning/progress — server-side calculated AssetCommissioningProgress
+- GET/POST/PATCH/DELETE /designations — designation master CRUD
+
+**Frontend:**
+- Gate override level_code uses template's actual level (not hardcoded L2B)
+- Commissioning tracking page filters by project_id
+- Unused state variables removed
+- updated_at added to DocumentResponse
 
 ## Next Priorities
 
-1. **Gate override warning dialog** — When user proceeds despite warning, show confirmation dialog that stores acknowledgement via POST /commissioning/gate-overrides
-2. **Asset type filter on commissioning tracking** — Filter by discipline/service/type
-3. **Audit log page** — Track who changed what and when (use existing created_at/updated_by fields)
-4. **Document PDF generation** — Test end-to-end with LibreOffice
-5. **Server-side pagination** — For large datasets (assets, documents)
-6. **FAT document form** — Specific form for FAT with asset type selection
+1. **Asset type filter on commissioning tracking** — Filter by discipline/service/type
+2. **Audit log page** — Track who changed what and when (use existing created_at/updated_by fields)
+3. **Document PDF generation** — Test end-to-end with LibreOffice
+4. **Server-side pagination** — For large datasets (assets, documents)
+5. **FAT document form** — Test full flow with asset type selection + commissioning linkage
+6. **Profile page** — Add designation display (read-only, set by admin)
 
 ## Login Credentials
 

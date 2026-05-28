@@ -1,15 +1,30 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
+
+DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR"]
+DOCUMENT_STATUSES = Literal["draft", "submitted", "approved", "approved_with_comments", "rejected", "cancelled", "superseded"]
+
+# Valid status transitions
+VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"submitted", "cancelled"},
+    "submitted": {"approved", "approved_with_comments", "rejected", "cancelled"},
+    "approved": {"superseded"},
+    "approved_with_comments": {"superseded"},
+    "rejected": {"superseded"},
+    "cancelled": set(),
+    "superseded": set(),
+}
 
 
 # --- Document ---
 
 class DocumentCreate(BaseModel):
     project_id: UUID
-    document_type: str  # FAT, MIR, WIR, CIR
-    reference_no: str
+    document_type: DOCUMENT_TYPES
+    reference_no: str = ""
     title: str
     description: str | None = None
     discipline_id: UUID | None = None
@@ -24,8 +39,6 @@ class DocumentCreate(BaseModel):
     # Signatories
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
-    site_engineer_signed: bool = False
-    qaqc_engineer_signed: bool = False
     # Assets
     asset_ids: list[UUID] = []
 
@@ -43,9 +56,7 @@ class DocumentUpdate(BaseModel):
     asset_type_id: UUID | None = None
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
-    site_engineer_signed: bool | None = None
-    qaqc_engineer_signed: bool | None = None
-    status: str | None = None
+    status: DOCUMENT_STATUSES | None = None
     asset_ids: list[UUID] | None = None
 
 
@@ -76,6 +87,7 @@ class DocumentResponse(BaseModel):
     created_by: UUID | None
     updated_by: UUID | None
     created_at: datetime
+    updated_at: datetime | None
 
     model_config = {"from_attributes": True}
 

@@ -17,3 +17,4 @@ class Asset(BaseModel):
     status: Mapped[str] = mapped_column(String(30), default="pending")  # pending, installed, commissioned
 
     asset_type: Mapped["AssetType"] = relationship(back_populates="assets")  # noqa: F821
+    requirements: Mapped[list["AssetRequirement"]] = relationship(back_populates="asset", viewonly=True)  # noqa: F821

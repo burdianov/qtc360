@@ -27,6 +27,7 @@ from app.models.commissioning import (
 )
 from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.document_attachment import DocumentAttachment
+from app.models.designation import Designation
 
 __all__ = [
     "Base", "BaseModel",
@@ -45,4 +46,5 @@ __all__ = [
     "DocumentRequirementLink", "AssetTagTarget",
     "GateOverrideAcknowledgement",
     "DocumentAttachment",
+    "Designation",
 ]

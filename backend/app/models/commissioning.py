@@ -43,7 +43,7 @@ class AssetRequirement(BaseModel):
     notes: Mapped[str | None] = mapped_column(Text)
 
     # Relationships
-    asset: Mapped["Asset"] = relationship()  # noqa: F821
+    asset: Mapped["Asset"] = relationship(back_populates="requirements")  # noqa: F821
     requirement_template: Mapped["RequirementTemplate"] = relationship(back_populates="asset_requirements")
     work_items: Mapped[list["RequirementWorkItem"]] = relationship(back_populates="asset_requirement")
     document_links: Mapped[list["DocumentRequirementLink"]] = relationship(back_populates="asset_requirement")

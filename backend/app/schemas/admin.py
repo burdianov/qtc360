@@ -7,7 +7,7 @@ class UserAdminCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    position: str | None = None
+    designation_id: UUID | None = None
     is_active: bool = True
     is_superuser: bool = False
     role_ids: list[UUID] = []
@@ -15,7 +15,7 @@ class UserAdminCreate(BaseModel):
 class UserAdminUpdate(BaseModel):
     email: EmailStr | None = None
     full_name: str | None = None
-    position: str | None = None
+    designation_id: UUID | None = None
     is_active: bool | None = None
     is_superuser: bool | None = None
     password: str | None = None
@@ -27,11 +27,17 @@ class RoleResponse(BaseModel):
     description: str | None
     model_config = {"from_attributes": True}
 
+class DesignationRef(BaseModel):
+    id: UUID
+    name: str
+    model_config = {"from_attributes": True}
+
 class UserAdminResponse(BaseModel):
     id: UUID
     email: str
     full_name: str
-    position: str | None = None
+    designation_id: UUID | None = None
+    designation: DesignationRef | None = None
     signature_text: str | None = None
     signature_font: str | None = None
     is_active: bool

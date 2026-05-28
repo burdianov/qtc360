@@ -1,3 +1,4 @@
+import uuid as uuid_mod
 from datetime import datetime
 
 from sqlalchemy import String, Boolean, Column, DateTime, ForeignKey, Table
@@ -21,7 +22,7 @@ class User(BaseModel):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50))
-    position: Mapped[str | None] = mapped_column(String(255))
+    designation_id: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("designations.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -29,6 +30,7 @@ class User(BaseModel):
     signature_font: Mapped[str | None] = mapped_column(String(50), default="dancing_script")
     signature_text: Mapped[str | None] = mapped_column(String(255), default=None)
 
+    designation: Mapped["Designation | None"] = relationship()  # noqa: F821
     roles: Mapped[list["Role"]] = relationship(  # noqa: F821
         secondary="user_roles", back_populates="users"
     )

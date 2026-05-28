@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_permission
 from app.models.commissioning import (
     AssetRequirement,
     AssetTagTarget,
@@ -19,6 +19,7 @@ from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.user import User
 from app.schemas.commissioning import (
     AssetRequirementBulkCreate,
+    AssetRequirementBulkByTypeCreate,
     AssetRequirementCreate,
     AssetRequirementOut,
     AssetTagTargetCreate,
@@ -63,7 +64,7 @@ async def list_requirement_templates(
 async def create_requirement_template(
     data: RequirementTemplateCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     template = RequirementTemplate(**data.model_dump())
     db.add(template)
@@ -77,7 +78,7 @@ async def update_requirement_template(
     template_id: uuid.UUID,
     data: RequirementTemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     result = await db.execute(select(RequirementTemplate).where(RequirementTemplate.id == template_id))
     template = result.scalar_one_or_none()
@@ -95,6 +96,7 @@ async def update_requirement_template(
 @router.get("/asset-requirements", response_model=list[AssetRequirementOut])
 async def list_asset_requirements(
     asset_id: uuid.UUID | None = None,
+    project_id: uuid.UUID | None = None,
     required_for_tag: str | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -102,6 +104,9 @@ async def list_asset_requirements(
     query = select(AssetRequirement).where(AssetRequirement.is_deleted == False)  # noqa: E712
     if asset_id:
         query = query.where(AssetRequirement.asset_id == asset_id)
+    if project_id:
+        from app.models.asset import Asset
+        query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(Asset.is_deleted == False)  # noqa: E712
     if required_for_tag:
         query = query.where(AssetRequirement.required_for_tag == required_for_tag)
     result = await db.execute(query)
@@ -112,7 +117,7 @@ async def list_asset_requirements(
 async def create_asset_requirement(
     data: AssetRequirementCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     req = AssetRequirement(**data.model_dump())
     db.add(req)
@@ -125,7 +130,7 @@ async def create_asset_requirement(
 async def bulk_create_asset_requirements(
     data: AssetRequirementBulkCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     reqs = []
     for asset_id in data.asset_ids:
@@ -145,19 +150,17 @@ async def bulk_create_asset_requirements(
 
 @router.post("/asset-requirements/bulk-by-type", status_code=status.HTTP_201_CREATED)
 async def bulk_assign_by_asset_type(
-    asset_type_id: uuid.UUID = Query(...),
-    requirement_template_id: uuid.UUID = Query(...),
-    required_for_tag: str = Query(...),
+    data: AssetRequirementBulkByTypeCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     """Assign a requirement to all assets of a given type (including subtypes)."""
     from app.models.asset import Asset
     from app.models.asset_type import AssetType
 
     # Get all asset type IDs (parent + subtypes)
-    type_ids = [asset_type_id]
-    subtypes = await db.execute(select(AssetType.id).where(AssetType.parent_type_id == asset_type_id))
+    type_ids = [data.asset_type_id]
+    subtypes = await db.execute(select(AssetType.id).where(AssetType.parent_type_id == data.asset_type_id))
     type_ids.extend([row[0] for row in subtypes.all()])
 
     # Get all assets of those types
@@ -171,14 +174,14 @@ async def bulk_assign_by_asset_type(
         existing = await db.execute(
             select(AssetRequirement).where(
                 AssetRequirement.asset_id == asset.id,
-                AssetRequirement.requirement_template_id == requirement_template_id,
+                AssetRequirement.requirement_template_id == data.requirement_template_id,
             )
         )
         if not existing.scalar_one_or_none():
             db.add(AssetRequirement(
                 asset_id=asset.id,
-                requirement_template_id=requirement_template_id,
-                required_for_tag=required_for_tag,
+                requirement_template_id=data.requirement_template_id,
+                required_for_tag=data.required_for_tag,
             ))
             count += 1
 
@@ -206,7 +209,7 @@ async def list_work_items(
 async def create_work_item(
     data: RequirementWorkItemCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("documents.submit")),
 ):
     item = RequirementWorkItem(**data.model_dump())
     db.add(item)
@@ -237,7 +240,7 @@ async def update_work_item(
 async def delete_work_item(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("documents.submit")),
 ):
     result = await db.execute(select(RequirementWorkItem).where(RequirementWorkItem.id == item_id))
     item = result.scalar_one_or_none()
@@ -330,6 +333,101 @@ async def update_tag_target(
     await db.commit()
     await db.refresh(target)
     return target
+
+
+# --- Commissioning Progress ---
+
+@router.get("/progress", response_model=list["AssetCommissioningProgress"])
+async def get_commissioning_progress(
+    project_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return commissioning progress for all assets in a project."""
+    from app.models.asset import Asset
+    from app.schemas.commissioning import AssetCommissioningProgress, AssetRequirementDetail
+
+    assets_result = await db.execute(
+        select(Asset).where(Asset.is_deleted == False)  # noqa: E712
+    )
+    assets = assets_result.scalars().all()
+
+    # Get all requirements with templates
+    reqs_result = await db.execute(
+        select(AssetRequirement)
+        .where(AssetRequirement.is_deleted == False)  # noqa: E712
+        .options(selectinload(AssetRequirement.work_items))
+    )
+    all_reqs = reqs_result.scalars().all()
+
+    # Get templates
+    tmpl_result = await db.execute(
+        select(RequirementTemplate).where(
+            RequirementTemplate.is_deleted == False,  # noqa: E712
+            (RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None),  # noqa: E711
+        )
+    )
+    templates = {t.id: t for t in tmpl_result.scalars().all()}
+
+    # Get tag targets
+    tags_result = await db.execute(
+        select(AssetTagTarget).where(AssetTagTarget.is_deleted == False)  # noqa: E712
+    )
+    all_tags = tags_result.scalars().all()
+
+    # Build per-asset progress
+    reqs_by_asset: dict[uuid.UUID, list] = {}
+    for req in all_reqs:
+        reqs_by_asset.setdefault(req.asset_id, []).append(req)
+
+    tags_by_asset: dict[uuid.UUID, list] = {}
+    for tag in all_tags:
+        tags_by_asset.setdefault(tag.asset_id, []).append(tag)
+
+    progress_list = []
+    for asset in assets:
+        asset_reqs = reqs_by_asset.get(asset.id, [])
+        if not asset_reqs:
+            continue
+
+        req_details = []
+        for req in asset_reqs:
+            tmpl = templates.get(req.requirement_template_id)
+            work_items = [wi for wi in req.work_items if not wi.is_deleted]
+            req_details.append(AssetRequirementDetail(
+                id=req.id,
+                asset_id=req.asset_id,
+                requirement_template_id=req.requirement_template_id,
+                status=req.status,
+                progress_percent=req.progress_percent,
+                required_for_tag=req.required_for_tag,
+                target_date=req.target_date,
+                actual_completion_date=req.actual_completion_date,
+                notes=req.notes,
+                created_at=req.created_at,
+                template_name=tmpl.name if tmpl else None,
+                template_code=tmpl.code if tmpl else None,
+                level_code=tmpl.level_code if tmpl else None,
+                work_items=work_items,
+            ))
+
+        # Calculate current tags
+        current_tags = []
+        for tag_code, levels in [("red", ["L1", "L2A"]), ("yellow", ["L2B"]), ("green", ["L3"]), ("blue", ["L4"])]:
+            tag_reqs = [r for r in asset_reqs if templates.get(r.requirement_template_id) and templates[r.requirement_template_id].level_code in levels and not templates[r.requirement_template_id].is_optional]
+            if tag_reqs and all(r.status == "achieved" for r in tag_reqs):
+                current_tags.append(tag_code)
+
+        progress_list.append(AssetCommissioningProgress(
+            asset_id=asset.id,
+            asset_name=asset.name,
+            tag_number=asset.tag_number,
+            current_tags=current_tags,
+            requirements=req_details,
+            tag_targets=tags_by_asset.get(asset.id, []),
+        ))
+
+    return progress_list
 
 
 # --- Gate Override Acknowledgements ---
