@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { ChevronsUpDown, FolderKanban } from "lucide-react";
 import {
   DropdownMenu,
@@ -10,6 +11,7 @@ import {
 import { useUserProjects, useSelectedProject, useSetProject } from "@/hooks/use-project";
 
 export function ProjectSwitcher({ mobile }: { mobile?: boolean }) {
+  const router = useRouter();
   const { data: projects } = useUserProjects();
   const selectedProject = useSelectedProject();
   const setProject = useSetProject();
@@ -34,7 +36,7 @@ export function ProjectSwitcher({ mobile }: { mobile?: boolean }) {
         {projects?.map((project) => (
           <DropdownMenuItem
             key={project.id}
-            onClick={() => setProject(project)}
+            onClick={() => { setProject(project); if (project.id !== selectedProject.id) router.replace("/dashboard"); }}
             className={project.id === selectedProject.id ? "bg-accent" : ""}
           >
             <FolderKanban className="mr-2 h-4 w-4" />
