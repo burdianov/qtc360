@@ -405,6 +405,63 @@ async def seed_commissioning():
 
         await session.commit()
         print(f"  Assigned {l4_count} L4 integration test requirements.")
+
+        # --- Systems ---
+        from app.models.system import System, asset_systems
+        SYSTEMS = [
+            {"name": "Building Management System", "code": "BMS", "description": "Controls and monitors HVAC, lighting, and energy management"},
+            {"name": "Fire Alarm System", "code": "FAS", "description": "Fire detection, alarm, and suppression control"},
+            {"name": "Access Control System", "code": "ACS", "description": "Door access, CCTV integration, and security management"},
+            {"name": "Electrical Power System", "code": "EPS", "description": "HV/LV distribution, generators, UPS, and switchgear"},
+            {"name": "HVAC System", "code": "HVAC", "description": "Heating, ventilation, and air conditioning"},
+            {"name": "Plumbing & Drainage System", "code": "PDS", "description": "Water supply, drainage, and sewage"},
+            {"name": "Fire Fighting System", "code": "FFS", "description": "Sprinklers, hydrants, and suppression systems"},
+            {"name": "Lighting Control System", "code": "LCS", "description": "Automated lighting control and DALI integration"},
+        ]
+
+        # Asset-to-system mapping by asset tag prefix
+        SYSTEM_ASSETS = {
+            "BMS": ["BMS-", "FCU-", "AHU-", "CHW-"],
+            "FAS": ["FAS-", "SMK-"],
+            "EPS": ["GEN-", "MDB-", "SMDB-", "UPS-", "ATS-"],
+            "HVAC": ["FCU-", "AHU-", "CHW-", "FAF-"],
+            "FFS": ["FP-", "SPR-"],
+            "LCS": ["LTG-"],
+        }
+
+        system_count = 0
+        for sys_data in SYSTEMS:
+            existing = await session.execute(
+                select(System).where(System.code == sys_data["code"], System.project_id == proj.id)
+            )
+            if not existing.scalar_one_or_none():
+                session.add(System(project_id=proj.id, **sys_data))
+                system_count += 1
+        await session.commit()
+
+        # Link assets to systems
+        sys_result = await session.execute(select(System).where(System.project_id == proj.id))
+        sys_map = {s.code: s for s in sys_result.scalars().all()}
+
+        link_count = 0
+        for sys_code, prefixes in SYSTEM_ASSETS.items():
+            system = sys_map.get(sys_code)
+            if not system:
+                continue
+            for tag, asset in asset_map.items():
+                if any(tag.startswith(p) for p in prefixes):
+                    existing_link = await session.execute(
+                        asset_systems.select().where(
+                            asset_systems.c.asset_id == asset.id,
+                            asset_systems.c.system_id == system.id,
+                        )
+                    )
+                    if not existing_link.first():
+                        await session.execute(asset_systems.insert().values(asset_id=asset.id, system_id=system.id))
+                        link_count += 1
+        await session.commit()
+        print(f"  Created {system_count} systems, {link_count} asset-system links.")
+
         print("\nCommissioning seed complete.")
 
 
