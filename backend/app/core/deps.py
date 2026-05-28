@@ -45,6 +45,15 @@ async def require_superuser(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    if user.is_superuser:
+        return user
+    user_role_names = {r.name for r in user.roles}
+    if "admin" not in user_role_names and "super_admin" not in user_role_names:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
 def require_permission(permission_code: str) -> Callable:
     async def checker(user: User = Depends(get_current_user)) -> User:
         if user.is_superuser:

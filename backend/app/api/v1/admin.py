@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import require_superuser
+from app.core.deps import get_current_user, require_admin, require_superuser
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.rbac import Role, Permission
@@ -20,7 +20,7 @@ from app.schemas.admin import (
 )
 
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_superuser)])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 # --- Users ---
@@ -30,21 +30,27 @@ async def list_users(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 @router.post("/users", response_model=UserAdminResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db)):
+async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, designation_id=body.designation_id, is_active=body.is_active, is_superuser=body.is_superuser, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
     if body.role_ids:
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
-        user.roles = list(roles)
+        caller_role_names = {r.name for r in current_user.roles}
+        is_super = current_user.is_superuser or "super_admin" in caller_role_names
+        if any(r.name == "super_admin" for r in roles) and not is_super:
+            raise HTTPException(status_code=403, detail="Only super_admin can assign the super_admin role")
+    else:
+        roles = []
+    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, designation_id=body.designation_id, is_active=body.is_active, is_superuser=False, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
+    user.roles = list(roles)
     db.add(user)
     await db.commit()
     await db.refresh(user)
     return user
 
 @router.patch("/users/{user_id}", response_model=UserAdminResponse)
-async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = Depends(get_db)):
+async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     user = (await db.execute(select(User).where(User.id == user_id, User.is_deleted == False).options(selectinload(User.roles), selectinload(User.designation)))).scalar_one_or_none()  # noqa: E712
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -56,14 +62,16 @@ async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = D
         user.designation_id = body.designation_id
     if body.is_active is not None:
         user.is_active = body.is_active
-    if body.is_superuser is not None:
-        user.is_superuser = body.is_superuser
     if body.password is not None:
         user.hashed_password = hash_password(body.password)
         user.must_change_password = True
         user.password_reset_at = datetime.now(timezone.utc)
     if body.role_ids is not None:
         roles = (await db.execute(select(Role).where(Role.id.in_(body.role_ids)))).scalars().all()
+        caller_role_names = {r.name for r in current_user.roles}
+        is_super = current_user.is_superuser or "super_admin" in caller_role_names
+        if any(r.name == "super_admin" for r in roles) and not is_super:
+            raise HTTPException(status_code=403, detail="Only super_admin can assign the super_admin role")
         user.roles = list(roles)
     await db.commit()
     result = await db.execute(select(User).where(User.id == user_id).options(selectinload(User.roles), selectinload(User.designation)))

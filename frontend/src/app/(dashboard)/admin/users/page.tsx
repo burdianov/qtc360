@@ -29,7 +29,6 @@ const schema = z.object({
   designation_id: z.string().optional(),
   password: z.string(),
   is_active: z.boolean(),
-  is_superuser: z.boolean(),
   role_ids: z.array(z.string()),
 });
 
@@ -64,7 +63,7 @@ export default function UsersPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", full_name: "", designation_id: "", password: "", is_active: true, is_superuser: false, role_ids: [] },
+    defaultValues: { email: "", full_name: "", designation_id: "", password: "", is_active: true, role_ids: [] },
   });
 
   const resetForm = useForm<ResetFormValues>({
@@ -103,8 +102,8 @@ export default function UsersPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
-  const openCreate = () => { setEditing(null); form.reset({ email: "", full_name: "", designation_id: "", password: "", is_active: true, is_superuser: false, role_ids: [] }); setDialogOpen(true); };
-  const openEdit = (item: UserItem) => { setEditing(item); form.reset({ email: item.email, full_name: item.full_name, designation_id: item.designation_id || "", password: "", is_active: item.is_active, is_superuser: item.is_superuser, role_ids: item.roles.map((r) => r.id) }); setDialogOpen(true); };
+  const openCreate = () => { setEditing(null); form.reset({ email: "", full_name: "", designation_id: "", password: "", is_active: true, role_ids: [] }); setDialogOpen(true); };
+  const openEdit = (item: UserItem) => { setEditing(item); form.reset({ email: item.email, full_name: item.full_name, designation_id: item.designation_id || "", password: "", is_active: item.is_active, role_ids: item.roles.map((r) => r.id) }); setDialogOpen(true); };
   const openReset = (item: UserItem) => { setResettingUser(item); resetForm.reset({ password: "" }); setResetDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
 
@@ -178,17 +177,11 @@ export default function UsersPage() {
                   <FormLabel>Active</FormLabel>
                 </FormItem>
               )} />
-              <FormField control={form.control} name="is_superuser" render={({ field }) => (
-                <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <FormLabel>Superuser</FormLabel>
-                </FormItem>
-              )} />
               <FormField control={form.control} name="role_ids" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Roles</FormLabel>
                   <div className="space-y-2">
-                    {roles.map((role) => (
+                    {roles.filter((role) => role.name !== "super_admin").map((role) => (
                       <label key={role.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={field.value.includes(role.id)}

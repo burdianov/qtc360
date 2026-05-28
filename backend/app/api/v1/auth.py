@@ -118,3 +118,39 @@ async def update_me(
 @router.get("/me/projects", response_model=list[ProjectSummaryResponse])
 async def my_projects(user: User = Depends(get_current_user)):
     return [{"id": p.id, "name": p.name, "code": p.code} for p in user.projects]
+
+
+
+# --- User Preferences (column orders, etc.) ---
+
+@router.get("/me/preferences")
+async def get_preferences(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.models.user_preference import UserPreference
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.user_id == user.id, UserPreference.is_deleted == False)  # noqa: E712
+    )
+    return {p.key: p.value for p in result.scalars().all()}
+
+
+@router.put("/me/preferences/{key}")
+async def set_preference(
+    key: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.models.user_preference import UserPreference
+    result = await db.execute(
+        select(UserPreference).where(UserPreference.user_id == user.id, UserPreference.key == key)
+    )
+    pref = result.scalar_one_or_none()
+    if pref:
+        pref.value = body
+    else:
+        pref = UserPreference(user_id=user.id, key=key, value=body)
+        db.add(pref)
+    await db.commit()
+    return {"status": "ok"}

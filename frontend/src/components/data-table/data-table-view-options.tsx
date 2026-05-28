@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { type Table, type Column } from "@tanstack/react-table";
 import { Settings2, GripVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "@/lib/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +16,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 interface DataTableViewOptionsProps<TData> {
   table: Table<TData>;
-  storageKey?: string;
 }
 
 function getColumnLabel<TData>(col: Column<TData, unknown>): string {
@@ -28,69 +28,53 @@ function getColumnLabel<TData>(col: Column<TData, unknown>): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function DataTableViewOptions<TData>({ table, storageKey }: DataTableViewOptionsProps<TData>) {
+export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps<TData>) {
   const columns = table
     .getAllColumns()
     .filter((col) => typeof col.accessorFn !== "undefined" && col.getCanHide());
 
-  const autoKey = typeof window !== "undefined" ? `col_order_${window.location.pathname}` : null;
-  const lsKey = storageKey ? `col_order_${storageKey}` : autoKey;
+  const prefKey = typeof window !== "undefined" ? window.location.pathname.replace(/\//g, "_") : "";
+  const queryClient = useQueryClient();
 
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
-    if (lsKey && typeof window !== "undefined") {
-      const saved = localStorage.getItem(lsKey);
-      if (saved) try { return JSON.parse(saved); } catch {}
-    }
-    return columns.map((c) => c.id);
+  const saveMutation = useMutation({
+    mutationFn: async (order: string[]) => {
+      await api.put(`/auth/me/preferences/col_order${prefKey}`, { order });
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["user-preferences"] }),
   });
+
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
-  // Apply saved order on mount
-  useEffect(() => {
-    if (lsKey) {
-      const saved = localStorage.getItem(lsKey);
-      if (saved) {
-        try {
-          const order: string[] = JSON.parse(saved);
-          // Ensure select is first, actions is last
-          const filtered = order.filter((id) => id !== "select" && id !== "actions");
-          const full = ["select", ...filtered, "actions"];
-          table.setColumnOrder(full);
-        } catch {}
-      }
-    }
-  }, []);
-
-  const orderedColumns = [...columns].sort(
-    (a, b) => columnOrder.indexOf(a.id) - columnOrder.indexOf(b.id)
-  );
-
-  const handleDragStart = (id: string) => {
-    setDraggedItem(id);
-  };
+  // Get current order from table state (synced with header drag)
+  const tableOrder = table.getState().columnOrder;
+  const orderedColumns = tableOrder.length > 0
+    ? [...columns].sort((a, b) => tableOrder.indexOf(a.id) - tableOrder.indexOf(b.id))
+    : columns;
 
   const handleDragOver = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
     if (!draggedItem || draggedItem === targetId) return;
-    const newOrder = [...columnOrder];
-    const fromIdx = newOrder.indexOf(draggedItem);
-    const toIdx = newOrder.indexOf(targetId);
-    newOrder.splice(fromIdx, 1);
-    newOrder.splice(toIdx, 0, draggedItem);
-    setColumnOrder(newOrder);
-    // Always keep select first, actions last when applying to table
-    const full = ["select", ...newOrder.filter((id) => id !== "select" && id !== "actions"), "actions"];
-    table.setColumnOrder(full);
-    if (lsKey) localStorage.setItem(lsKey, JSON.stringify(newOrder));
+    const currentOrder = tableOrder.length > 0
+      ? [...tableOrder]
+      : ["select", ...columns.map((c) => c.id), "actions"];
+    const fromIdx = currentOrder.indexOf(draggedItem);
+    const toIdx = currentOrder.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    currentOrder.splice(fromIdx, 1);
+    currentOrder.splice(toIdx, 0, draggedItem);
+    table.setColumnOrder(currentOrder);
   };
 
   const handleDragEnd = () => {
     setDraggedItem(null);
+    const order = table.getState().columnOrder.filter((id) => id !== "select" && id !== "actions");
+    saveMutation.mutate(order);
   };
 
   return (
+    <div className="flex items-center">
     <DropdownMenu>
-      <DropdownMenuTrigger className="ml-auto hidden h-8 lg:inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-sm font-medium ring-offset-background hover:bg-accent hover:text-accent-foreground">
+      <DropdownMenuTrigger className="hidden h-8 lg:inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-sm font-medium ring-offset-background hover:bg-accent hover:text-accent-foreground">
         <Settings2 className="h-4 w-4" />
         Columns
       </DropdownMenuTrigger>
@@ -103,7 +87,7 @@ export function DataTableViewOptions<TData>({ table, storageKey }: DataTableView
             <div
               key={col.id}
               draggable
-              onDragStart={() => handleDragStart(col.id)}
+              onDragStart={() => setDraggedItem(col.id)}
               onDragOver={(e) => handleDragOver(e, col.id)}
               onDragEnd={handleDragEnd}
               className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm cursor-grab active:cursor-grabbing hover:bg-accent ${draggedItem === col.id ? "opacity-50" : ""}`}
@@ -119,5 +103,6 @@ export function DataTableViewOptions<TData>({ table, storageKey }: DataTableView
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
+    </div>
   );
 }

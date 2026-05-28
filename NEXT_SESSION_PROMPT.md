@@ -112,11 +112,14 @@ GET/POST/PATCH/DELETE /api/v1/designations
 
 ### Security Model
 
+- `require_admin` gate on `/admin` router — requires admin or super_admin role (or is_superuser)
 - `require_permission("commissioning.manage")` — template/requirement CRUD
 - `require_permission("documents.submit")` — document creation, work items
+- Role assignment: admin can assign all roles except super_admin; super_admin/is_superuser can assign all
 - Approval order enforced (can't skip queue)
 - Sign endpoint validates user has appropriate role (site_engineer/qaqc_engineer)
 - Document status state machine prevents invalid transitions
+- `is_superuser` flag hidden from UI — only for dev account, bypasses all checks
 
 ### WIR Form Flow
 
@@ -155,6 +158,8 @@ GET/POST/PATCH/DELETE /api/v1/designations
 - ✅ LF line endings enforced
 - ✅ **Designation master table** — replaces free-text position field with lookup dropdown
 - ✅ **Comprehensive bug fixes** (see below)
+- ✅ **Column order persistence** — draggable table headers + dropdown, saved to DB per user
+- ✅ **RBAC enforcement** — admin can assign roles (except super_admin), super_admin can assign all, regular users blocked
 
 ### Bug Fixes Applied This Session
 

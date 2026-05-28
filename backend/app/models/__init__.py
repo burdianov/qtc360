@@ -28,6 +28,7 @@ from app.models.commissioning import (
 from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.document_attachment import DocumentAttachment
 from app.models.designation import Designation
+from app.models.user_preference import UserPreference
 
 __all__ = [
     "Base", "BaseModel",
@@ -47,4 +48,5 @@ __all__ = [
     "GateOverrideAcknowledgement",
     "DocumentAttachment",
     "Designation",
+    "UserPreference",
 ]
