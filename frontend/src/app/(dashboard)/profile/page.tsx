@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,8 @@ interface Font { id: string; name: string; }
 
 export default function ProfilePage() {
   const qc = useQueryClient();
+  const { resolvedTheme } = useTheme();
+  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [selectedFont, setSelectedFont] = useState("dancing_script");
   const [signatureText, setSignatureText] = useState("");
   const [initialFont, setInitialFont] = useState("dancing_script");
@@ -65,6 +68,7 @@ export default function ProfilePage() {
         <CardContent className="space-y-2 text-sm">
           <div><span className="text-muted-foreground w-24 inline-block">Name:</span> {user?.full_name}</div>
           <div><span className="text-muted-foreground w-24 inline-block">Email:</span> {user?.email}</div>
+          <div><span className="text-muted-foreground w-24 inline-block">Designation:</span> {user?.designation?.name || <span className="text-muted-foreground italic">Not assigned</span>}</div>
         </CardContent>
       </Card>
 
@@ -92,7 +96,7 @@ export default function ProfilePage() {
               >
                 <span className="text-xs text-muted-foreground block mb-2">{font.name}</span>
                 <img
-                  src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(previewName)}&font_id=${font.id}&color=%23a5b4fc`}
+                  src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(previewName)}&font_id=${font.id}&color=${sigColor}`}
                   alt={font.name}
                   className="h-10 object-contain"
                 />

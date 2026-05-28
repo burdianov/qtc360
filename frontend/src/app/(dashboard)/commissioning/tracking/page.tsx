@@ -61,13 +61,35 @@ const statusColors: Record<string, string> = {
   rejected: "bg-red-500/15 text-red-500",
 };
 
+interface Discipline { id: string; name: string; }
+interface Service { id: string; name: string; discipline_id: string; }
+interface AssetTypeItem { id: string; name: string; service_id: string; }
+
 export default function CommissioningTrackingPage() {
   const project = useSelectedProject();
   const [filterTag, setFilterTag] = useState<string>("");
+  const [filterDiscipline, setFilterDiscipline] = useState<string>("");
+  const [filterService, setFilterService] = useState<string>("");
+  const [filterAssetType, setFilterAssetType] = useState<string>("");
 
-  const { data: assets = [] } = useQuery<Asset[]>({
+  const { data: assets = [] } = useQuery<(Asset & { asset_type_id: string })[]>({
     queryKey: ["assets"],
     queryFn: async () => (await api.get("/assets")).data,
+  });
+
+  const { data: disciplines = [] } = useQuery<Discipline[]>({
+    queryKey: ["disciplines"],
+    queryFn: async () => (await api.get("/disciplines")).data,
+  });
+
+  const { data: services = [] } = useQuery<Service[]>({
+    queryKey: ["services"],
+    queryFn: async () => (await api.get("/services")).data,
+  });
+
+  const { data: assetTypes = [] } = useQuery<AssetTypeItem[]>({
+    queryKey: ["asset-types"],
+    queryFn: async () => (await api.get("/asset-types")).data,
   });
 
   const { data: requirements = [] } = useQuery<AssetRequirement[]>({
@@ -82,30 +104,48 @@ export default function CommissioningTrackingPage() {
     enabled: !!project?.id,
   });
 
+  // Cascade filter options
+  const filteredServices = filterDiscipline ? services.filter((s) => s.discipline_id === filterDiscipline) : services;
+  const filteredAssetTypes = filterService ? assetTypes.filter((t) => t.service_id === filterService) : filterDiscipline ? assetTypes.filter((t) => filteredServices.some((s) => s.id === t.service_id)) : assetTypes;
+
+  // Build set of asset IDs matching hierarchy filters
+  const filteredAssetIds = new Set(
+    assets
+      .filter((a) => {
+        if (filterAssetType) return a.asset_type_id === filterAssetType;
+        if (filterService) return assetTypes.some((t) => t.id === a.asset_type_id && t.service_id === filterService);
+        if (filterDiscipline) return assetTypes.some((t) => t.id === a.asset_type_id && filteredServices.some((s) => s.id === t.service_id));
+        return true;
+      })
+      .map((a) => a.id)
+  );
+
   // Build progress summary per asset
-  const progressData: AssetProgress[] = assets.map((asset) => {
-    const assetReqs = requirements.filter((r) => r.asset_id === asset.id);
-    const total = assetReqs.length;
-    const achieved = assetReqs.filter((r) => r.status === "achieved").length;
-    const progress = total > 0 ? Math.round((achieved / total) * 100) : 0;
+  const progressData: AssetProgress[] = assets
+    .filter((a) => filteredAssetIds.has(a.id))
+    .map((asset) => {
+      const assetReqs = requirements.filter((r) => r.asset_id === asset.id);
+      const total = assetReqs.length;
+      const achieved = assetReqs.filter((r) => r.status === "achieved").length;
+      const progress = total > 0 ? Math.round((achieved / total) * 100) : 0;
 
-    // Tag achievement: all requirements for that tag must be achieved
-    const byTag = (tag: string) => {
-      const tagReqs = assetReqs.filter((r) => r.required_for_tag === tag);
-      return tagReqs.length > 0 && tagReqs.every((r) => r.status === "achieved");
-    };
+      const byTag = (tag: string) => {
+        const tagReqs = assetReqs.filter((r) => r.required_for_tag === tag);
+        return tagReqs.length > 0 && tagReqs.every((r) => r.status === "achieved");
+      };
 
-    return {
-      asset,
-      total,
-      achieved,
-      progress,
-      red_tag: byTag("red"),
-      yellow_tag: byTag("yellow"),
-      green_tag: byTag("green"),
-      blue_tag: byTag("blue"),
-    };
-  }).filter((p) => p.total > 0);
+      return {
+        asset,
+        total,
+        achieved,
+        progress,
+        red_tag: byTag("red"),
+        yellow_tag: byTag("yellow"),
+        green_tag: byTag("green"),
+        blue_tag: byTag("blue"),
+      };
+    })
+    .filter((p) => p.total > 0);
 
   const columns: ColumnDef<AssetProgress, unknown>[] = [
     { accessorKey: "asset.tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, cell: ({ row }) => <span className="font-mono text-xs">{row.original.asset.tag_number}</span> },
@@ -142,10 +182,34 @@ export default function CommissioningTrackingPage() {
         </Button>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-3 items-center">
-        <Select value={filterTag} onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Filter by tag">{filterTag ? `${filterTag} tag` : "All Tags"}</SelectValue></SelectTrigger>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <Select value={filterDiscipline || "__all__"} onValueChange={(v) => { setFilterDiscipline(v === "__all__" ? "" : v); setFilterService(""); setFilterAssetType(""); }}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Discipline" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Disciplines</SelectItem>
+            {disciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterService || "__all__"} onValueChange={(v) => { setFilterService(v === "__all__" ? "" : v); setFilterAssetType(""); }}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Service" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Services</SelectItem>
+            {filteredServices.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterAssetType || "__all__"} onValueChange={(v) => setFilterAssetType(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Asset Type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All Asset Types</SelectItem>
+            {filteredAssetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterTag || "__all__"} onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Filter by tag" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Tags</SelectItem>
             <SelectItem value="red">Red Tag (not achieved)</SelectItem>

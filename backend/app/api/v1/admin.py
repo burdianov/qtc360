@@ -1,8 +1,8 @@
-"""Admin endpoints for Users, Roles, Permissions."""
+"""Admin endpoints for Users, Roles, Permissions, Audit Logs."""
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +13,13 @@ from app.core.deps import get_current_user, require_admin, require_superuser
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.rbac import Role, Permission
+from app.models.audit_log import AuditLog
+from app.services.audit import record_audit
 from app.schemas.admin import (
     UserAdminCreate, UserAdminUpdate, UserAdminResponse,
     RoleCreate, RoleUpdate, RoleAdminResponse,
     PermissionCreate, PermissionUpdate, PermissionResponse,
+    AuditLogResponse,
 )
 
 
@@ -45,6 +48,8 @@ async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db),
     user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name, designation_id=body.designation_id, is_active=body.is_active, is_superuser=False, must_change_password=True, password_reset_at=datetime.now(timezone.utc))
     user.roles = list(roles)
     db.add(user)
+    await db.flush()
+    await record_audit(db, user_id=current_user.id, action="create", entity_type="user", entity_id=user.id, summary=f"Created user '{user.full_name}' ({user.email})")
     await db.commit()
     await db.refresh(user)
     return user
@@ -170,3 +175,23 @@ async def delete_permission(perm_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Permission not found")
     perm.is_deleted = True
     await db.commit()
+
+
+
+# --- Audit Logs ---
+@router.get("/audit-logs", response_model=list[AuditLogResponse])
+async def list_audit_logs(
+    action: str | None = None,
+    entity_type: str | None = None,
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(AuditLog).options(selectinload(AuditLog.user)).order_by(AuditLog.timestamp.desc())
+    if action:
+        q = q.where(AuditLog.action == action)
+    if entity_type:
+        q = q.where(AuditLog.entity_type == entity_type)
+    q = q.offset(offset).limit(limit)
+    result = await db.execute(q)
+    return result.scalars().all()

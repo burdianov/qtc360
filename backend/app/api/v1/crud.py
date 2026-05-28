@@ -38,10 +38,18 @@ def create_crud_router(
     async def list_all(
         skip: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=500),
+        paginated: bool = Query(False),
         db: AsyncSession = Depends(get_db),
         _: Any = Depends(get_current_user),
     ):
-        result = await db.execute(_base_query().offset(skip).limit(limit))
+        base = _base_query()
+        if paginated:
+            from sqlalchemy import func
+            count_result = await db.execute(select(func.count()).select_from(base.subquery()))
+            total = count_result.scalar() or 0
+            result = await db.execute(base.offset(skip).limit(limit))
+            return {"items": result.scalars().all(), "total": total}
+        result = await db.execute(base.offset(skip).limit(limit))
         return result.scalars().all()
 
     @router.get("/{item_id}", response_model=response_schema)

@@ -6,6 +6,7 @@ import {
   type SortingState,
   type VisibilityState,
   type RowSelectionState,
+  type PaginationState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
@@ -39,6 +40,14 @@ interface DataTableProps<TData, TValue> {
   onDownloadTemplate?: () => void;
   onBulkDelete?: (rows: TData[]) => void;
   onRowClick?: (row: TData) => void;
+  // Server-side pagination
+  serverPagination?: {
+    total: number;
+    pageIndex: number;
+    pageSize: number;
+    onPageChange: (pageIndex: number) => void;
+    onPageSizeChange: (pageSize: number) => void;
+  };
 }
 
 export function DataTable<TData, TValue>({
@@ -52,6 +61,7 @@ export function DataTable<TData, TValue>({
   onDownloadTemplate,
   onBulkDelete,
   onRowClick,
+  serverPagination,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -92,7 +102,8 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    state: { sorting, columnFilters, columnVisibility, rowSelection },
+    state: { sorting, columnFilters, columnVisibility, rowSelection, ...(serverPagination ? { pagination: { pageIndex: serverPagination.pageIndex, pageSize: serverPagination.pageSize } } : {}) },
+    ...(serverPagination ? { manualPagination: true, pageCount: Math.ceil(serverPagination.total / serverPagination.pageSize), onPaginationChange: (updater) => { const next = typeof updater === "function" ? updater({ pageIndex: serverPagination.pageIndex, pageSize: serverPagination.pageSize }) : updater; if (next.pageSize !== serverPagination.pageSize) serverPagination.onPageSizeChange(next.pageSize); if (next.pageIndex !== serverPagination.pageIndex) serverPagination.onPageChange(next.pageIndex); } } : {}),
   });
 
   const prefKey = typeof window !== "undefined" ? window.location.pathname.replace(/\//g, "_") : "";

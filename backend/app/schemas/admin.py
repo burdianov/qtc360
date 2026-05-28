@@ -75,3 +75,23 @@ class PermissionCreate(BaseModel):
 class PermissionUpdate(BaseModel):
     code: str | None = None
     description: str | None = None
+
+
+
+class AuditUserRef(BaseModel):
+    id: UUID
+    full_name: str
+    email: str
+    model_config = {"from_attributes": True}
+
+class AuditLogResponse(BaseModel):
+    id: UUID
+    timestamp: str
+    user_id: UUID | None = None
+    user: AuditUserRef | None = None
+    action: str
+    entity_type: str
+    entity_id: UUID | None = None
+    summary: str
+    details: dict | None = None
+    model_config = {"from_attributes": True}

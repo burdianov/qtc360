@@ -35,6 +35,12 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class DesignationRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    model_config = {"from_attributes": True}
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
@@ -43,6 +49,8 @@ class UserResponse(BaseModel):
     is_superuser: bool
     signature_font: str | None = None
     signature_text: str | None = None
+    designation_id: uuid.UUID | None = None
+    designation: DesignationRef | None = None
 
     model_config = {"from_attributes": True}
 

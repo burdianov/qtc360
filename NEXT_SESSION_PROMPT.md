@@ -61,9 +61,9 @@ Designation (master lookup for user job titles)
 ```
 backend/app/
 ├── api/v1/          # Routers: auth, master, admin, documents, commissioning, reports, notifications, ref_config
-├── models/          # ORM: commissioning.py, document.py, gate_override.py, designation.py, + core entities
+├── models/          # ORM: commissioning.py, document.py, gate_override.py, designation.py, audit_log.py, + core entities
 ├── schemas/         # Pydantic: commissioning.py (with Literal types), document.py (with state machine), master.py, auth.py, admin.py
-├── services/        # commissioning.py (status calculation engine), signature.py
+├── services/        # commissioning.py (status calculation engine), signature.py, audit.py
 ├── core/            # config, database, deps (require_permission), security
 └── seed.py / seed_commissioning.py
 ```
@@ -108,6 +108,9 @@ GET         /api/v1/commissioning/gate-check
 POST/GET    /api/v1/commissioning/gate-overrides
 
 GET/POST/PATCH/DELETE /api/v1/designations
+GET         /api/v1/admin/audit-logs  (filterable by action, entity_type)
+GET         /api/v1/reports/pdf-engine/health
+POST        /api/v1/reports/generate/{doc_type}  → PDF generation
 ```
 
 ### Security Model
@@ -168,6 +171,13 @@ GET/POST/PATCH/DELETE /api/v1/designations
 - ✅ **Column order persistence** — draggable table headers + dropdown, saved to DB per user
 - ✅ **RBAC enforcement** — admin can assign roles (except super_admin), super_admin can assign all, regular users blocked
 - ✅ **WIR form overhaul** — linkage-first flow, discipline-filtered requirements/assets, searchable multi-select, confirmation dialogs
+- ✅ **Asset type filter on commissioning tracking** — cascading Discipline → Service → Asset Type dropdowns
+- ✅ **Audit log system** — `audit_logs` table, `record_audit` service, `GET /admin/audit-logs` endpoint, frontend page with filters
+- ✅ **Document PDF generation** — verified end-to-end (docxtpl → LibreOffice → PDF, 134KB output)
+- ✅ **Server-side pagination** — `paginated=true` param on CRUD/documents endpoints, DataTable `serverPagination` prop
+- ✅ **FAT form full flow tested** — create → link requirement → sign → approve → requirement achieved (100%)
+- ✅ **Profile page designation display** — read-only, loaded via `/auth/me`, "Not assigned" fallback
+- ✅ **Signature contrast fix** — theme-aware colors (near-white dark mode, near-black light mode)
 
 ### Bug Fixes Applied This Session
 
@@ -207,12 +217,13 @@ GET/POST/PATCH/DELETE /api/v1/designations
 
 ## Next Priorities
 
-1. **Asset type filter on commissioning tracking** — Filter by discipline/service/type
-2. **Audit log page** — Track who changed what and when (use existing created_at/updated_by fields)
-3. **Document PDF generation** — Test end-to-end with LibreOffice
-4. **Server-side pagination** — For large datasets (assets, documents)
-5. **FAT document form** — Test full flow with asset type selection + commissioning linkage
-6. **Profile page** — Add designation display (read-only, set by admin)
+1. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates
+2. **Document list pages** — Use server-side pagination for WIR/MIR/CIR/FAT list pages
+3. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type
+4. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets
+5. **CSV import for assets** — Bulk import assets from CSV with validation
+6. **Multi-project support** — Ensure all pages respect project context switcher
+7. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates)
 
 ## Login Credentials
 

@@ -20,6 +20,7 @@ from app.schemas.document import (
     DocumentApprovalCreate, DocumentApprovalResponse, ApprovalActionRequest,
 )
 from app.services.commissioning import recalculate_requirements_for_document
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -87,6 +88,7 @@ async def list_documents(
     status_filter: str | None = Query(None, alias="status"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    paginated: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(get_current_user),
 ):
@@ -95,6 +97,12 @@ async def list_documents(
         stmt = stmt.where(Document.document_type == document_type)
     if status_filter:
         stmt = stmt.where(Document.status == status_filter)
+    if paginated:
+        from sqlalchemy import func as sa_func
+        count_result = await db.execute(select(sa_func.count()).select_from(stmt.subquery()))
+        total = count_result.scalar() or 0
+        result = await db.execute(stmt.order_by(Document.created_at.desc()).offset(skip).limit(limit))
+        return {"items": result.scalars().all(), "total": total}
     stmt = stmt.order_by(Document.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -169,6 +177,7 @@ async def create_document(
         for aid in body.asset_ids:
             await db.execute(document_assets.insert().values(document_id=doc.id, asset_id=aid))
 
+    await record_audit(db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id, summary=f"Created {doc.document_type} '{doc.reference_no}'")
     await db.commit()
     await db.refresh(doc)
     return doc
@@ -210,6 +219,8 @@ async def update_document(
         for aid in body.asset_ids:
             await db.execute(document_assets.insert().values(document_id=doc.id, asset_id=aid))
 
+    if doc.status != old_status:
+        await record_audit(db, user_id=user.id, action="update", entity_type="document", entity_id=doc.id, summary=f"Status changed {old_status} → {doc.status} on {doc.reference_no}")
     await db.commit()
     await db.refresh(doc)
 
@@ -475,6 +486,7 @@ async def respond_approval(
 
     # Recalculate requirements when document is approved or rejected
     if doc.status in ("approved", "approved_with_comments", "rejected"):
+        await record_audit(db, user_id=user.id, action=approval_status.action, entity_type="document", entity_id=doc.id, summary=f"{approval_status.action.capitalize()} {doc.document_type} '{doc.reference_no}'")
         await recalculate_requirements_for_document(db, doc.id)
         await db.commit()
 
