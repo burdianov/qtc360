@@ -88,6 +88,7 @@ class DocumentResponse(BaseModel):
     updated_by: UUID | None
     created_at: datetime
     updated_at: datetime | None
+    asset_ids: list[UUID] = []
 
     model_config = {"from_attributes": True}
 

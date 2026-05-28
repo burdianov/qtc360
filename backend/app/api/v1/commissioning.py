@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, require_permission, require_project_access
 from app.models.commissioning import (
     AssetRequirement,
     AssetTagTarget,
@@ -48,7 +48,7 @@ async def list_requirement_templates(
     project_id: uuid.UUID | None = None,
     level_code: str | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_project_access()),
 ):
     query = select(RequirementTemplate).where(RequirementTemplate.is_deleted == False)  # noqa: E712
     if project_id:
@@ -99,7 +99,7 @@ async def list_asset_requirements(
     project_id: uuid.UUID | None = None,
     required_for_tag: str | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_project_access()),
 ):
     query = select(AssetRequirement).where(AssetRequirement.is_deleted == False)  # noqa: E712
     if asset_id:
@@ -341,7 +341,7 @@ async def update_tag_target(
 async def get_commissioning_progress(
     project_id: uuid.UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_project_access()),
 ):
     """Return commissioning progress for all assets in a project."""
     from app.models.asset import Asset

@@ -16,16 +16,15 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 @router.get("")
 async def list_notifications(
+    project_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get current user's notifications."""
-    result = await db.execute(
-        select(Notification)
-        .where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
-        .order_by(Notification.created_at.desc())
-        .limit(50)
-    )
+    """Get current user's notifications, optionally filtered by project."""
+    query = select(Notification).where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
+    if project_id:
+        query = query.where(Notification.project_id == project_id)
+    result = await db.execute(query.order_by(Notification.created_at.desc()).limit(50))
     return [
         {
             "id": str(n.id),
@@ -72,16 +71,18 @@ async def mark_all_read(
 
 @router.get("/unread-count")
 async def unread_count(
+    project_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Get count of unread notifications."""
     from sqlalchemy import func
-    result = await db.execute(
-        select(func.count()).select_from(Notification).where(
-            Notification.user_id == user.id,
-            Notification.is_read == False,  # noqa: E712
-            Notification.is_deleted == False,  # noqa: E712
-        )
+    query = select(func.count()).select_from(Notification).where(
+        Notification.user_id == user.id,
+        Notification.is_read == False,  # noqa: E712
+        Notification.is_deleted == False,  # noqa: E712
     )
+    if project_id:
+        query = query.where(Notification.project_id == project_id)
+    result = await db.execute(query)
     return {"count": result.scalar() or 0}

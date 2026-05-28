@@ -4,10 +4,11 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, GripVertical, Plus, Trash2, X, Send, PenLine } from "lucide-react";
+import { ArrowLeft, GripVertical, Loader2, Plus, Trash2, X, Send, PenLine } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -61,15 +62,19 @@ function NewWIRPageContent() {
   const project = useSelectedProject();
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
+  const { resolvedTheme } = useTheme();
+  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
   const [assetSearch, setAssetSearch] = useState("");
   const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
-  const [attachments, setAttachments] = useState<{ file: File; name: string }[]>([]);
+  const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [isDirty, setIsDirty] = useState(!editId);
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -78,7 +83,7 @@ function NewWIRPageContent() {
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["users"],
-    queryFn: async () => (await api.get("/admin/users")).data,
+    queryFn: async () => (await api.get("/auth/users")).data,
   });
 
   const { data: assets = [] } = useQuery<Asset[]>({
@@ -101,6 +106,14 @@ function NewWIRPageContent() {
     queryFn: async () => (await api.get("/reports/templates", { params: { project_id: project!.id, doc_type: "WIR" } })).data,
     enabled: !!project?.id,
   });
+
+  // Auto-select active template
+  useEffect(() => {
+    if (docTemplates.length > 0 && !selectedTemplateId) {
+      const active = docTemplates.find((t) => t.is_active);
+      if (active) setSelectedTemplateId(active.id);
+    }
+  }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch all asset requirements to filter templates by discipline and assets by template
   const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
@@ -151,8 +164,42 @@ function NewWIRPageContent() {
         inspector2: !!existingDoc.qaqc_engineer_signed,
       });
       setReferenceNo(existingDoc.reference_no || "");
+      // Restore selected assets
+      if (existingDoc.asset_ids?.length && assets.length > 0) {
+        const ids = new Set(existingDoc.asset_ids);
+        setSelectedAssets(assets.filter((a) => ids.has(a.id)));
+      }
     }
-  }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore commissioning linkage from server
+  useEffect(() => {
+    if (!editId || allAssetRequirements.length === 0 || commissioningLinkage) return;
+    api.get("/commissioning/document-links", { params: { document_id: editId } }).then((res) => {
+      const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+      if (links.length === 0) return;
+      const firstArId = links[0].asset_requirement_id;
+      const ar = allAssetRequirements.find((r) => r.id === firstArId);
+      if (!ar) return;
+      const isPartial = links.some((l) => l.requirement_work_item_id != null);
+      setCommissioningLinkage({
+        requirementTemplateId: ar.requirement_template_id,
+        isPartialScope: isPartial,
+        checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!),
+        deleteExistingIds: [],
+        newItems: [],
+      });
+    }).catch(() => {});
+  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load existing attachments
+  useEffect(() => {
+    if (editId) {
+      api.get(`/documents/${editId}/attachments`).then((res) => {
+        setAttachments(res.data.map((a: any) => ({ id: a.id, name: a.filename, size: a.size, isExisting: true })));
+      }).catch(() => {});
+    }
+  }, [editId]);
 
   // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
@@ -183,6 +230,21 @@ function NewWIRPageContent() {
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
+  const handleSign = async (role: "site_engineer" | "qaqc_engineer") => {
+    if (!editId) {
+      toast.error("Please save the document first before signing");
+      return;
+    }
+    try {
+      await api.post(`/documents/${editId}/sign?role=${role}`);
+      setSigned((s) => role === "site_engineer" ? { ...s, inspector1: true } : { ...s, inspector2: true });
+      queryClient.invalidateQueries({ queryKey: ["document", editId] });
+      toast.success("Signed successfully");
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to sign");
+    }
+  };
+
   const buildPayload = (values: FormValues, refNo?: string) => ({
     project_id: project!.id,
     document_type: "WIR",
@@ -197,8 +259,6 @@ function NewWIRPageContent() {
     inspection_date: values.date || null,
     site_engineer_id: values.inspector_1_id || null,
     qaqc_engineer_id: values.inspector_2_id || null,
-    site_engineer_signed: signed.inspector1,
-    qaqc_engineer_signed: signed.inspector2,
     asset_ids: selectedAssets.map((a) => a.id),
   });
 
@@ -272,20 +332,28 @@ function NewWIRPageContent() {
       }
       const docId = res.data?.id || editId;
       await saveCommissioningLinkage(docId);
-      // Upload attachments to server
-      if (attachments.length > 0 && docId) {
-        for (const att of attachments) {
+      // Upload new attachments to server
+      const newAtts = attachments.filter((a) => !a.isExisting && a.file);
+      if (newAtts.length > 0 && docId) {
+        for (const att of newAtts) {
           const formData = new FormData();
-          formData.append("file", att.file);
+          formData.append("file", att.file!);
           await api.post(`/documents/${docId}/attachments`, formData, {
             headers: { "Content-Type": undefined },
           });
         }
       }
+      // Persist reorder for existing attachments
+      const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
+      if (existingIds.length > 0 && docId) {
+        await api.patch(`/documents/${docId}/attachments/reorder`, existingIds);
+      }
       return res;
     },
     onSuccess: (res) => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
+      setAssetSearch("");
+      setIsDirty(false);
       queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
       if (!editId && res?.data?.id) {
         router.replace(`/qaqc/wir/new?id=${res.data.id}`);
@@ -305,14 +373,19 @@ function NewWIRPageContent() {
       }
       await saveCommissioningLinkage(docId);
       // Upload attachments before notifying
-      if (attachments.length > 0 && docId) {
-        for (const att of attachments) {
+      const newAtts2 = attachments.filter((a) => !a.isExisting && a.file);
+      if (newAtts2.length > 0 && docId) {
+        for (const att of newAtts2) {
           const formData = new FormData();
-          formData.append("file", att.file);
+          formData.append("file", att.file!);
           await api.post(`/documents/${docId}/attachments`, formData, {
             headers: { "Content-Type": undefined },
           });
         }
+      }
+      const existingIds2 = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
+      if (existingIds2.length > 0 && docId) {
+        await api.patch(`/documents/${docId}/attachments/reorder`, existingIds2);
       }
       await api.post(`/documents/${docId}/notify-signatories`);
     },
@@ -337,11 +410,13 @@ function NewWIRPageContent() {
     const asset = assets.find((a) => a.id === assetId);
     if (asset && !selectedAssets.find((a) => a.id === assetId)) {
       setSelectedAssets([...selectedAssets, asset]);
+      setIsDirty(true);
     }
   };
 
   const removeAsset = (assetId: string) => {
     setSelectedAssets(selectedAssets.filter((a) => a.id !== assetId));
+    setIsDirty(true);
   };
 
   const addAttachment = () => {
@@ -352,14 +427,20 @@ function NewWIRPageContent() {
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
       if (files) {
-        setAttachments([...attachments, ...Array.from(files).map((f) => ({ file: f, name: f.name }))]);
+        setAttachments([...attachments, ...Array.from(files).map((f) => ({ file: f, name: f.name, size: f.size }))]);
+        setIsDirty(true);
       }
     };
     input.click();
   };
 
-  const removeAttachment = (index: number) => {
+  const removeAttachment = async (index: number) => {
+    const att = attachments[index];
+    if (att.isExisting && att.id && editId) {
+      await api.delete(`/documents/${editId}/attachments/${att.id}`).catch(() => {});
+    }
     setAttachments(attachments.filter((_, i) => i !== index));
+    setIsDirty(true);
   };
 
   return (
@@ -376,7 +457,7 @@ function NewWIRPageContent() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-6">
+        <form onSubmit={form.handleSubmit((v) => mutation.mutate(v), () => toast.error("Please fill in all required fields"))} noValidate className="space-y-6">
 
           {/* Basic Info */}
           <Card>
@@ -450,6 +531,7 @@ function NewWIRPageContent() {
                     return;
                   }
                   setCommissioningLinkage(linkage);
+                  setIsDirty(true);
                 }}
               />
             </CardContent>
@@ -478,7 +560,7 @@ function NewWIRPageContent() {
                   className="flex-1"
                 />
               </div>
-              <div className="rounded-md border max-h-52 overflow-y-auto">
+              <div className="rounded-md border max-h-52 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
                 {(() => {
                   const disciplineTypeIds = disciplineId
                     ? new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id))
@@ -553,12 +635,12 @@ function NewWIRPageContent() {
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
                     onClick={() => {
-                      if (currentUser?.id === inspector1Id) setSigned((s) => ({ ...s, inspector1: !s.inspector1 }));
+                      if (currentUser?.id === inspector1Id && !signed.inspector1) handleSign("site_engineer");
                     }}
                   >
                     {signed.inspector1 ? (
                       <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                         alt="Signature"
                         className="h-10 object-contain"
                       />
@@ -602,12 +684,12 @@ function NewWIRPageContent() {
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
                     onClick={() => {
-                      if (currentUser?.id === inspector2Id) setSigned((s) => ({ ...s, inspector2: !s.inspector2 }));
+                      if (currentUser?.id === inspector2Id && !signed.inspector2) handleSign("qaqc_engineer");
                     }}
                   >
                     {signed.inspector2 ? (
                       <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                         alt="Signature"
                         className="h-10 object-contain"
                       />
@@ -659,7 +741,7 @@ function NewWIRPageContent() {
                     >
                       <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
                       <span className="flex-1 text-sm truncate">{att.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{(att.file.size / 1024).toFixed(0)} KB</span>
+                      <span className="text-[10px] text-muted-foreground">{(att.size / 1024).toFixed(0)} KB</span>
                       <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -673,7 +755,8 @@ function NewWIRPageContent() {
           {/* Actions */}
           <div className="flex justify-end gap-3">
             {editId && (
-              <Button type="button" variant="outline" onClick={async () => {
+              <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => {
+                setPdfLoading(true);
                 try {
                   const payload: any = { document_id: editId, project_id: project!.id };
                   if (selectedTemplateId) payload.template_id = selectedTemplateId;
@@ -682,15 +765,16 @@ function NewWIRPageContent() {
                   window.open(url, "_blank");
                   setTimeout(() => URL.revokeObjectURL(url), 60000);
                 } catch { toast.error("PDF generation failed"); }
+                finally { setPdfLoading(false); }
               }}>
-                Preview PDF
+                {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
               </Button>
             )}
             <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending}>
+            <Button type="submit" variant="secondary" disabled={mutation.isPending || (!isDirty && !form.formState.isDirty)}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
             </Button>
-            <Button type="button" disabled={notifyMutation.isPending || !inspector1Id || !inspector2Id} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
+            <Button type="button" disabled={notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
               <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
             </Button>
           </div>

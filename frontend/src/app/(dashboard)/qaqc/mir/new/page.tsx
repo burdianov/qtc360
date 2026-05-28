@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,13 +56,15 @@ function NewMIRPageContent() {
   const project = useSelectedProject();
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
+  const { resolvedTheme } = useTheme();
+  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState("");
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({ queryKey: ["disciplines"], queryFn: async () => (await api.get("/disciplines")).data });
-  const { data: users = [] } = useQuery<User[]>({ queryKey: ["users"], queryFn: async () => (await api.get("/admin/users")).data });
+  const { data: users = [] } = useQuery<User[]>({ queryKey: ["users"], queryFn: async () => (await api.get("/auth/users")).data });
   const { data: assets = [] } = useQuery<Asset[]>({ queryKey: ["assets"], queryFn: async () => (await api.get("/assets")).data });
 
   const form = useForm<FormValues>({
@@ -104,6 +107,21 @@ function NewMIRPageContent() {
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
+  const handleSign = async (role: "site_engineer" | "qaqc_engineer") => {
+    if (!editId) {
+      toast.error("Please save the document first before signing");
+      return;
+    }
+    try {
+      await api.post(`/documents/${editId}/sign?role=${role}`);
+      setSigned((s) => role === "site_engineer" ? { ...s, inspector1: true } : { ...s, inspector2: true });
+      queryClient.invalidateQueries({ queryKey: ["document", editId] });
+      toast.success("Signed successfully");
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to sign");
+    }
+  };
+
   const buildPayload = (values: FormValues) => ({
     project_id: project!.id,
     document_type: "MIR",
@@ -116,8 +134,6 @@ function NewMIRPageContent() {
     inspection_date: values.date || null,
     site_engineer_id: values.inspector_1_id || null,
     qaqc_engineer_id: values.inspector_2_id || null,
-    site_engineer_signed: signed.inspector1,
-    qaqc_engineer_signed: signed.inspector2,
     asset_ids: selectedAssets.map((a) => a.id),
   });
 
@@ -238,9 +254,9 @@ function NewMIRPageContent() {
                         </FormItem>
                       )} />
                       <div className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${signed[signKey] ? "border-emerald-500/50 bg-emerald-500/5" : currentUser?.id === inspId ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50"}`}
-                        onClick={() => { if (currentUser?.id === inspId) setSigned((s) => ({ ...s, [signKey]: !s[signKey] })); }}>
+                        onClick={() => { if (currentUser?.id === inspId && !signed[signKey]) handleSign(signKey === "inspector1" ? "site_engineer" : "qaqc_engineer"); }}>
                         {signed[signKey] ? (
-                          <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspId); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspId)?.signature_font || "dancing_script"}&color=%2316a34a`} alt="Signature" className="h-10 object-contain" />
+                          <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspId); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspId)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" />
                         ) : (<span className="text-sm text-muted-foreground">{currentUser?.id === inspId ? "Click to sign" : "Awaiting signature"}</span>)}
                       </div>
                       {currentUser?.id === inspId && <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>}

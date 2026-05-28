@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
@@ -57,6 +57,11 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
   const [newItemName, setNewItemName] = useState("");
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");
+
+  // Sync enabled state when value is restored from server
+  useEffect(() => {
+    if (value && !enabled) setEnabled(true);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: templates = [] } = useQuery<RequirementTemplate[]>({
     queryKey: ["requirement-templates", projectId, documentType],

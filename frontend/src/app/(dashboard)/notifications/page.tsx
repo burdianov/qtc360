@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { useSelectedProject } from '@/hooks/use-project'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -34,10 +35,12 @@ function timeAgo(date: string): string {
 export default function NotificationsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const project = useSelectedProject()
 
   const { data: notifications = [], isLoading } = useQuery<Notification[]>({
-    queryKey: ['notifications'],
-    queryFn: () => api.get('/notifications').then(r => r.data),
+    queryKey: ['notifications', project?.id],
+    queryFn: () => api.get('/notifications', { params: { project_id: project?.id } }).then(r => r.data),
+    enabled: !!project?.id,
   })
 
   const markRead = useMutation({

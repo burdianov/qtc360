@@ -63,3 +63,29 @@ def require_permission(permission_code: str) -> Callable:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
         return user
     return checker
+
+
+def require_project_access(project_id_param: str = "project_id") -> Callable:
+    """Validate that the user has access to the requested project_id (query or body)."""
+    from uuid import UUID as _UUID
+    from fastapi import Query, Request
+
+    async def checker(request: Request, user: User = Depends(get_current_user)) -> User:
+        if user.is_superuser:
+            return user
+        # Try query param
+        pid = request.query_params.get(project_id_param)
+        # Try path param
+        if not pid:
+            pid = request.path_params.get(project_id_param)
+        if not pid:
+            return user  # No project_id in request, skip check
+        try:
+            project_uuid = _UUID(pid)
+        except (ValueError, TypeError):
+            return user
+        user_project_ids = {p.id for p in user.projects}
+        if project_uuid not in user_project_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this project")
+        return user
+    return checker

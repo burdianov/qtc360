@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_superuser
@@ -98,6 +99,30 @@ async def change_password(
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.get("/users")
+async def list_users_basic(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """List all active users with basic info (for dropdowns/selectors)."""
+    from app.models.designation import Designation
+    result = await db.execute(
+        select(User).where(User.is_deleted == False, User.is_active == True)  # noqa: E712
+        .options(selectinload(User.designation))
+    )
+    return [
+        {
+            "id": str(u.id),
+            "full_name": u.full_name,
+            "email": u.email,
+            "designation": {"id": str(u.designation.id), "name": u.designation.name} if u.designation else None,
+            "signature_font": u.signature_font,
+            "signature_text": u.signature_text,
+        }
+        for u in result.scalars().all()
+    ]
 
 
 @router.patch("/me")

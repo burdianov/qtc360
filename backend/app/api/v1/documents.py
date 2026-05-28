@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel as PydanticModel
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_permission
+from app.core.deps import get_current_user, require_permission, require_project_access
 from app.models.document import Document
 from app.models.document_approval import DocumentApproval, document_assets
 from app.models.approval_status import ApprovalStatus
@@ -90,7 +90,7 @@ async def list_documents(
     limit: int = Query(100, ge=1, le=500),
     paginated: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _: Any = Depends(get_current_user),
+    _: Any = Depends(require_project_access()),
 ):
     stmt = select(Document).where(Document.is_deleted == False, Document.project_id == project_id)  # noqa: E712
     if document_type:
@@ -114,13 +114,17 @@ async def get_document(
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(get_current_user),
 ):
+    from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        .options(selectinload(Document.assets))
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    return doc
+    resp = DocumentResponse.model_validate(doc)
+    resp.asset_ids = [a.id for a in doc.assets] if doc.assets else []
+    return resp
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -327,6 +331,7 @@ async def notify_signatories(
         if user_id and user_id != user.id:
             notification = Notification(
                 user_id=user_id,
+                project_id=doc.project_id,
                 title="Signature Required",
                 message=f"You are requested to sign {doc.document_type}: {doc.title}",
                 link=link,
@@ -568,3 +573,24 @@ async def delete_attachment(
         raise HTTPException(status_code=404, detail="Attachment not found")
     att.is_deleted = True
     await db.commit()
+
+
+@router.patch("/{doc_id}/attachments/reorder")
+async def reorder_attachments(
+    doc_id: UUID,
+    body: list[UUID],
+    db: AsyncSession = Depends(get_db),
+    _: Any = Depends(get_current_user),
+):
+    """Reorder attachments. Body is ordered list of attachment IDs."""
+    from app.models.document_attachment import DocumentAttachment
+    for i, att_id in enumerate(body):
+        result = await db.execute(
+            select(DocumentAttachment).where(DocumentAttachment.id == att_id, DocumentAttachment.document_id == doc_id)
+        )
+        att = result.scalar_one_or_none()
+        if att:
+            att.sort_order = i
+    await db.commit()
+    return {"status": "ok"}
+

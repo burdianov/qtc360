@@ -19,4 +19,5 @@ dependencies = [
     "docxtpl>=0.18.0",
     "pillow>=12.2.0",
     "pypdf>=6.12.2",
+    "reportlab>=4.5.1",
 ]

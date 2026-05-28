@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from docxtpl import DocxTemplate, InlineImage
+from docxtpl import DocxTemplate
 from docx.shared import Mm
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -303,15 +303,15 @@ def _build_context(document: Document) -> dict:
         doc_discipline = (document.discipline.name or "").lower().replace(" ", "_").replace("/", "_")
 
     def cb(selected: bool) -> str:
-        return "\u2611" if selected else "\u2610"
+        return "[X]" if selected else "[  ]"
 
-    ctx["arch_cb"] = cb("architectural" in doc_discipline)
-    ctx["civil_struct_cb"] = cb("civil" in doc_discipline or "structural" in doc_discipline)
-    ctx["mechanical_cb"] = cb("mechanical" in doc_discipline)
-    ctx["electrical_cb"] = cb("electrical" in doc_discipline)
-    ctx["plumbing_cb"] = cb("plumbing" in doc_discipline)
-    ctx["firefighting_cb"] = cb("firefighting" in doc_discipline or "fire" in doc_discipline)
-    ctx["others_cb"] = cb("others" in doc_discipline or "other" in doc_discipline)
+    ctx["arch_cb"] = cb("architectural" in doc_discipline) + " Architectural"
+    ctx["civil_struct_cb"] = cb("civil" in doc_discipline or "structural" in doc_discipline) + " Civil/Structural"
+    ctx["mechanical_cb"] = cb("mechanical" in doc_discipline) + " Mechanical"
+    ctx["electrical_cb"] = cb("electrical" in doc_discipline) + " Electrical"
+    ctx["plumbing_cb"] = cb("plumbing" in doc_discipline) + " Plumbing"
+    ctx["firefighting_cb"] = cb("firefighting" in doc_discipline or "fire" in doc_discipline) + " Firefighting"
+    ctx["others_cb"] = cb("others" in doc_discipline or "other" in doc_discipline) + " Others"
 
     # Discipline labels (checkbox + name combined for reliable rendering)
     ctx["arch"] = f"{ctx['arch_cb']} Architectural"
@@ -353,22 +353,84 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     """Fill a DOCX template with context data and signature images."""
     doc = DocxTemplate(io.BytesIO(template_bytes))
 
-    # Render signature images only for inspectors who have actually signed
+    # Collect signature data, use sentinel placeholders for docxtpl
+    sig_data: dict[str, bytes] = {}
     signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         key = f"insp_sign_{i}"
         if inspector and signed_flags[i - 1]:
             font_id = inspector.signature_font or "dancing_script"
             sig_name = inspector.signature_text or inspector.full_name
-            sig_png = render_signature(sig_name, font_id)
-            context[key] = InlineImage(doc, io.BytesIO(sig_png), height=Mm(10))
+            sig_data[key] = render_signature(sig_name, font_id)
+            context[key] = f"__SIG_PLACEHOLDER_{i}__"
         else:
             context[key] = ""
 
     doc.render(context)
     buf = io.BytesIO()
     doc.save(buf)
+
+    # Post-process: replace signature placeholders with fitted images
+    if sig_data:
+        buf = io.BytesIO(_insert_signatures_fitted(buf.getvalue(), sig_data))
+
     return buf.getvalue()
+
+
+def _insert_signatures_fitted(docx_bytes: bytes, sig_data: dict[str, bytes]) -> bytes:
+    """Replace signature placeholder text in table cells with fitted images."""
+    from docx import Document as DocxDoc
+    from docx.shared import Emu
+    from PIL import Image as PILImage
+
+    doc = DocxDoc(io.BytesIO(docx_bytes))
+
+    placeholders = {f"__SIG_PLACEHOLDER_{i}__": key for i, key in enumerate(sig_data.keys(), start=1)}
+    processed = set()
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                cell_text = cell.text.strip()
+                if cell_text in placeholders and id(cell) not in processed:
+                    processed.add(id(cell))
+                    sig_key = placeholders[cell_text]
+                    png_bytes = sig_data[sig_key]
+
+                    # Get cell dimensions (fallback to reasonable defaults)
+                    max_w = cell.width if cell.width else Mm(40)
+                    max_h = row.height if row.height else Mm(10)
+                    # Convert EMU to inches
+                    max_w_in = max_w / 914400
+                    max_h_in = max_h / 914400
+
+                    # Get image dimensions
+                    img = PILImage.open(io.BytesIO(png_bytes))
+                    img_w, img_h = img.size
+                    img_ratio = img_w / img_h
+                    box_ratio = max_w_in / max_h_in
+
+                    # Fit image to cell with padding
+                    pad = 0.8
+                    if img_ratio > box_ratio:
+                        width = int(max_w * pad)
+                        height = int(width / img_ratio)
+                    else:
+                        height = int(max_h * pad)
+                        width = int(height * img_ratio)
+
+                    # Clear cell and insert image
+                    for p in cell.paragraphs:
+                        for run in p.runs:
+                            run.text = ""
+                    paragraph = cell.paragraphs[0]
+                    paragraph.alignment = 1  # center
+                    run = paragraph.add_run()
+                    run.add_picture(io.BytesIO(png_bytes), width=width, height=height)
+
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
 
 
 def _convert_to_pdf(docx_bytes: bytes) -> bytes:

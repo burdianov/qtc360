@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,6 +56,8 @@ function NewFATPageContent() {
   const project = useSelectedProject();
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
+  const { resolvedTheme } = useTheme();
+  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
@@ -67,7 +70,7 @@ function NewFATPageContent() {
 
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["users"],
-    queryFn: async () => (await api.get("/admin/users")).data,
+    queryFn: async () => (await api.get("/auth/users")).data,
   });
 
   const { data: assetTypes = [] } = useQuery<AssetType[]>({
@@ -155,6 +158,21 @@ function NewFATPageContent() {
     );
   };
 
+  const handleSign = async (role: "site_engineer" | "qaqc_engineer") => {
+    if (!editId) {
+      toast.error("Please save the document first before signing");
+      return;
+    }
+    try {
+      await api.post(`/documents/${editId}/sign?role=${role}`);
+      setSigned((s) => role === "site_engineer" ? { ...s, inspector1: true } : { ...s, inspector2: true });
+      queryClient.invalidateQueries({ queryKey: ["document", editId] });
+      toast.success("Signed successfully");
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to sign");
+    }
+  };
+
   const buildPayload = (values: FormValues) => ({
     project_id: project!.id,
     document_type: "FAT",
@@ -166,8 +184,6 @@ function NewFATPageContent() {
     inspection_date: values.date || null,
     site_engineer_id: values.site_engineer_id || null,
     qaqc_engineer_id: values.qaqc_engineer_id || null,
-    site_engineer_signed: signed.inspector1,
-    qaqc_engineer_signed: signed.inspector2,
     asset_ids: selectedAssetIds,
   });
 
@@ -323,11 +339,11 @@ function NewFATPageContent() {
                           ? "border-border hover:border-primary/50 cursor-pointer"
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
-                    onClick={() => { if (currentUser?.id === inspector1Id) setSigned((s) => ({ ...s, inspector1: !s.inspector1 })); }}
+                    onClick={() => { if (currentUser?.id === inspector1Id && !signed.inspector1) handleSign("site_engineer"); }}
                   >
                     {signed.inspector1 ? (
                       <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                         alt="Signature"
                         className="h-10 object-contain"
                       />
@@ -363,11 +379,11 @@ function NewFATPageContent() {
                           ? "border-border hover:border-primary/50 cursor-pointer"
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
-                    onClick={() => { if (currentUser?.id === inspector2Id) setSigned((s) => ({ ...s, inspector2: !s.inspector2 })); }}
+                    onClick={() => { if (currentUser?.id === inspector2Id && !signed.inspector2) handleSign("qaqc_engineer"); }}
                   >
                     {signed.inspector2 ? (
                       <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=%2316a34a`}
+                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                         alt="Signature"
                         className="h-10 object-contain"
                       />

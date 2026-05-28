@@ -111,6 +111,8 @@ GET/POST/PATCH/DELETE /api/v1/designations
 GET         /api/v1/admin/audit-logs  (filterable by action, entity_type)
 GET         /api/v1/reports/pdf-engine/health
 POST        /api/v1/reports/generate/{doc_type}  → PDF generation
+GET         /api/v1/auth/users  (basic user info for all authenticated users)
+PATCH       /api/v1/documents/{id}/attachments/reorder
 ```
 
 ### Security Model
@@ -118,6 +120,7 @@ POST        /api/v1/reports/generate/{doc_type}  → PDF generation
 - `require_admin` gate on `/admin` router — requires admin or super_admin role (or is_superuser)
 - `require_permission("commissioning.manage")` — template/requirement CRUD
 - `require_permission("documents.submit")` — document creation, work items
+- `require_project_access()` — validates user has access to the requested project_id (documents, commissioning endpoints)
 - Role assignment: admin can assign all roles except super_admin; super_admin/is_superuser can assign all
 - Approval order enforced (can't skip queue)
 - Sign endpoint validates user has appropriate role (site_engineer/qaqc_engineer)
@@ -178,6 +181,17 @@ POST        /api/v1/reports/generate/{doc_type}  → PDF generation
 - ✅ **FAT form full flow tested** — create → link requirement → sign → approve → requirement achieved (100%)
 - ✅ **Profile page designation display** — read-only, loaded via `/auth/me`, "Not assigned" fallback
 - ✅ **Signature contrast fix** — theme-aware colors (near-white dark mode, near-black light mode)
+- ✅ **Signature fit-to-cell in PDF** — post-processes DOCX with python-docx, reads cell dimensions, fits proportionally
+- ✅ **WIR form sign via API** — click-to-sign calls `POST /documents/{id}/sign`, persists to DB (fixes PDF missing signature)
+- ✅ **PDF attachments working** — installed `reportlab`, images now rendered as PDF pages and appended
+- ✅ **Attachment reorder persisted** — `PATCH /documents/{id}/attachments/reorder` endpoint, existing attachments loaded on edit
+- ✅ **Attachment delete from server** — removing existing attachment calls DELETE endpoint immediately
+- ✅ **Notifications project-scoped** — `project_id` on notifications table, filtered by selected project in UI + navbar badge
+- ✅ **Public users endpoint** — `GET /auth/users` accessible to all authenticated users (fixes inspector names for non-admins)
+- ✅ **Project access enforcement** — `require_project_access()` dependency on documents/commissioning endpoints, returns 403 for unauthorized projects
+- ✅ **Commissioning linkage restored on reload** — fetches document-links, restores template + scope + work items
+- ✅ **Selected assets restored on reload** — `asset_ids` added to DocumentResponse, loaded from server on edit
+- ✅ **Discipline labels in PDF** — checkbox variables now include discipline name text (e.g. `[X] Electrical`)
 
 ### Bug Fixes Applied This Session
 
@@ -217,13 +231,13 @@ POST        /api/v1/reports/generate/{doc_type}  → PDF generation
 
 ## Next Priorities
 
-1. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates
-2. **Document list pages** — Use server-side pagination for WIR/MIR/CIR/FAT list pages
-3. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type
-4. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets
-5. **CSV import for assets** — Bulk import assets from CSV with validation
-6. **Multi-project support** — Ensure all pages respect project context switcher
-7. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates)
+1. **Document list pages** — Use server-side pagination for WIR/MIR/CIR/FAT list pages
+2. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type
+3. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets
+4. **CSV import for assets** — Bulk import assets from CSV with validation
+5. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates
+6. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates)
+7. **CIR/MIR/FAT forms** — Apply same fixes as WIR (attachment reorder, linkage restore, sign via API already done)
 
 ## Login Credentials
 

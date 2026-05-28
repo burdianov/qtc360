@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { ProjectSwitcher } from "@/components/layout/project-switcher";
+import { useSelectedProject } from "@/hooks/use-project";
 import api from "@/lib/api";
 
 interface NavbarProps {
@@ -34,10 +35,12 @@ function ThemeToggle() {
 export function Navbar({ onSearchClick }: NavbarProps) {
   const { toggleSidebar } = useSidebar();
   const router = useRouter();
+  const project = useSelectedProject();
   const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["notifications", "unread-count"],
-    queryFn: async () => (await api.get("/notifications/unread-count")).data,
+    queryKey: ["notifications", "unread-count", project?.id],
+    queryFn: async () => (await api.get("/notifications/unread-count", { params: { project_id: project?.id } })).data,
     refetchInterval: 30000,
+    enabled: !!project?.id,
   });
 
   return (
