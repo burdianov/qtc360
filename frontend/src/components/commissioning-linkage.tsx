@@ -47,11 +47,12 @@ interface Props {
   projectId: string;
   selectedAssetIds: string[];
   documentType: string;
+  applicableTemplateIds?: Set<string> | null;
   value: CommissioningLinkage | null;
   onChange: (linkage: CommissioningLinkage | null) => void;
 }
 
-export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documentType, value, onChange }: Props) {
+export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documentType, applicableTemplateIds, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(!!value);
   const [newItemName, setNewItemName] = useState("");
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
@@ -65,6 +66,10 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
     },
     enabled: !!projectId,
   });
+
+  const filteredTemplates = applicableTemplateIds
+    ? templates.filter((t) => applicableTemplateIds.has(t.id))
+    : templates;
 
   // Fetch existing work items for first asset's requirement (representative)
   const firstAssetId = selectedAssetIds.length > 0 ? selectedAssetIds[0] : "";
@@ -163,7 +168,7 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
             <Select value={value?.requirementTemplateId || ""} onValueChange={(v: any) => handleTemplateSelect(v)}>
               <SelectTrigger><SelectValue placeholder="Select requirement...">{selectedTemplate ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}` : ""}</SelectValue></SelectTrigger>
               <SelectContent>
-                {templates.map((t) => (
+                {filteredTemplates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     <span className="flex items-center gap-2">
                       <span className="font-mono text-xs text-muted-foreground">[{t.level_code}]</span>
@@ -176,7 +181,7 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
             </Select>
           </div>
 
-          {templates.length === 0 && (
+          {filteredTemplates.length === 0 && (
             <p className="text-xs text-muted-foreground">No {documentType} requirement templates found.</p>
           )}
 

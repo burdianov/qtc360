@@ -124,13 +124,20 @@ GET/POST/PATCH/DELETE /api/v1/designations
 ### WIR Form Flow
 
 1. General info (ref number auto-generated per project+discipline+doc_type, date, discipline, subject, description, location fields)
-2. Assets (multi-select with badges)
-3. Commissioning Linkage (optional toggle):
-   - Select requirement template (filtered by evidence_document_type=WIR)
+2. Commissioning Linkage (toggle on/off):
+   - Select requirement template (filtered by evidence_document_type=WIR AND discipline)
    - Full scope OR partial scope
    - Partial: shows existing work items (approved=disabled, pending=checkable/deletable), add new items
    - Only checked items get linked to this document
    - Gate override: confirmation dialog with notes field, stored in audit trail
+3. Assets (disabled until linkage is on):
+   - Filtered by discipline (via AssetType → Service → Discipline chain)
+   - Filtered by selected requirement template (only assets with that requirement assigned)
+   - Filterable by asset type dropdown
+   - Searchable by name/tag number
+   - Multi-select checkboxes with scrollable list
+   - Selected shown as removable badges
+   - Disabling linkage with assets selected shows styled confirmation dialog
 4. Inspectors & signatures (DocuSign-style)
 5. Attachments (drag-and-drop reorder)
 6. Both "Save as Draft" and "Save & Notify" process commissioning linkage
@@ -160,6 +167,7 @@ GET/POST/PATCH/DELETE /api/v1/designations
 - ✅ **Comprehensive bug fixes** (see below)
 - ✅ **Column order persistence** — draggable table headers + dropdown, saved to DB per user
 - ✅ **RBAC enforcement** — admin can assign roles (except super_admin), super_admin can assign all, regular users blocked
+- ✅ **WIR form overhaul** — linkage-first flow, discipline-filtered requirements/assets, searchable multi-select, confirmation dialogs
 
 ### Bug Fixes Applied This Session
 

@@ -20,13 +20,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
 import { ApprovalChain } from "@/components/approval-chain";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
-interface Asset { id: string; name: string; tag_number: string; }
+interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; }
+interface AssetType { id: string; name: string; code: string; service_id: string; parent_type_id: string | null; }
+interface Service { id: string; name: string; code: string; discipline_id: string; }
 
 const schema = z.object({
   subject: z.string().min(1, "Subject is required"),
@@ -59,6 +62,9 @@ function NewWIRPageContent() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
+  const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
   const [attachments, setAttachments] = useState<{ file: File; name: string }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
@@ -80,9 +86,26 @@ function NewWIRPageContent() {
     queryFn: async () => (await api.get("/assets")).data,
   });
 
+  const { data: services = [] } = useQuery<Service[]>({
+    queryKey: ["services"],
+    queryFn: async () => (await api.get("/services")).data,
+  });
+
+  const { data: assetTypes = [] } = useQuery<AssetType[]>({
+    queryKey: ["asset-types"],
+    queryFn: async () => (await api.get("/asset-types")).data,
+  });
+
   const { data: docTemplates = [] } = useQuery<{ id: string; name: string; version: number; is_active: boolean }[]>({
     queryKey: ["doc-templates", project?.id, "WIR"],
     queryFn: async () => (await api.get("/reports/templates", { params: { project_id: project!.id, doc_type: "WIR" } })).data,
+    enabled: !!project?.id,
+  });
+
+  // Fetch all asset requirements to filter templates by discipline and assets by template
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
     enabled: !!project?.id,
   });
 
@@ -133,6 +156,21 @@ function NewWIRPageContent() {
 
   // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
+
+  // Templates applicable to the selected discipline
+  const applicableTemplateIds = (() => {
+    if (!disciplineId) return null;
+    const disciplineTypeIds = new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id));
+    const disciplineAssetIds = new Set(assets.filter((a) => disciplineTypeIds.has(a.asset_type_id)).map((a) => a.id));
+    return new Set(allAssetRequirements.filter((ar) => disciplineAssetIds.has(ar.asset_id)).map((ar) => ar.requirement_template_id));
+  })();
+
+  // Assets applicable to the selected requirement template
+  const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
+  const applicableAssetIds = selectedTemplateId2
+    ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2).map((ar) => ar.asset_id))
+    : null;
+
   useEffect(() => {
     if (!editId && disciplineId && project?.id && disciplines.length > 0) {
       const disciplineCode = disciplines.find((d) => d.id === disciplineId)?.code || "";
@@ -397,48 +435,88 @@ function NewWIRPageContent() {
             </CardContent>
           </Card>
 
-          {/* Assets */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Assets</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <FormLabel>Select Assets</FormLabel>
-                <div className="mt-2 flex gap-2">
-                  <Select onValueChange={(v) => v && addAsset(v as string)}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Add asset..." /></SelectTrigger>
-                    <SelectContent>
-                      {assets.filter((a) => !selectedAssets.find((s) => s.id === a.id)).map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {selectedAssets.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedAssets.map((asset) => (
-                      <Badge key={asset.id} variant="secondary" className="gap-1 pr-1">
-                        {asset.tag_number}
-                        <button type="button" onClick={() => removeAsset(asset.id)} className="ml-1 hover:text-destructive">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Commissioning Linkage (optional) */}
+          {/* Commissioning Linkage */}
           <Card>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
                 selectedAssetIds={selectedAssets.map((a) => a.id)}
                 documentType="WIR"
+                applicableTemplateIds={applicableTemplateIds}
                 value={commissioningLinkage}
-                onChange={setCommissioningLinkage}
+                onChange={(linkage) => {
+                  if (!linkage && selectedAssets.length > 0) {
+                    setConfirmDisableLinkage(true);
+                    return;
+                  }
+                  setCommissioningLinkage(linkage);
+                }}
               />
+            </CardContent>
+          </Card>
+
+          {/* Assets */}
+          <Card className={!commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
+            <CardHeader><CardTitle className="text-base">Assets ({selectedAssets.length} selected)</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Select value={assetTypeFilter} onValueChange={(v: any) => setAssetTypeFilter(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="w-48"><SelectValue placeholder="All asset types">{assetTypeFilter ? assetTypes.find((t) => t.id === assetTypeFilter)?.name : "All asset types"}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All asset types</SelectItem>
+                    {assetTypes.filter((t) => {
+                      if (!disciplineId) return true;
+                      const svc = services.find((s) => s.id === t.service_id);
+                      return svc?.discipline_id === disciplineId;
+                    }).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Search assets..."
+                  value={assetSearch}
+                  onChange={(e) => setAssetSearch(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+              <div className="rounded-md border max-h-52 overflow-y-auto">
+                {(() => {
+                  const disciplineTypeIds = disciplineId
+                    ? new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id))
+                    : null;
+                  const filtered = assets.filter((a) => {
+                    if (applicableAssetIds && !applicableAssetIds.has(a.id)) return false;
+                    if (disciplineTypeIds && !disciplineTypeIds.has(a.asset_type_id)) return false;
+                    if (assetTypeFilter && a.asset_type_id !== assetTypeFilter) return false;
+                    if (assetSearch) {
+                      const q = assetSearch.toLowerCase();
+                      if (!a.tag_number.toLowerCase().includes(q) && !a.name.toLowerCase().includes(q)) return false;
+                    }
+                    return true;
+                  });
+                  if (filtered.length === 0) return <p className="p-3 text-sm text-muted-foreground">No assets match filters.</p>;
+                  return filtered.map((a) => {
+                    const isSelected = !!selectedAssets.find((s) => s.id === a.id);
+                    return (
+                      <label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0">
+                        <input type="checkbox" checked={isSelected} onChange={() => isSelected ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" />
+                        <span className="text-sm">{a.tag_number} — {a.name}</span>
+                      </label>
+                    );
+                  });
+                })()}
+              </div>
+              {selectedAssets.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedAssets.map((asset) => (
+                    <Badge key={asset.id} variant="secondary" className="gap-1 pr-1">
+                      {asset.tag_number}
+                      <button type="button" onClick={() => removeAsset(asset.id)} className="ml-1 hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -641,6 +719,23 @@ function NewWIRPageContent() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={confirmDisableLinkage} onOpenChange={setConfirmDisableLinkage}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disable Commissioning Linkage?</DialogTitle>
+            <DialogDescription>
+              You have {selectedAssets.length} asset{selectedAssets.length > 1 ? "s" : ""} selected. Disabling the linkage will deselect all assets.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDisableLinkage(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { setSelectedAssets([]); setCommissioningLinkage(null); setConfirmDisableLinkage(false); }}>
+              Disable & Clear Assets
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

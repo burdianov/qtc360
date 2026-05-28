@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { toast } from "sonner";
@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 interface Font { id: string; name: string; }
 
 export default function ProfilePage() {
-  const router = useRouter();
   const qc = useQueryClient();
   const [selectedFont, setSelectedFont] = useState("dancing_script");
   const [signatureText, setSignatureText] = useState("");
@@ -101,10 +100,7 @@ export default function ProfilePage() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <Button variant="outline" size="sm" onClick={() => router.back()}>
-              ← Back
-            </Button>
+          <div className="flex justify-end pt-2">
             <Button onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
               {saveMutation.isPending ? "Saving..." : "Save Signature Style"}
             </Button>
