@@ -37,12 +37,12 @@ export default function DisciplinesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Discipline | null>(null);
 
-  const { data: allDisciplines = [], isLoading } = useQuery<Discipline[]>({
+  const { data: disciplines = [], isLoading } = useQuery<Discipline[]>({
     queryKey: ["disciplines", selectedProject?.id],
-    queryFn: async () => (await api.get("/disciplines")).data,
+    queryFn: async () =>
+      (await api.get("/disciplines", { params: { project_id: selectedProject?.id } })).data,
+    enabled: !!selectedProject?.id,
   });
-
-  const disciplines = allDisciplines.filter((d) => d.project_id === selectedProject?.id);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

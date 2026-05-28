@@ -19,5 +19,13 @@ dependencies = [
     "docxtpl>=0.18.0",
     "pillow>=12.2.0",
     "pypdf>=6.12.2",
+    "pymupdf>=1.24.0",
+    "pytesseract>=0.3.10",
+    "dateparser>=1.2.0",
     "reportlab>=4.5.1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
 ]

@@ -16,6 +16,7 @@ export default function ProfilePage() {
   const qc = useQueryClient();
   const { resolvedTheme } = useTheme();
   const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
+  const [hasSeeded, setHasSeeded] = useState(false);
   const [selectedFont, setSelectedFont] = useState("dancing_script");
   const [signatureText, setSignatureText] = useState("");
   const [initialFont, setInitialFont] = useState("dancing_script");
@@ -32,15 +33,16 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    if (user) {
+    if (user && !hasSeeded) {
       const font = user.signature_font || "dancing_script";
       const text = user.signature_text || user.full_name || "";
       setSelectedFont(font);
       setSignatureText(text);
       setInitialFont(font);
       setInitialText(text);
+      setHasSeeded(true);
     }
-  }, [user]);
+  }, [user, hasSeeded]);
 
   const isDirty = selectedFont !== initialFont || signatureText !== initialText;
 

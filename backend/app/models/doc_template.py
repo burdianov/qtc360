@@ -18,4 +18,5 @@ class DocTemplate(BaseModel):
     file: Mapped[bytes] = mapped_column(LargeBinary)
     filename: Mapped[str] = mapped_column(String(255))
     version: Mapped[int] = mapped_column(Integer, default=1)
+    cover_page_count: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

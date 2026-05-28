@@ -287,11 +287,111 @@ No specific order required. Until both sign, document remains in Draft.
 | C      | Revise and Resubmit    | Work may not proceed             | rejected |
 | D      | Review not Required    | Work may proceed                 | approved |
 
+### External Approver Chains (per project, per doc_type)
+
+Approver chains are configured **per project AND per document type**. WIR/MIR and CIR have separate chains.
+
+Default chain mapping (seeded; admins can override per project):
+
+| Document Type | Order 1            | Order 2            |
+| ------------- | ------------------ | ------------------ |
+| WIR           | AESG               | Core Emirates      |
+| MIR           | AESG               | Core Emirates      |
+| CIR           | RED Engineering    | Sudlows            |
+| FAT           | (project-specific) | (project-specific) |
+
+The approver entity represents a **company / approval party**. The individual signatory who signs on behalf of that party is captured **per round** (people change; the company does not).
+
+Configuration UI: Admin → Settings → Project Approvers, with doc_type filter/tab. Each row: `{project, document_type, order, approver_party}`.
+
 ### Approval Chain Logic
 
-1. Document signed internally → "Pending Review (Approver 1)"
-2. Approver responds: approved → next approver or "Approved"; rejected → "Rejected"
-3. Pattern continues for N approvers
+Aconex is the external transmittal system. QTC360 is **not** integrated with Aconex; every Aconex action is mirrored by a click in QTC360 to keep records in sync.
+
+Per-revision lifecycle:
+
+1. Document filled and signed by Site Engineer + QA/QC Engineer → status `internally_signed`.
+2. User downloads the generated PDF, uploads to Aconex, transmits to Approver 1.
+3. User clicks **Submit to Approver 1** in QTC360 → status `with_approver_1`, submission date stamped.
+4. Approver 1 returns the document via Aconex. User downloads it and clicks **Record Approver 1 Response** → uploads the returned PDF, captures status (A/B/C/D), signatory, response date, comments → status `approver_1_returned`.
+5. Branch on Approver 1's status:
+   - **A or D** → "Submit to Approver 2" is enabled.
+   - **B** → optional "Our Remarks for Approver 2" file slot becomes available; after attaching (if needed), "Submit to Approver 2" is enabled. Remarks are drafted in a different application; QTC360 only stores the resulting PDF.
+   - **C** → cycle closed for this revision. "Start New Revision" is the only forward action.
+6. User uploads the merged bundle (cover + attachments + optional remarks) to Aconex for Approver 2, then clicks **Submit to Approver 2** → status `with_approver_2`.
+7. Approver 2 returns. User clicks **Record Approver 2 Response** → same capture flow as step 4.
+8. Final status:
+   - **A or D** → document status `approved` (milestone achieved).
+   - **B** → document status `approved_with_comments` (milestone achieved).
+   - **C** → document status `rejected`; "Start New Revision" is the only forward action.
+
+### Document Status Values (per revision)
+
+| Status                   | Meaning                                               | Set by                                     |
+| ------------------------ | ----------------------------------------------------- | ------------------------------------------ |
+| `draft`                  | Being filled; one or both internal signatures missing | system                                     |
+| `internally_signed`      | Both internal signatures present                      | system (auto on second internal signature) |
+| `with_approver_1`        | Submitted to Approver 1 via Aconex                    | "Submit to Approver 1" action              |
+| `approver_1_returned`    | Approver 1 responded; awaiting next action            | "Record Approver 1 Response" action        |
+| `with_approver_2`        | Submitted to Approver 2 via Aconex                    | "Submit to Approver 2" action              |
+| `approved`               | Final approver returned A or D                        | "Record final response" with status A/D    |
+| `approved_with_comments` | Final approver returned B                             | "Record final response" with status B      |
+| `rejected`               | Any approver returned C                               | "Record response" with status C            |
+| `superseded`             | A newer revision exists for this `reference_no`       | system (auto on new revision creation)     |
+| `cancelled`              | Manually voided                                       | admin action                               |
+
+The four-letter approver decision (A/B/C/D) lives on the **DocumentApprovalRound** record. The document's `status` reflects where the document is in the chain right now.
+
+### Action Panel
+
+The document form's right-rail shows a **single primary action** based on current state. No menus, no hunting:
+
+| Document state                       | Primary action                                  |
+| ------------------------------------ | ----------------------------------------------- |
+| `draft`, internal signatures missing | (none — fill form, sign internally)             |
+| `internally_signed`                  | Submit to Approver 1                            |
+| `with_approver_1`                    | Record Approver 1 Response                      |
+| `approver_1_returned`, status A/D    | Submit to Approver 2                            |
+| `approver_1_returned`, status B      | (Optional: Add Remarks) → Submit to Approver 2  |
+| `approver_1_returned`, status C      | Start New Revision                              |
+| `with_approver_2`                    | Record Approver 2 Response                      |
+| `approved` / `approved_with_comments`| (none — terminal)                               |
+| `rejected`                           | Start New Revision                              |
+
+For the time being, **any project member** can perform these actions. The audit log captures actor + action + timestamp; that is the authority for "who did what when" on the approval chain.
+
+### Returned Document Splitting
+
+When a returned PDF is uploaded via "Record Approver N Response":
+
+- Backend splits the file into two pieces using the project's DOCX template page count for that doc_type:
+  - **Cover** = first K pages, where K = `cover_page_count` of the matching DocTemplate.
+  - **Attachments** = remaining pages, split into individual files named `Attachment-1`, `Attachment-2`, … in source order.
+- `cover_page_count` is **auto-detected** when a DOCX template is uploaded: the system converts the template to PDF (LibreOffice headless, same as report generation) and counts pages. Stored on the template row.
+- The form renders a new collapsible section per round: **"Approver N — {Company} — Round {n}"** showing party, signatory, date, status badge, revision_no, comments, cover preview, and attachment list.
+- For a status-B response from Approver 1, the form additionally exposes an optional **"Our Remarks for Approver 2"** file slot, attached to the round.
+
+### Resubmission and Revisions
+
+- A status-C response closes the current revision cycle.
+- **Start New Revision** increments `revision_no`, copies metadata, blanks attachments and approval rounds, marks the previous revision as `superseded`, and starts the new revision at `draft`.
+- Within a single revision, an approver returns at most once. Multiple rounds against the same `approver_order` are not used: status C ends the revision; A/B/D advances or terminates.
+
+### OCR Capture (Region-Based)
+
+The returned PDF is previewed in-form. The user drags a dotted rectangle around the **signatory name**, **date**, or **comments** region; the system extracts the text and fills the corresponding field. The user confirms each capture before saving.
+
+Status (A/B/C/D) is **not** OCR'd — it is a manual dropdown.
+
+Implementation (mandatory):
+
+- **Frontend**: PDF.js via `react-pdf` for the preview canvas. Overlay canvas captures `{page, x, y, width, height}` in PDF user-space coordinates. Per-field "Capture from Document" toggle arms region selection and routes the result to the active field.
+- **Backend extraction endpoint**: accepts `{document_id, round_id, page, bbox, target_field}` and returns extracted text.
+  - **Step 1** — native text via `PyMuPDF.page.get_textbox(rect)`. Aconex-generated PDFs typically contain selectable text — instant, exact.
+  - **Step 2** — fall back to `pytesseract` on a high-DPI crop of the region only if step 1 returns empty/whitespace.
+  - For `target_field = date`, run extracted text through `dateparser` and return ISO `yyyy-MM-dd`.
+- Tesseract binary must be available on the host. Documented in README and added to local stack.
+- All captured fields remain editable; OCR populates a suggestion that the user confirms.
 
 ---
 
@@ -719,13 +819,18 @@ CIR
 
 ```
 draft
-submitted
+internally_signed
+with_approver_1
+approver_1_returned
+with_approver_2
 approved
 approved_with_comments
 rejected
 cancelled
 superseded
 ```
+
+See **External Approval Workflow** above for transitions. The four-letter approver decision (A/B/C/D) is recorded on `DocumentApprovalRound`, not on the document itself.
 
 IMPORTANT:
 
@@ -1129,6 +1234,32 @@ at_risk
 - Add: RequirementTemplate, AssetRequirement, RequirementWorkItem, DocumentRequirementLink, AssetTagTarget
 - Implement status calculation engine
 - Refactor WIR/CIR forms to use requirement + work breakdown selection
+
+### External Approval Workflow — Implementation Tasks
+
+- Schema:
+  - Add `document_type` to `project_approvers` (WIR/MIR/CIR/FAT). Unique on `(project_id, document_type, approver_order)`.
+  - Replace single-row `document_approvals` with `document_approval_rounds`: `(document_id, approver_order, round_no, submitted_at, returned_at, decision, signatory_name, response_date, comments, returned_file_id, remarks_file_id)`.
+  - Add `cover_page_count` (int) to `doc_templates`; populate on upload via LibreOffice page count.
+  - Document `status` enum: replace `submitted` with `internally_signed`, `with_approver_1`, `approver_1_returned`, `with_approver_2`.
+- Services:
+  - PDF split service (PyMuPDF): split returned PDF at `cover_page_count` boundary, persist cover + per-page attachments as `DocumentAttachment` rows tagged with the round.
+  - OCR region extraction service: native-text-first via PyMuPDF, Tesseract fallback for empty regions; date normalization via `dateparser`.
+  - Status transition service: enforce the state machine in the table above; reject invalid transitions.
+- API:
+  - `POST /documents/{id}/submit-to-approver` (sets `with_approver_N`).
+  - `POST /documents/{id}/approval-rounds` (multipart: returned PDF + decision + signatory + date + comments). Triggers split.
+  - `POST /documents/{id}/approval-rounds/{round_id}/extract` (page + bbox + target_field) → extracted text.
+  - `POST /documents/{id}/approval-rounds/{round_id}/remarks` (multipart: remarks PDF for status-B resubmissions).
+  - `POST /documents/{id}/start-new-revision`.
+- Frontend:
+  - Document form right-rail action panel keyed off document state.
+  - Submit dialog (one click + confirm), Record Response dialog (PDF preview + region OCR), Add Remarks dialog.
+  - Per-round collapsible section showing party, signatory, decision badge, date, comments, cover preview, attachment list.
+  - PDF preview using `react-pdf`; overlay canvas for region selection.
+- Admin:
+  - Project Approvers page with doc_type tab/filter.
+  - Seed default chains: WIR/MIR → AESG → Core Emirates; CIR → RED Engineering → Sudlows.
 
 ### Key File Locations
 

@@ -5,12 +5,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 
-interface User {
+export interface DesignationRef {
+  id: string;
+  name: string;
+}
+
+export interface RoleRef {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface User {
   id: string;
   email: string;
   full_name: string;
   is_active: boolean;
   is_superuser: boolean;
+  signature_font?: string | null;
+  signature_text?: string | null;
+  designation_id?: string | null;
+  designation?: DesignationRef | null;
+  roles?: RoleRef[];
+  permissions?: string[];
 }
 
 export function useCurrentUser() {
@@ -47,6 +64,11 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: async (body: { current_password: string; new_password: string }) => {
       const { data } = await api.post("/auth/change-password", body);
+      // Backend rotates token_version on password change and returns fresh tokens; swap them in.
+      if (data?.access_token && data?.refresh_token) {
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("refresh_token", data.refresh_token);
+      }
       return data;
     },
     onSuccess: () => {

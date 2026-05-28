@@ -1,5 +1,7 @@
 """Signature rendering: generates signature images from name + font."""
 import io
+import re
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -20,6 +22,7 @@ SIGNATURE_FONTS = {
 }
 
 DEFAULT_FONT = "dancing_script"
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def get_available_fonts() -> list[dict]:
@@ -30,15 +33,22 @@ def get_available_fonts() -> list[dict]:
     ]
 
 
-def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48, color: str = "#1a237e") -> bytes:
-    """Render a name as a signature PNG image.
-    
-    Returns PNG bytes suitable for embedding in DOCX via InlineImage.
-    """
+@lru_cache(maxsize=64)
+def _load_font(font_id: str, font_size: int) -> ImageFont.FreeTypeFont:
     font_file = SIGNATURE_FONTS.get(font_id, SIGNATURE_FONTS[DEFAULT_FONT])
     font_path = FONTS_DIR / font_file
+    return ImageFont.truetype(str(font_path), font_size)
 
-    font = ImageFont.truetype(str(font_path), font_size)
+
+def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48, color: str = "#1a237e") -> bytes:
+    """Render a name as a signature PNG image.
+
+    Returns PNG bytes suitable for embedding in DOCX via InlineImage.
+    """
+    if not _HEX_COLOR_RE.match(color or ""):
+        color = "#1a237e"
+
+    font = _load_font(font_id, font_size)
 
     # Measure text
     dummy = Image.new("RGBA", (1, 1))
@@ -51,7 +61,6 @@ def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48
     img = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
     draw = ImageDraw.Draw(img)
 
-    # Parse color
     r = int(color[1:3], 16)
     g = int(color[3:5], 16)
     b = int(color[5:7], 16)
@@ -61,3 +70,4 @@ def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+

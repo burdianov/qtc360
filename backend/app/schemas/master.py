@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -96,18 +97,24 @@ class ProjectResponse(BaseModel):
 class ProjectApproverCreate(BaseModel):
     project_id: uuid.UUID
     approver_id: uuid.UUID
-    approver_title_id: uuid.UUID
+    document_type: Literal["WIR", "MIR", "CIR", "FAT"]
+    approver_order: int
+    approver_title_id: uuid.UUID | None = None
 
 class ProjectApproverUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None = None
+    document_type: Literal["WIR", "MIR", "CIR", "FAT"] | None = None
+    approver_order: int | None = None
     approver_title_id: uuid.UUID | None = None
 
 class ProjectApproverResponse(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
+    document_type: str | None
+    approver_order: int | None
     approver: ApproverResponse
-    approver_title: ApproverTitleResponse
+    approver_title: ApproverTitleResponse | None
     model_config = {"from_attributes": True}
 
 
@@ -177,6 +184,7 @@ class AssetTypeResponse(BaseModel):
 class AssetCreate(BaseModel):
     name: str
     tag_number: str
+    project_id: uuid.UUID
     asset_type_id: uuid.UUID
     location: str | None = None
     status: str = "pending"
@@ -184,6 +192,7 @@ class AssetCreate(BaseModel):
 class AssetUpdate(BaseModel):
     name: str | None = None
     tag_number: str | None = None
+    project_id: uuid.UUID | None = None
     asset_type_id: uuid.UUID | None = None
     location: str | None = None
     status: str | None = None
@@ -192,6 +201,7 @@ class AssetResponse(BaseModel):
     id: uuid.UUID
     name: str
     tag_number: str
+    project_id: uuid.UUID | None = None
     asset_type_id: uuid.UUID
     location: str | None
     status: str

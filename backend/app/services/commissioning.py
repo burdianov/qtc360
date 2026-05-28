@@ -75,7 +75,10 @@ async def recalculate_requirement_status(
             elif any(s == "rejected" for s in doc_statuses):
                 new_status = "rejected"
                 progress = 0.0
-            elif any(s == "submitted" for s in doc_statuses):
+            elif any(
+                s in ("with_approver_1", "approver_1_returned", "with_approver_2", "internally_signed")
+                for s in doc_statuses
+            ):
                 new_status = "submitted"
                 progress = 0.0
             else:
@@ -119,6 +122,9 @@ async def recalculate_requirements_for_document(
 
         if doc.status in ("approved", "approved_with_comments"):
             for wi in work_items:
+                # Don't overwrite an existing approved linkage from another doc — preserve audit history.
+                if wi.status == "approved" and wi.linked_document_id and wi.linked_document_id != document_id:
+                    continue
                 if wi.status != "approved":
                     wi.status = "approved"
                     wi.approved_date = date.today()

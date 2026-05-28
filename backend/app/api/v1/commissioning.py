@@ -3,11 +3,17 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_permission, require_project_access
+from app.core.deps import (
+    assert_user_in_project,
+    get_current_user,
+    require_permission,
+    require_project_access,
+)
 from app.models.commissioning import (
     AssetRequirement,
     AssetTagTarget,
@@ -36,9 +42,32 @@ from app.schemas.commissioning import (
     RequirementWorkItemOut,
     RequirementWorkItemUpdate,
 )
+from app.services.audit import record_audit
 from app.services.commissioning import recalculate_requirement_status
 
 router = APIRouter(prefix="/commissioning", tags=["commissioning"])
+
+
+async def _project_id_for_asset(db: AsyncSession, asset_id: uuid.UUID) -> uuid.UUID | None:
+    from app.models.asset import Asset
+    res = await db.execute(select(Asset.project_id).where(Asset.id == asset_id))
+    return res.scalar_one_or_none()
+
+
+async def _project_id_for_asset_requirement(db: AsyncSession, ar_id: uuid.UUID) -> uuid.UUID | None:
+    from app.models.asset import Asset
+    res = await db.execute(
+        select(Asset.project_id)
+        .join(AssetRequirement, AssetRequirement.asset_id == Asset.id)
+        .where(AssetRequirement.id == ar_id)
+    )
+    return res.scalar_one_or_none()
+
+
+async def _project_id_for_document(db: AsyncSession, doc_id: uuid.UUID) -> uuid.UUID | None:
+    from app.models.document import Document
+    res = await db.execute(select(Document.project_id).where(Document.id == doc_id))
+    return res.scalar_one_or_none()
 
 
 # --- Requirement Templates ---
@@ -48,14 +77,28 @@ async def list_requirement_templates(
     project_id: uuid.UUID | None = None,
     level_code: str | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_project_access()),
+    user: User = Depends(get_current_user),
 ):
+    # Templates with project_id == NULL are global (visible to everyone). Project-scoped
+    # ones must be visible only to users with access to that project.
+    if project_id:
+        await assert_user_in_project(user, project_id)
     query = select(RequirementTemplate).where(RequirementTemplate.is_deleted == False)  # noqa: E712
     if project_id:
         query = query.where((RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None))  # noqa: E711
+    elif not user.is_superuser:
+        # Without project_id: show global + projects the user belongs to.
+        my_project_ids = [p.id for p in user.projects]
+        if my_project_ids:
+            query = query.where(
+                (RequirementTemplate.project_id == None)  # noqa: E711
+                | (RequirementTemplate.project_id.in_(my_project_ids))
+            )
+        else:
+            query = query.where(RequirementTemplate.project_id == None)  # noqa: E711
     if level_code:
         query = query.where(RequirementTemplate.level_code == level_code)
-    query = query.order_by(RequirementTemplate.sort_order)
+    query = query.order_by(RequirementTemplate.sort_order, RequirementTemplate.id)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -66,9 +109,20 @@ async def create_requirement_template(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
-    template = RequirementTemplate(**data.model_dump())
+    payload = data.model_dump()
+    # Project-scoped templates require access to that project. Global templates
+    # (project_id is None) are admin-only.
+    if payload.get("project_id"):
+        await assert_user_in_project(user, payload["project_id"])
+    elif not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Only super_admin can create global templates")
+    template = RequirementTemplate(**payload)
     db.add(template)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(template)
     return template
 
@@ -84,9 +138,17 @@ async def update_requirement_template(
     template = result.scalar_one_or_none()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    if template.project_id:
+        await assert_user_in_project(user, template.project_id)
+    elif not user.is_superuser:
+        raise HTTPException(status_code=403, detail="Only super_admin can modify global templates")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(template, k, v)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(template)
     return template
 
@@ -99,14 +161,27 @@ async def list_asset_requirements(
     project_id: uuid.UUID | None = None,
     required_for_tag: str | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_project_access()),
+    user: User = Depends(get_current_user),
 ):
+    from app.models.asset import Asset
     query = select(AssetRequirement).where(AssetRequirement.is_deleted == False)  # noqa: E712
     if asset_id:
+        ap = await _project_id_for_asset(db, asset_id)
+        await assert_user_in_project(user, ap)
         query = query.where(AssetRequirement.asset_id == asset_id)
     if project_id:
-        from app.models.asset import Asset
-        query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(Asset.is_deleted == False)  # noqa: E712
+        await assert_user_in_project(user, project_id)
+        query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
+            Asset.is_deleted == False, Asset.project_id == project_id  # noqa: E712
+        )
+    elif not asset_id and not user.is_superuser:
+        # No filter at all: scope to the user's projects.
+        my_project_ids = [p.id for p in user.projects]
+        if not my_project_ids:
+            return []
+        query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
+            Asset.is_deleted == False, Asset.project_id.in_(my_project_ids)  # noqa: E712
+        )
     if required_for_tag:
         query = query.where(AssetRequirement.required_for_tag == required_for_tag)
     result = await db.execute(query)
@@ -119,9 +194,17 @@ async def create_asset_requirement(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
+    ap = await _project_id_for_asset(db, data.asset_id)
+    if ap is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    await assert_user_in_project(user, ap)
     req = AssetRequirement(**data.model_dump())
     db.add(req)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Requirement already assigned to this asset")
     await db.refresh(req)
     return req
 
@@ -132,6 +215,14 @@ async def bulk_create_asset_requirements(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
+    from app.models.asset import Asset
+    if data.asset_ids:
+        # Verify every asset is in a project the user has access to.
+        rows = (await db.execute(
+            select(Asset.id, Asset.project_id).where(Asset.id.in_(data.asset_ids))
+        )).all()
+        for _aid, pid in rows:
+            await assert_user_in_project(user, pid)
     reqs = []
     for asset_id in data.asset_ids:
         req = AssetRequirement(
@@ -142,7 +233,11 @@ async def bulk_create_asset_requirements(
         )
         db.add(req)
         reqs.append(req)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="One or more requirements already assigned")
     for r in reqs:
         await db.refresh(r)
     return reqs
@@ -154,7 +249,8 @@ async def bulk_assign_by_asset_type(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
-    """Assign a requirement to all assets of a given type (including subtypes)."""
+    """Assign a requirement to all assets of a given type (including subtypes), restricted
+    to the projects the caller has access to."""
     from app.models.asset import Asset
     from app.models.asset_type import AssetType
 
@@ -163,11 +259,13 @@ async def bulk_assign_by_asset_type(
     subtypes = await db.execute(select(AssetType.id).where(AssetType.parent_type_id == data.asset_type_id))
     type_ids.extend([row[0] for row in subtypes.all()])
 
-    # Get all assets of those types
-    assets_result = await db.execute(
-        select(Asset).where(Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False)  # noqa: E712
-    )
-    assets = assets_result.scalars().all()
+    asset_q = select(Asset).where(Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False)  # noqa: E712
+    if not user.is_superuser:
+        my_project_ids = [p.id for p in user.projects]
+        if not my_project_ids:
+            return {"assigned": 0, "total_assets": 0}
+        asset_q = asset_q.where(Asset.project_id.in_(my_project_ids))
+    assets = (await db.execute(asset_q)).scalars().all()
 
     count = 0
     for asset in assets:
@@ -185,7 +283,11 @@ async def bulk_assign_by_asset_type(
             ))
             count += 1
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Conflict — please retry")
     return {"assigned": count, "total_assets": len(assets)}
 
 
@@ -197,10 +299,12 @@ async def list_work_items(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    pid = await _project_id_for_asset_requirement(db, asset_requirement_id)
+    await assert_user_in_project(user, pid)
     result = await db.execute(
         select(RequirementWorkItem)
         .where(RequirementWorkItem.asset_requirement_id == asset_requirement_id, RequirementWorkItem.is_deleted == False)  # noqa: E712
-        .order_by(RequirementWorkItem.sequence_no)
+        .order_by(RequirementWorkItem.sequence_no, RequirementWorkItem.id)
     )
     return result.scalars().all()
 
@@ -211,6 +315,10 @@ async def create_work_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.submit")),
 ):
+    pid = await _project_id_for_asset_requirement(db, data.asset_requirement_id)
+    if pid is None:
+        raise HTTPException(status_code=404, detail="Asset requirement not found")
+    await assert_user_in_project(user, pid)
     item = RequirementWorkItem(**data.model_dump())
     db.add(item)
     await db.commit()
@@ -223,12 +331,14 @@ async def update_work_item(
     item_id: uuid.UUID,
     data: RequirementWorkItemUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("documents.submit")),
 ):
     result = await db.execute(select(RequirementWorkItem).where(RequirementWorkItem.id == item_id))
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
+    pid = await _project_id_for_asset_requirement(db, item.asset_requirement_id)
+    await assert_user_in_project(user, pid)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(item, k, v)
     await db.commit()
@@ -246,11 +356,11 @@ async def delete_work_item(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
+    pid = await _project_id_for_asset_requirement(db, item.asset_requirement_id)
+    await assert_user_in_project(user, pid)
     if item.status == "approved":
         raise HTTPException(status_code=400, detail="Cannot delete approved work item")
     item.is_deleted = True
-    await db.commit()
-    # Recalculate parent requirement status
     await recalculate_requirement_status(db, item.asset_requirement_id)
     await db.commit()
 
@@ -261,15 +371,20 @@ async def delete_work_item(
 async def create_document_requirement_link(
     data: DocumentRequirementLinkCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("documents.edit")),
 ):
+    pid_doc = await _project_id_for_document(db, data.document_id)
+    pid_req = await _project_id_for_asset_requirement(db, data.asset_requirement_id)
+    if pid_doc is None or pid_req is None:
+        raise HTTPException(status_code=404, detail="Document or requirement not found")
+    if pid_doc != pid_req:
+        raise HTTPException(status_code=400, detail="Document and requirement belong to different projects")
+    await assert_user_in_project(user, pid_doc)
     link = DocumentRequirementLink(**data.model_dump())
     db.add(link)
-    await db.commit()
-    await db.refresh(link)
-    # Trigger recalculation
     await recalculate_requirement_status(db, data.asset_requirement_id)
     await db.commit()
+    await db.refresh(link)
     return link
 
 
@@ -280,6 +395,10 @@ async def list_document_links(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if document_id:
+        await assert_user_in_project(user, await _project_id_for_document(db, document_id))
+    if asset_requirement_id:
+        await assert_user_in_project(user, await _project_id_for_asset_requirement(db, asset_requirement_id))
     query = select(DocumentRequirementLink).where(DocumentRequirementLink.is_deleted == False)  # noqa: E712
     if document_id:
         query = query.where(DocumentRequirementLink.document_id == document_id)
@@ -297,9 +416,17 @@ async def list_tag_targets(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if asset_id:
+        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
     query = select(AssetTagTarget).where(AssetTagTarget.is_deleted == False)  # noqa: E712
     if asset_id:
         query = query.where(AssetTagTarget.asset_id == asset_id)
+    elif not user.is_superuser:
+        from app.models.asset import Asset
+        my_project_ids = [p.id for p in user.projects]
+        if not my_project_ids:
+            return []
+        query = query.join(Asset, AssetTagTarget.asset_id == Asset.id).where(Asset.project_id.in_(my_project_ids))
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -308,8 +435,12 @@ async def list_tag_targets(
 async def create_tag_target(
     data: AssetTagTargetCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
+    pid = await _project_id_for_asset(db, data.asset_id)
+    if pid is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    await assert_user_in_project(user, pid)
     target = AssetTagTarget(**data.model_dump())
     db.add(target)
     await db.commit()
@@ -322,12 +453,14 @@ async def update_tag_target(
     target_id: uuid.UUID,
     data: AssetTagTargetUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
     result = await db.execute(select(AssetTagTarget).where(AssetTagTarget.id == target_id))
     target = result.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Tag target not found")
+    pid = await _project_id_for_asset(db, target.asset_id)
+    await assert_user_in_project(user, pid)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(target, k, v)
     await db.commit()
@@ -343,24 +476,25 @@ async def get_commissioning_progress(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_project_access()),
 ):
-    """Return commissioning progress for all assets in a project."""
+    """Return commissioning progress for assets in a project."""
     from app.models.asset import Asset
     from app.schemas.commissioning import AssetCommissioningProgress, AssetRequirementDetail
 
     assets_result = await db.execute(
-        select(Asset).where(Asset.is_deleted == False)  # noqa: E712
+        select(Asset).where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
     )
     assets = assets_result.scalars().all()
+    asset_ids = [a.id for a in assets]
+    if not asset_ids:
+        return []
 
-    # Get all requirements with templates
     reqs_result = await db.execute(
         select(AssetRequirement)
-        .where(AssetRequirement.is_deleted == False)  # noqa: E712
+        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(asset_ids))  # noqa: E712
         .options(selectinload(AssetRequirement.work_items))
     )
     all_reqs = reqs_result.scalars().all()
 
-    # Get templates
     tmpl_result = await db.execute(
         select(RequirementTemplate).where(
             RequirementTemplate.is_deleted == False,  # noqa: E712
@@ -369,13 +503,14 @@ async def get_commissioning_progress(
     )
     templates = {t.id: t for t in tmpl_result.scalars().all()}
 
-    # Get tag targets
     tags_result = await db.execute(
-        select(AssetTagTarget).where(AssetTagTarget.is_deleted == False)  # noqa: E712
+        select(AssetTagTarget).where(
+            AssetTagTarget.is_deleted == False,  # noqa: E712
+            AssetTagTarget.asset_id.in_(asset_ids),
+        )
     )
     all_tags = tags_result.scalars().all()
 
-    # Build per-asset progress
     reqs_by_asset: dict[uuid.UUID, list] = {}
     for req in all_reqs:
         reqs_by_asset.setdefault(req.asset_id, []).append(req)
@@ -411,7 +546,6 @@ async def get_commissioning_progress(
                 work_items=work_items,
             ))
 
-        # Calculate current tags
         current_tags = []
         for tag_code, levels in [("red", ["L1", "L2A"]), ("yellow", ["L2B"]), ("green", ["L3"]), ("blue", ["L4"])]:
             tag_reqs = [r for r in asset_reqs if templates.get(r.requirement_template_id) and templates[r.requirement_template_id].level_code in levels and not templates[r.requirement_template_id].is_optional]
@@ -436,8 +570,16 @@ async def get_commissioning_progress(
 async def create_gate_override(
     data: GateOverrideCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission("commissioning.manage")),
 ):
+    pid = await _project_id_for_asset(db, data.asset_id)
+    if pid is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    await assert_user_in_project(user, pid)
+    if data.document_id:
+        pid_doc = await _project_id_for_document(db, data.document_id)
+        if pid_doc != pid:
+            raise HTTPException(status_code=400, detail="Asset and document are in different projects")
     override = GateOverrideAcknowledgement(
         user_id=user.id,
         asset_id=data.asset_id,
@@ -447,6 +589,10 @@ async def create_gate_override(
         notes=data.notes,
     )
     db.add(override)
+    await record_audit(
+        db, user_id=user.id, action="gate_override", entity_type="asset", entity_id=data.asset_id,
+        summary=f"Gate override on level {data.level_code}",
+    )
     await db.commit()
     await db.refresh(override)
     return override
@@ -460,6 +606,8 @@ async def check_gate_requirements(
     user: User = Depends(get_current_user),
 ):
     """Check if all requirements for a level are complete. Returns incomplete ones."""
+    pid = await _project_id_for_asset(db, asset_id)
+    await assert_user_in_project(user, pid)
     from app.models.commissioning import RequirementTemplate
 
     result = await db.execute(
@@ -468,7 +616,6 @@ async def check_gate_requirements(
     )
     reqs = result.scalars().all()
 
-    # Get templates to filter by level
     tmpl_ids = [r.requirement_template_id for r in reqs]
     if not tmpl_ids:
         return {"complete": True, "incomplete": []}
@@ -499,8 +646,18 @@ async def list_gate_overrides(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if asset_id:
+        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
     query = select(GateOverrideAcknowledgement).where(GateOverrideAcknowledgement.is_deleted == False)  # noqa: E712
     if asset_id:
         query = query.where(GateOverrideAcknowledgement.asset_id == asset_id)
+    elif not user.is_superuser:
+        from app.models.asset import Asset
+        my_project_ids = [p.id for p in user.projects]
+        if not my_project_ids:
+            return []
+        query = query.join(Asset, GateOverrideAcknowledgement.asset_id == Asset.id).where(
+            Asset.project_id.in_(my_project_ids)
+        )
     result = await db.execute(query)
     return result.scalars().all()

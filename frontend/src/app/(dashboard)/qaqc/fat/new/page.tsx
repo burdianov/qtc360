@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
-import { ApprovalChain } from "@/components/approval-chain";
+import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
@@ -409,11 +409,16 @@ function NewFATPageContent() {
         </form>
       </Form>
 
-      {/* Approval Chain */}
+      {/* External Approval Workflow */}
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card>
           <CardContent className="pt-6">
-            <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
+            <ApprovalActionPanel
+              documentId={editId}
+              documentType="FAT"
+              documentStatus={existingDoc.status}
+              projectId={project?.id}
+            />
           </CardContent>
         </Card>
       )}

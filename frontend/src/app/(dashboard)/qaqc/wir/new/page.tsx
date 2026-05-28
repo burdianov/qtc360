@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
-import { ApprovalChain } from "@/components/approval-chain";
+import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
@@ -771,35 +771,26 @@ function NewWIRPageContent() {
               </Button>
             )}
             <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending || (!isDirty && !form.formState.isDirty)}>
+            <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
             </Button>
-            <Button type="button" disabled={notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
+            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
               <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
             </Button>
           </div>
         </form>
       </Form>
 
-      {/* Approval Chain (shown when editing a submitted document) */}
+      {/* External Approval Workflow (shown once internally signed) */}
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card>
           <CardContent className="pt-6">
-            <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
-            {existingDoc.status === "rejected" && (
-              <div className="mt-4 pt-4 border-t">
-                <Button
-                  variant="default"
-                  onClick={async () => {
-                    const res = await api.post(`/documents/${editId}/resubmit`);
-                    toast.success(`Resubmitted as revision ${res.data.revision_no}`);
-                    router.replace(`/qaqc/wir/new?id=${res.data.id}`);
-                  }}
-                >
-                  Resubmit as New Revision
-                </Button>
-              </div>
-            )}
+            <ApprovalActionPanel
+              documentId={editId}
+              documentType="WIR"
+              documentStatus={existingDoc.status}
+              projectId={project?.id}
+            />
           </CardContent>
         </Card>
       )}

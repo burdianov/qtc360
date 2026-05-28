@@ -5,12 +5,38 @@ from uuid import UUID
 from pydantic import BaseModel
 
 DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR"]
-DOCUMENT_STATUSES = Literal["draft", "submitted", "approved", "approved_with_comments", "rejected", "cancelled", "superseded"]
+DOCUMENT_STATUSES = Literal[
+    "draft",
+    "internally_signed",
+    "with_approver_1",
+    "approver_1_returned",
+    "with_approver_2",
+    "approved",
+    "approved_with_comments",
+    "rejected",
+    "cancelled",
+    "superseded",
+]
+APPROVAL_ACTIONS = Literal["approved", "approved_with_comments", "rejected"]
+REQUIREMENT_STATUSES = Literal["not_started", "submitted", "partial", "achieved", "rejected", "not_applicable"]
+TAG_TARGET_STATUSES = Literal["not_started", "in_progress", "achieved", "delayed", "at_risk"]
+TAG_CODES = Literal["red", "yellow", "green", "blue"]
 
-# Valid status transitions
+# State machine for the external approval workflow.
+# Document `status` reflects current chain position; the per-round decision
+# letter (A/B/C/D) is stored on DocumentApprovalRound, not here.
 VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
-    "draft": {"submitted", "cancelled"},
-    "submitted": {"approved", "approved_with_comments", "rejected", "cancelled"},
+    "draft": {"internally_signed", "cancelled"},
+    "internally_signed": {"with_approver_1", "draft", "cancelled"},
+    "with_approver_1": {"approver_1_returned", "cancelled"},
+    "approver_1_returned": {
+        "with_approver_2",
+        "approved",
+        "approved_with_comments",
+        "rejected",
+        "cancelled",
+    },
+    "with_approver_2": {"approved", "approved_with_comments", "rejected", "cancelled"},
     "approved": {"superseded"},
     "approved_with_comments": {"superseded"},
     "rejected": {"superseded"},
@@ -93,25 +119,48 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# --- Document Approval ---
+# --- Document Approval Round ---
 
-class DocumentApprovalCreate(BaseModel):
-    project_approver_id: UUID
-    approver_order: int
-
-
-class DocumentApprovalResponse(BaseModel):
+class DocumentApprovalRoundResponse(BaseModel):
     id: UUID
     document_id: UUID
     approver_order: int
+    round_no: int
     project_approver_id: UUID
-    status_id: UUID | None
+    decision_status_id: UUID | None
+    signatory_name: str | None
     comments: str | None
+    submitted_at: datetime | None
+    returned_at: datetime | None
+    response_date: datetime | None
+    returned_file_name: str | None
+    remarks_file_name: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class ApprovalActionRequest(BaseModel):
-    status_id: UUID
+class SubmitToApproverRequest(BaseModel):
+    approver_order: int
+    submitted_at: datetime | None = None  # defaults to now() server-side
+    notes: str | None = None
+
+
+class RecordApprovalResponseRequest(BaseModel):
+    approver_order: int
+    decision_status_id: UUID
+    signatory_name: str
+    response_date: datetime
     comments: str | None = None
+
+
+class OCRExtractRequest(BaseModel):
+    page: int  # 1-indexed
+    bbox: list[float]  # [x, y, width, height] in PDF user-space coords
+    target_field: Literal["signatory_name", "response_date", "comments"]
+    force_ocr: bool = False  # skip native text, go straight to Tesseract
+
+
+class OCRExtractResponse(BaseModel):
+    text: str
+    via: Literal["native", "ocr"]

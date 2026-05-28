@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trash2 } from "lucide-react";
+import { ProjectApproversCard } from "./project-approvers-card";
 
 interface RefConfig {
   id: string;
@@ -58,7 +59,6 @@ export default function SettingsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ref-configs", projectId] }),
   });
 
-  // Load existing config when doc type changes
   const existing = configs.find((c) => c.doc_type === docType);
   const loadExisting = () => {
     if (existing) {
@@ -141,6 +141,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ProjectApproversCard projectId={projectId} />
     </div>
   );
 }

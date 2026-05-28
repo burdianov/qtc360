@@ -24,14 +24,22 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, token_version: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    return jwt.encode({"sub": subject, "exp": expire, "type": "access"}, settings.secret_key, algorithm=ALGORITHM)
+    return jwt.encode(
+        {"sub": subject, "exp": expire, "type": "access", "ver": token_version},
+        settings.secret_key,
+        algorithm=ALGORITHM,
+    )
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str, token_version: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-    return jwt.encode({"sub": subject, "exp": expire, "type": "refresh"}, settings.secret_key, algorithm=ALGORITHM)
+    return jwt.encode(
+        {"sub": subject, "exp": expire, "type": "refresh", "ver": token_version},
+        settings.secret_key,
+        algorithm=ALGORITHM,
+    )
 
 
 def decode_token(token: str) -> dict | None:

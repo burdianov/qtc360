@@ -1,7 +1,7 @@
 import uuid as uuid_mod
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, Column, DateTime, ForeignKey, Table
+from sqlalchemy import String, Boolean, Column, DateTime, ForeignKey, Integer, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,8 @@ class User(BaseModel):
     password_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     signature_font: Mapped[str | None] = mapped_column(String(50), default="dancing_script")
     signature_text: Mapped[str | None] = mapped_column(String(255), default=None)
+    # Bumped on password change / admin reset to invalidate outstanding tokens.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     designation: Mapped["Designation | None"] = relationship()  # noqa: F821
     roles: Mapped[list["Role"]] = relationship(  # noqa: F821

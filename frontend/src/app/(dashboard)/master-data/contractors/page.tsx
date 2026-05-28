@@ -31,12 +31,12 @@ export default function ContractorsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contractor | null>(null);
 
-  const { data: allContractors = [], isLoading } = useQuery<Contractor[]>({
+  const { data: contractors = [], isLoading } = useQuery<Contractor[]>({
     queryKey: ["contractors", selectedProject?.id],
-    queryFn: async () => (await api.get("/contractors")).data,
+    queryFn: async () =>
+      (await api.get("/contractors", { params: { project_id: selectedProject?.id } })).data,
+    enabled: !!selectedProject?.id,
   });
-
-  const contractors = allContractors.filter((c) => c.project_id === selectedProject?.id);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

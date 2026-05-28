@@ -14,7 +14,8 @@ from app.models.approval_status import ApprovalStatus
 from app.models.system import System
 from app.models.contractor import Contractor
 from app.models.document import Document
-from app.models.document_approval import DocumentApproval, document_assets
+from app.models.document_attachment import DocumentAttachment, document_assets
+from app.models.document_approval_round import DocumentApprovalRound
 from app.models.reference_number_config import ReferenceNumberConfig
 from app.models.doc_template import DocTemplate
 from app.models.notification import Notification
@@ -26,7 +27,6 @@ from app.models.commissioning import (
     AssetTagTarget,
 )
 from app.models.gate_override import GateOverrideAcknowledgement
-from app.models.document_attachment import DocumentAttachment
 from app.models.designation import Designation
 from app.models.user_preference import UserPreference
 
@@ -39,14 +39,13 @@ __all__ = [
     "Discipline", "Service", "AssetType", "Asset",
     "ApprovalStatus",
     "System", "Contractor",
-    "Document", "DocumentApproval", "document_assets",
+    "Document", "DocumentApprovalRound", "DocumentAttachment", "document_assets",
     "ReferenceNumberConfig",
     "DocTemplate",
     "Notification",
     "RequirementTemplate", "AssetRequirement", "RequirementWorkItem",
     "DocumentRequirementLink", "AssetTagTarget",
     "GateOverrideAcknowledgement",
-    "DocumentAttachment",
     "Designation",
     "UserPreference",
 ]

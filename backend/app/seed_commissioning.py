@@ -199,7 +199,10 @@ async def seed_commissioning():
         result = await session.execute(select(Project).where(Project.code == "1728"))
         proj = result.scalar_one_or_none()
         if not proj:
-            print("Project 1728 not found. Run base seed first.")
+            print(
+                "Project 1728 not found. Run base seed first:\n"
+                "    uv run python -m app.seed"
+            )
             return
 
         # Get disciplines
@@ -213,7 +216,21 @@ async def seed_commissioning():
             if not disc:
                 continue
             for s in services:
-                svc, created = await get_or_create(session, Service, "code", s["code"], name=s["name"], discipline_id=disc.id)
+                # Service uniqueness is (code, discipline_id) — filter by both so
+                # two disciplines can legitimately share a service code.
+                existing = await session.execute(
+                    select(Service).where(
+                        Service.code == s["code"],
+                        Service.discipline_id == disc.id,
+                    )
+                )
+                svc = existing.scalar_one_or_none()
+                created = False
+                if not svc:
+                    svc = Service(code=s["code"], name=s["name"], discipline_id=disc.id)
+                    session.add(svc)
+                    await session.flush()
+                    created = True
                 svc_map[s["code"]] = svc
                 if created:
                     print(f"  Service: {s['code']} - {s['name']}")
@@ -245,7 +262,13 @@ async def seed_commissioning():
             if not at:
                 print(f"  WARNING: type {a['type_code']} not found for asset {a['tag']}")
                 continue
-            asset, created = await get_or_create(session, Asset, "tag_number", a["tag"], name=a["name"], asset_type_id=at.id)
+            asset, created = await get_or_create(
+                session, Asset, "tag_number", a["tag"],
+                name=a["name"], asset_type_id=at.id, project_id=proj.id,
+            )
+            # Backfill project_id for assets seeded before this column existed.
+            if asset.project_id is None:
+                asset.project_id = proj.id
             asset_map[a["tag"]] = asset
             if created:
                 print(f"  Asset: {a['tag']} - {a['name']}")

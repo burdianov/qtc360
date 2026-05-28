@@ -34,12 +34,13 @@ export default function ServicesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Service | null>(null);
 
-  const { data: disciplines = [] } = useQuery<Discipline[]>({
-    queryKey: ["disciplines"],
-    queryFn: async () => (await api.get("/disciplines")).data,
+  const { data: projectDisciplines = [] } = useQuery<Discipline[]>({
+    queryKey: ["disciplines", selectedProject?.id],
+    queryFn: async () =>
+      (await api.get("/disciplines", { params: { project_id: selectedProject?.id } })).data,
+    enabled: !!selectedProject?.id,
   });
 
-  const projectDisciplines = disciplines.filter((d) => d.project_id === selectedProject?.id);
   const disciplineIds = new Set(projectDisciplines.map((d) => d.id));
 
   const { data: allServices = [], isLoading } = useQuery<Service[]>({

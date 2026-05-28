@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Send, PenLine } from "lucide-react";
+import { ArrowLeft, GripVertical, Loader2, Plus, Trash2, X, Send, PenLine } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -20,14 +20,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
-import { ApprovalChain } from "@/components/approval-chain";
-import { X } from "lucide-react";
+import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
-interface Asset { id: string; name: string; tag_number: string; }
+interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; }
+interface AssetType { id: string; name: string; code: string; service_id: string; parent_type_id: string | null; }
+interface Service { id: string; name: string; code: string; discipline_id: string; }
 
 const schema = z.object({
   subject: z.string().min(1, "Subject is required"),
@@ -59,17 +61,44 @@ function NewCIRPageContent() {
   const { resolvedTheme } = useTheme();
   const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
+  const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
+  const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
-  const [referenceNo, setReferenceNo] = useState("");
+  const [referenceNo, setReferenceNo] = useState<string>("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [isDirty, setIsDirty] = useState(!editId);
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({ queryKey: ["disciplines"], queryFn: async () => (await api.get("/disciplines")).data });
   const { data: users = [] } = useQuery<User[]>({ queryKey: ["users"], queryFn: async () => (await api.get("/auth/users")).data });
   const { data: assets = [] } = useQuery<Asset[]>({ queryKey: ["assets"], queryFn: async () => (await api.get("/assets")).data });
+  const { data: services = [] } = useQuery<Service[]>({ queryKey: ["services"], queryFn: async () => (await api.get("/services")).data });
+  const { data: assetTypes = [] } = useQuery<AssetType[]>({ queryKey: ["asset-types"], queryFn: async () => (await api.get("/asset-types")).data });
+
+  const { data: docTemplates = [] } = useQuery<{ id: string; name: string; version: number; is_active: boolean }[]>({
+    queryKey: ["doc-templates", project?.id, "CIR"],
+    queryFn: async () => (await api.get("/reports/templates", { params: { project_id: project!.id, doc_type: "CIR" } })).data,
+    enabled: !!project?.id,
+  });
+
+  useEffect(() => {
+    if (docTemplates.length > 0 && !selectedTemplateId) {
+      const active = docTemplates.find((t) => t.is_active);
+      if (active) setSelectedTemplateId(active.id);
+    }
+  }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { subject: "", discipline_id: "", description: "", location: "", inspector_1_id: "", inspector_2_id: "", date: new Date().toISOString().split("T")[0] },
   });
 
   const { data: existingDoc } = useQuery({
@@ -91,10 +120,54 @@ function NewCIRPageContent() {
       });
       setSigned({ inspector1: !!existingDoc.site_engineer_signed, inspector2: !!existingDoc.qaqc_engineer_signed });
       setReferenceNo(existingDoc.reference_no || "");
+      if (existingDoc.asset_ids?.length && assets.length > 0) {
+        const ids = new Set(existingDoc.asset_ids);
+        setSelectedAssets(assets.filter((a) => ids.has(a.id)));
+      }
     }
-  }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!editId || allAssetRequirements.length === 0 || commissioningLinkage) return;
+    api.get("/commissioning/document-links", { params: { document_id: editId } }).then((res) => {
+      const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+      if (links.length === 0) return;
+      const firstArId = links[0].asset_requirement_id;
+      const ar = allAssetRequirements.find((r) => r.id === firstArId);
+      if (!ar) return;
+      const isPartial = links.some((l) => l.requirement_work_item_id != null);
+      setCommissioningLinkage({
+        requirementTemplateId: ar.requirement_template_id,
+        isPartialScope: isPartial,
+        checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!),
+        deleteExistingIds: [],
+        newItems: [],
+      });
+    }).catch(() => {});
+  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (editId) {
+      api.get(`/documents/${editId}/attachments`).then((res) => {
+        setAttachments(res.data.map((a: any) => ({ id: a.id, name: a.filename, size: a.size, isExisting: true })));
+      }).catch(() => {});
+    }
+  }, [editId]);
 
   const disciplineId = form.watch("discipline_id");
+
+  const applicableTemplateIds = (() => {
+    if (!disciplineId) return null;
+    const disciplineTypeIds = new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id));
+    const disciplineAssetIds = new Set(assets.filter((a) => disciplineTypeIds.has(a.asset_type_id)).map((a) => a.id));
+    return new Set(allAssetRequirements.filter((ar) => disciplineAssetIds.has(ar.asset_id)).map((ar) => ar.requirement_template_id));
+  })();
+
+  const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
+  const applicableAssetIds = selectedTemplateId2
+    ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2).map((ar) => ar.asset_id))
+    : null;
+
   useEffect(() => {
     if (!editId && disciplineId && project?.id && disciplines.length > 0) {
       const code = disciplines.find((d) => d.id === disciplineId)?.code || "";
@@ -135,6 +208,45 @@ function NewCIRPageContent() {
     asset_ids: selectedAssets.map((a) => a.id),
   });
 
+  const saveCommissioningLinkage = async (docId: string | null) => {
+    if (!commissioningLinkage || !docId || selectedAssets.length === 0) return;
+    for (const asset of selectedAssets) {
+      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
+      const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId);
+      if (!assetReq) continue;
+      if (commissioningLinkage.isPartialScope) {
+        for (const delId of commissioningLinkage.deleteExistingIds) {
+          await api.delete(`/commissioning/work-items/${delId}`);
+        }
+        const createdIds: string[] = [];
+        for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
+          const wiRes = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: commissioningLinkage.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+          if (commissioningLinkage.newItems[i].checked) createdIds.push(wiRes.data.id);
+        }
+        for (const wiId of commissioningLinkage.checkedExistingIds) {
+          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
+        }
+        for (const wiId of createdIds) {
+          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
+        }
+      } else {
+        await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id });
+      }
+    }
+  };
+
+  const uploadAttachments = async (docId: string | null) => {
+    if (!docId) return;
+    const newAtts = attachments.filter((a) => !a.isExisting && a.file);
+    for (const att of newAtts) {
+      const fd = new FormData();
+      fd.append("file", att.file!);
+      await api.post(`/documents/${docId}/attachments`, fd, { headers: { "Content-Type": undefined } });
+    }
+    const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
+    if (existingIds.length > 0) await api.patch(`/documents/${docId}/attachments/reorder`, existingIds);
+  };
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
@@ -145,43 +257,78 @@ function NewCIRPageContent() {
         res = await api.post("/documents", buildPayload(values));
       }
       const docId = res.data?.id || editId;
-      // Commissioning linkage
-      if (commissioningLinkage && docId && selectedAssets.length > 0) {
-        for (const asset of selectedAssets) {
-          const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: asset.id } });
-          const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId);
-          if (!assetReq) continue;
-          if (commissioningLinkage.isPartialScope) {
-            for (const delId of commissioningLinkage.deleteExistingIds) {
-              await api.delete(`/commissioning/work-items/${delId}`);
-            }
-            const createdIds: string[] = [];
-            for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-              const wiRes = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: commissioningLinkage.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
-              if (commissioningLinkage.newItems[i].checked) createdIds.push(wiRes.data.id);
-            }
-            for (const wiId of commissioningLinkage.checkedExistingIds) {
-              await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
-            }
-            for (const wiId of createdIds) {
-              await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId });
-            }
-          } else {
-            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id });
-          }
-        }
-      }
+      await saveCommissioningLinkage(docId);
+      await uploadAttachments(docId);
       return res;
     },
-    onSuccess: () => { toast.success(editId ? "CIR updated" : "CIR saved as draft"); queryClient.invalidateQueries({ queryKey: ["documents", "CIR"] }); router.push("/qaqc/cir"); },
+    onSuccess: (res) => {
+      toast.success(editId ? "CIR updated" : "CIR saved as draft");
+      setAssetSearch("");
+      setIsDirty(false);
+      queryClient.invalidateQueries({ queryKey: ["documents", "CIR"] });
+      if (!editId && res?.data?.id) router.replace(`/qaqc/cir/new?id=${res.data.id}`);
+    },
   });
 
-  const addAsset = (id: string) => { const a = assets.find((x) => x.id === id); if (a && !selectedAssets.find((x) => x.id === id)) setSelectedAssets([...selectedAssets, a]); };
+  const notifyMutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      let docId = editId;
+      if (!docId) {
+        const res = await api.post("/documents", buildPayload(values));
+        docId = res.data.id;
+      } else {
+        const { project_id, document_type, reference_no, ...payload } = buildPayload(values);
+        await api.patch(`/documents/${docId}`, payload);
+      }
+      await saveCommissioningLinkage(docId);
+      await uploadAttachments(docId);
+      await api.post(`/documents/${docId}/notify-signatories`);
+    },
+    onSuccess: () => {
+      toast.success("CIR saved and signatories notified");
+      queryClient.invalidateQueries({ queryKey: ["documents", "CIR"] });
+      router.push("/qaqc/cir");
+    },
+  });
+
+  const handleBack = () => {
+    if (form.formState.isDirty) {
+      if (confirm("You have unsaved changes. Save as draft before leaving?")) {
+        form.handleSubmit((v) => mutation.mutate(v))();
+        return;
+      }
+    }
+    router.push("/qaqc/cir");
+  };
+
+  const addAsset = (id: string) => { const a = assets.find((x) => x.id === id); if (a && !selectedAssets.find((x) => x.id === id)) { setSelectedAssets([...selectedAssets, a]); setIsDirty(true); } };
+  const removeAsset = (id: string) => { setSelectedAssets(selectedAssets.filter((a) => a.id !== id)); setIsDirty(true); };
+
+  const addAttachment = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ".pdf,.jpg,.jpeg,.png";
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) { setAttachments([...attachments, ...Array.from(files).map((f) => ({ file: f, name: f.name, size: f.size }))]); setIsDirty(true); }
+    };
+    input.click();
+  };
+
+  const removeAttachment = async (index: number) => {
+    const att = attachments[index];
+    if (att.isExisting && att.id && editId) {
+      await api.delete(`/documents/${editId}/attachments/${att.id}`).catch(() => {});
+    }
+    setAttachments(attachments.filter((_, i) => i !== index));
+    setIsDirty(true);
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push("/qaqc/cir")}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
+        <Button variant="ghost" size="sm" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{editId ? "Edit" : "New"} Commissioning Inspection Request</h1>
           <p className="text-sm text-muted-foreground">Fill in the CIR submission form</p>
@@ -189,12 +336,20 @@ function NewCIRPageContent() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-6">
+        <form onSubmit={form.handleSubmit((v) => mutation.mutate(v), () => toast.error("Please fill in all required fields"))} noValidate className="space-y-6">
           <Card>
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+              <div>
                 <FormItem><FormLabel>Reference Number</FormLabel><Input value={referenceNo} disabled className="font-mono bg-muted" placeholder="Select discipline to generate..." /></FormItem>
+              </div>
+              <div>
+                <FormItem><FormLabel>Template</FormLabel>
+                  <Select value={selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : "")} onValueChange={(v: any) => setSelectedTemplateId(v)} disabled={docTemplates.length <= 1}>
+                    <SelectTrigger><SelectValue placeholder="Select template">{(() => { const t = docTemplates.find((t) => t.id === (selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : ""))); return t ? `${t.name} (v${t.version})` : ""; })()}</SelectValue></SelectTrigger>
+                    <SelectContent>{docTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name} (v{t.version}){t.is_active ? " ✓" : ""}</SelectItem>)}</SelectContent>
+                  </Select>
+                </FormItem>
               </div>
               <FormField control={form.control} name="date" render={({ field }) => (<FormItem><FormLabel>Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="discipline_id" render={({ field }) => (
@@ -211,64 +366,148 @@ function NewCIRPageContent() {
             </CardContent>
           </Card>
 
-          {/* Assets */}
           <Card>
-            <CardHeader><CardTitle className="text-base">Assets</CardTitle></CardHeader>
-            <CardContent>
-              <Select onValueChange={(v: any) => v && addAsset(v)}>
-                <SelectTrigger><SelectValue placeholder="Add asset..." /></SelectTrigger>
-                <SelectContent>{assets.filter((a) => !selectedAssets.find((s) => s.id === a.id)).map((a) => (<SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>))}</SelectContent>
-              </Select>
+            <CardContent className="pt-6">
+              <CommissioningLinkagePanel
+                projectId={project?.id || ""}
+                selectedAssetIds={selectedAssets.map((a) => a.id)}
+                documentType="CIR"
+                applicableTemplateIds={applicableTemplateIds}
+                value={commissioningLinkage}
+                onChange={(linkage) => {
+                  if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; }
+                  setCommissioningLinkage(linkage); setIsDirty(true);
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className={!commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
+            <CardHeader><CardTitle className="text-base">Assets ({selectedAssets.length} selected)</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Select value={assetTypeFilter} onValueChange={(v: any) => setAssetTypeFilter(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="w-48"><SelectValue placeholder="All asset types">{assetTypeFilter ? assetTypes.find((t) => t.id === assetTypeFilter)?.name : "All asset types"}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All asset types</SelectItem>
+                    {assetTypes.filter((t) => { if (!disciplineId) return true; const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Input placeholder="Search assets..." value={assetSearch} onChange={(e) => setAssetSearch(e.target.value)} className="flex-1" />
+              </div>
+              <div className="rounded-md border max-h-52 overflow-y-auto">
+                {(() => {
+                  const disciplineTypeIds = disciplineId ? new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id)) : null;
+                  const filtered = assets.filter((a) => {
+                    if (applicableAssetIds && !applicableAssetIds.has(a.id)) return false;
+                    if (disciplineTypeIds && !disciplineTypeIds.has(a.asset_type_id)) return false;
+                    if (assetTypeFilter && a.asset_type_id !== assetTypeFilter) return false;
+                    if (assetSearch) { const q = assetSearch.toLowerCase(); if (!a.tag_number.toLowerCase().includes(q) && !a.name.toLowerCase().includes(q)) return false; }
+                    return true;
+                  });
+                  if (filtered.length === 0) return <p className="p-3 text-sm text-muted-foreground">No assets match filters.</p>;
+                  return filtered.map((a) => {
+                    const isSelected = !!selectedAssets.find((s) => s.id === a.id);
+                    return (
+                      <label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0">
+                        <input type="checkbox" checked={isSelected} onChange={() => isSelected ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" />
+                        <span className="text-sm">{a.tag_number} — {a.name}</span>
+                      </label>
+                    );
+                  });
+                })()}
+              </div>
               {selectedAssets.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedAssets.map((a) => (<Badge key={a.id} variant="secondary" className="gap-1 pr-1">{a.tag_number}<button type="button" onClick={() => setSelectedAssets(selectedAssets.filter((x) => x.id !== a.id))} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}
+                <div className="flex flex-wrap gap-2">
+                  {selectedAssets.map((a) => (<Badge key={a.id} variant="secondary" className="gap-1 pr-1">{a.tag_number}<button type="button" onClick={() => removeAsset(a.id)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[{ key: "inspector_1_id" as const, label: "Inspected by 1", signKey: "inspector1" as const, role: "site_engineer" as const, currentId: inspector1Id }, { key: "inspector_2_id" as const, label: "Inspected by 2", signKey: "inspector2" as const, role: "qaqc_engineer" as const, currentId: inspector2Id }].map(({ key, label, signKey, role, currentId }) => (
+                  <div key={key} className="space-y-3">
+                    <FormField control={form.control} name={key} render={({ field }) => (
+                      <FormItem><FormLabel>{label}</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl><SelectTrigger className="w-full min-w-[280px]"><SelectValue placeholder="Name and Designation">{currentId ? users.find((u) => u.id === currentId)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
+                          <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2 w-full"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
+                        </Select>
+                      </FormItem>
+                    )} />
+                    <div className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${signed[signKey] ? "border-emerald-500/50 bg-emerald-500/5" : currentUser?.id === currentId ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50 cursor-not-allowed"}`}
+                      onClick={() => { if (currentUser?.id === currentId && !signed[signKey]) handleSign(role); }}>
+                      {signed[signKey] ? (
+                        <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === currentId); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === currentId)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" />
+                      ) : (<span className="text-sm text-muted-foreground">{currentUser?.id === currentId ? "Click to sign" : "Awaiting signature"}</span>)}
+                    </div>
+                    {currentUser?.id === currentId && (<Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>)}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Attachments</CardTitle>
+              <Button type="button" variant="outline" size="sm" onClick={addAttachment}><Plus className="h-4 w-4 mr-1" />Add Files</Button>
+            </CardHeader>
+            <CardContent>
+              {attachments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No attachments added yet. Accepted: PDF, JPG, PNG.</p>
+              ) : (
+                <div className="space-y-2">
+                  {attachments.map((att, i) => (
+                    <div key={i} draggable
+                      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = Number(e.dataTransfer.getData("text/plain"));
+                        if (from === i) return;
+                        const items = [...attachments];
+                        const [moved] = items.splice(from, 1);
+                        items.splice(i, 0, moved);
+                        setAttachments(items);
+                      }}
+                      className="flex items-center gap-3 rounded-md border border-border px-3 py-2 transition-colors hover:bg-accent/50">
+                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
+                      <span className="flex-1 text-sm truncate">{att.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{(att.size / 1024).toFixed(0)} KB</span>
+                      <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Commissioning Linkage */}
-          <Card>
-            <CardContent className="pt-6">
-              <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} documentType="CIR" value={commissioningLinkage} onChange={setCommissioningLinkage} />
-            </CardContent>
-          </Card>
-
-          {/* Inspectors */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {[{ key: "inspector_1_id" as const, label: "Inspected by 1", signKey: "inspector1" as const }, { key: "inspector_2_id" as const, label: "Inspected by 2", signKey: "inspector2" as const }].map(({ key, label, signKey }) => {
-                  const inspId = form.watch(key);
-                  return (
-                    <div key={key} className="space-y-3">
-                      <FormField control={form.control} name={key} render={({ field }) => (
-                        <FormItem><FormLabel>{label}</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl><SelectTrigger><SelectValue placeholder="Select">{inspId ? users.find((u) => u.id === inspId)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                            <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}>{u.full_name}: {u.designation?.name || "—"}</SelectItem>))}</SelectContent>
-                          </Select>
-                        </FormItem>
-                      )} />
-                      <div className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${signed[signKey] ? "border-emerald-500/50 bg-emerald-500/5" : currentUser?.id === inspId ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50"}`}
-                        onClick={() => { if (currentUser?.id === inspId && !signed[signKey]) handleSign(signKey === "inspector1" ? "site_engineer" : "qaqc_engineer"); }}>
-                        {signed[signKey] ? (
-                          <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspId); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspId)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" />
-                        ) : (<span className="text-sm text-muted-foreground">{currentUser?.id === inspId ? "Click to sign" : "Awaiting signature"}</span>)}
-                      </div>
-                      {currentUser?.id === inspId && <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>}
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => router.push("/qaqc/cir")}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
+            {editId && (
+              <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => {
+                setPdfLoading(true);
+                try {
+                  const payload: any = { document_id: editId, project_id: project!.id };
+                  if (selectedTemplateId) payload.template_id = selectedTemplateId;
+                  const res = await api.post(`/reports/generate/CIR`, payload, { responseType: "blob" });
+                  const url = URL.createObjectURL(res.data);
+                  window.open(url, "_blank");
+                  setTimeout(() => URL.revokeObjectURL(url), 60000);
+                } catch { toast.error("PDF generation failed"); }
+                finally { setPdfLoading(false); }
+              }}>
+                {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
+            <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
+            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
+              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
+            </Button>
           </div>
         </form>
       </Form>
@@ -276,10 +515,24 @@ function NewCIRPageContent() {
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card>
           <CardContent className="pt-6">
-            <ApprovalChain documentId={editId} documentStatus={existingDoc.status} />
+            <ApprovalActionPanel documentId={editId} documentType="CIR" documentStatus={existingDoc.status} projectId={project?.id} />
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={confirmDisableLinkage} onOpenChange={setConfirmDisableLinkage}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disable Commissioning Linkage?</DialogTitle>
+            <DialogDescription>You have {selectedAssets.length} asset{selectedAssets.length > 1 ? "s" : ""} selected. Disabling the linkage will deselect all assets.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDisableLinkage(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { setSelectedAssets([]); setCommissioningLinkage(null); setConfirmDisableLinkage(false); }}>Disable & Clear Assets</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

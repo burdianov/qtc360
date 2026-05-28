@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import api from "@/lib/api";
 
@@ -59,10 +59,25 @@ export function useSelectedProject() {
 }
 
 export function useSetProject() {
-  return useCallback((project: Project) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-    window.dispatchEvent(new Event("project-changed"));
-  }, []);
+  const queryClient = useQueryClient();
+  return useCallback(
+    (project: Project) => {
+      const prevRaw = localStorage.getItem(STORAGE_KEY);
+      const prev = prevRaw ? (JSON.parse(prevRaw) as Project) : null;
+      if (prev?.id === project.id) return;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+      window.dispatchEvent(new Event("project-changed"));
+      // Drop project-scoped caches so the new project doesn't render with the
+      // previous project's data. Auth/projects/user data stays.
+      queryClient.removeQueries({
+        predicate: (q) => {
+          const k = q.queryKey?.[0];
+          return k !== "auth";
+        },
+      });
+    },
+    [queryClient],
+  );
 }
 
 export function useUserProjects() {

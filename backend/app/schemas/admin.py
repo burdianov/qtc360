@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
@@ -9,7 +10,6 @@ class UserAdminCreate(BaseModel):
     full_name: str
     designation_id: UUID | None = None
     is_active: bool = True
-    is_superuser: bool = False
     role_ids: list[UUID] = []
 
 class UserAdminUpdate(BaseModel):
@@ -17,7 +17,6 @@ class UserAdminUpdate(BaseModel):
     full_name: str | None = None
     designation_id: UUID | None = None
     is_active: bool | None = None
-    is_superuser: bool | None = None
     password: str | None = None
     role_ids: list[UUID] | None = None
 
@@ -86,7 +85,7 @@ class AuditUserRef(BaseModel):
 
 class AuditLogResponse(BaseModel):
     id: UUID
-    timestamp: str
+    timestamp: datetime
     user_id: UUID | None = None
     user: AuditUserRef | None = None
     action: str

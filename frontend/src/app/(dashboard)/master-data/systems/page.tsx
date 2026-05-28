@@ -32,12 +32,12 @@ export default function SystemsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<System | null>(null);
 
-  const { data: allSystems = [], isLoading } = useQuery<System[]>({
+  const { data: systems = [], isLoading } = useQuery<System[]>({
     queryKey: ["systems", selectedProject?.id],
-    queryFn: async () => (await api.get("/systems")).data,
+    queryFn: async () =>
+      (await api.get("/systems", { params: { project_id: selectedProject?.id } })).data,
+    enabled: !!selectedProject?.id,
   });
-
-  const systems = allSystems.filter((s) => s.project_id === selectedProject?.id);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

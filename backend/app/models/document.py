@@ -11,7 +11,7 @@ from app.models.base import BaseModel
 class Document(BaseModel):
     __tablename__ = "documents"
     __table_args__ = (
-        UniqueConstraint("project_id", "reference_no", name="uq_document_project_refno"),
+        UniqueConstraint("project_id", "reference_no", "revision_no", name="uq_document_project_refno_rev"),
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
@@ -19,7 +19,7 @@ class Document(BaseModel):
     reference_no: Mapped[str] = mapped_column(String(100), index=True)
     title: Mapped[str] = mapped_column(String(500))
     description: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(30), default="draft")  # draft, submitted, approved, approved_with_comments, rejected, cancelled, superseded
+    status: Mapped[str] = mapped_column(String(30), default="draft")  # draft, internally_signed, with_approver_1, approver_1_returned, with_approver_2, approved, approved_with_comments, rejected, cancelled, superseded
     revision_no: Mapped[int] = mapped_column(Integer, default=0)
     discipline_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("disciplines.id"))
 
@@ -49,6 +49,11 @@ class Document(BaseModel):
     # FAT context fields
     asset_type_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("asset_types.id"))
 
+    # Template lock: snapshot of which template was used and how many cover
+    # pages it has. Null while editable; frozen at "Submit to Approver 1".
+    template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("doc_templates.id"))
+    cover_page_count: Mapped[int | None] = mapped_column(Integer)
+
     # Audit
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -62,5 +67,5 @@ class Document(BaseModel):
     creator: Mapped["User | None"] = relationship(foreign_keys=[created_by])  # noqa: F821
     updater: Mapped["User | None"] = relationship(foreign_keys=[updated_by])  # noqa: F821
     assets: Mapped[list["Asset"]] = relationship(secondary="document_assets")  # noqa: F821
-    approvals: Mapped[list["DocumentApproval"]] = relationship(back_populates="document")  # noqa: F821
+    approval_rounds: Mapped[list["DocumentApprovalRound"]] = relationship(back_populates="document", order_by="DocumentApprovalRound.approver_order, DocumentApprovalRound.round_no")  # noqa: F821
     requirement_links: Mapped[list["DocumentRequirementLink"]] = relationship(viewonly=True)  # noqa: F821

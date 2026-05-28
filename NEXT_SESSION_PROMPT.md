@@ -94,7 +94,15 @@ frontend/src/
 ```
 POST/GET    /api/v1/documents
 POST        /api/v1/documents/{id}/sign
-POST        /api/v1/documents/{id}/approvals/{id}/respond  → triggers requirement recalculation
+
+# External approval workflow (Phase 2)
+GET         /api/v1/documents/{id}/approval-rounds
+POST        /api/v1/documents/{id}/submit-to-approver
+POST        /api/v1/documents/{id}/approval-rounds  (multipart: returned PDF + decision + signatory)
+POST        /api/v1/documents/{id}/approval-rounds/{round_id}/extract  (region OCR)
+POST        /api/v1/documents/{id}/approval-rounds/{round_id}/remarks  (optional Approver-2 remarks PDF)
+POST        /api/v1/documents/{id}/extract-preview  (stateless region OCR pre-save)
+POST        /api/v1/documents/{id}/start-new-revision
 
 GET/POST    /api/v1/commissioning/requirement-templates
 GET/POST    /api/v1/commissioning/asset-requirements
@@ -113,6 +121,7 @@ GET         /api/v1/reports/pdf-engine/health
 POST        /api/v1/reports/generate/{doc_type}  → PDF generation
 GET         /api/v1/auth/users  (basic user info for all authenticated users)
 PATCH       /api/v1/documents/{id}/attachments/reorder
+GET/POST/PATCH/DELETE /api/v1/project-approvers  (now scoped per doc_type + order)
 ```
 
 ### Security Model
@@ -148,7 +157,46 @@ PATCH       /api/v1/documents/{id}/attachments/reorder
 5. Attachments (drag-and-drop reorder)
 6. Both "Save as Draft" and "Save & Notify" process commissioning linkage
 
-## Completed This Session
+## Completed This Session — External Approval Workflow
+
+This session implemented the full Aconex-mirrored external approval workflow described in the spec's "External Approval Workflow" section. Backend, schema, services, API, and frontend.
+
+- ✅ **Spec updated** with External Approver Chains, click-flow state machine, returned-PDF splitting rules, region-OCR approach, and a concrete implementation task list.
+- ✅ **Phase 1 — Schema**
+  - Migration `e1f2a3b4c5d6_external_approval_workflow.py`: `project_approvers` extended with `document_type` + `approver_order` (unique on project+doc_type+order); `doc_templates.cover_page_count` added; legacy `document_approvals` dropped, replaced by `document_approval_rounds`; `document_attachments` gained `document_approval_round_id` + `kind`; document `status` enum updated (`submitted` → `internally_signed`/`with_approver_1`/`approver_1_returned`/`with_approver_2`).
+  - Migration `f1a2b3c4d5e6_document_template_lock.py`: `documents.template_id` + `documents.cover_page_count` snapshot — locked at first approver submission so admin uploading a newer template version mid-flight can't shift the split boundary.
+- ✅ **Phase 2 — Services + API**
+  - `app/services/pdf.py`: `count_pages_in_docx` (LibreOffice-based, populated on template upload), `split_returned_pdf`, `extract_region_text` (PyMuPDF native-text-first, Tesseract fallback with PSM hints, image-overlap detection for flattened PDFs, force-OCR override), `normalize_date_text` via dateparser.
+  - `app/services/approval.py`: state machine (`submit_to_approver`, `record_response`, `attach_remarks`, `_lock_template`).
+  - 6 endpoints: list rounds, submit-to-approver, record response (multipart), region OCR (persisted), region OCR (stateless pre-save), upload remarks, start new revision.
+  - Deps: `pymupdf`, `pytesseract`, `dateparser`. Tesseract binary required on host for OCR fallback.
+  - Seed populates default chains for project 1728: WIR/MIR → AESG → Core Emirates; CIR → RED Engineering → Sudlows.
+- ✅ **Phase 3 — Admin UI**
+  - New `ProjectApproversCard` on Admin → Settings. Doc-type segmented selector (WIR/MIR/CIR/FAT), ordered chain list, add-approver dialog with auto-next-order, trash button re-sequences remaining slots so there's never a gap.
+- ✅ **Phase 4 — Document form action panel + region-OCR dialog**
+  - `ApprovalActionPanel` wired into all four QA/QC forms (WIR/MIR/CIR/FAT). Renders one primary action per state per the spec table.
+  - `SubmitToApproverDialog` (one-click confirmation, captures submission date).
+  - `RecordResponseDialog`: split layout — PDF preview (`react-pdf` + PDF.js) + form. Per-field "Capture" arms region selection; user drags box; backend extracts via `/extract-preview`; pre-fills field. Per-field "OCR" button re-extracts via Tesseract for flattened PDFs. All fields editable.
+  - `AddRemarksDialog`: optional Approver-2 remarks PDF, only when Approver 1 returned status B.
+  - `ApprovalRoundsList`: collapsible per-round sections with party, signatory, decision badge, dates, comments, file links.
+  - Start-New-Revision action handles status C and resubmission post-approval.
+  - Stale legacy `<ApprovalChain>` deleted.
+- ✅ **MIR/CIR feature parity with WIR**
+  - Both forms now have: template selector, attachments with drag-reorder, Preview PDF, Save & Notify Signatories, isDirty tracking + handleBack unsaved-changes prompt, linkage-first flow with applicable template/asset filtering, asset filter+search+checkbox panel, restore linkage and attachments on edit, confirm-disable-linkage dialog. Match WIR feature set.
+
+## Next Priorities
+
+1. **End-to-end test of approval workflow** — drive through WIR submit → AESG response (try OCR region capture on a real Aconex transmittal) → resubmit → Core Emirates → approved. None of this has been tested in a browser yet.
+2. **Tesseract install instructions** — add to README and Docker setup. Currently the OCR fallback silently disables itself if the binary isn't present.
+3. **Round file download endpoint** — the rounds list links to `/approval-rounds/{round_id}/file` but no such endpoint exists yet. Stub it or rewire to attachment download URLs.
+4. **Document list pages** — Use server-side pagination for WIR/MIR/CIR/FAT list pages
+5. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type
+6. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets
+7. **CSV import for assets** — Bulk import assets from CSV with validation
+8. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates
+9. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates)
+
+## Previously Completed (Earlier Sessions)
 
 - ✅ Full commissioning engine refactor (backend + frontend)
 - ✅ Domain spec + architecture decisions docs
@@ -228,16 +276,6 @@ PATCH       /api/v1/documents/{id}/attachments/reorder
 - Commissioning tracking page filters by project_id
 - Unused state variables removed
 - updated_at added to DocumentResponse
-
-## Next Priorities
-
-1. **Document list pages** — Use server-side pagination for WIR/MIR/CIR/FAT list pages
-2. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type
-3. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets
-4. **CSV import for assets** — Bulk import assets from CSV with validation
-5. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates
-6. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates)
-7. **CIR/MIR/FAT forms** — Apply same fixes as WIR (attachment reorder, linkage restore, sign via API already done)
 
 ## Login Credentials
 

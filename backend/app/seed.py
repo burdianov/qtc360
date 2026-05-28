@@ -2,11 +2,12 @@
 import asyncio
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session_factory
 from app.core.security import hash_password
 from app.models.user import User, user_projects
-from app.models.rbac import Role
+from app.models.rbac import Role, Permission
 from app.models.client import Client
 from app.models.project import Project
 from app.models.approver import ApproverTitle, Approver
@@ -21,7 +22,39 @@ ROLES = [
     {"name": "site_engineer", "description": "Site engineer — submits and tracks field inspections"},
     {"name": "qaqc_engineer", "description": "QA/QC engineer — reviews, approves, and manages quality documents"},
     {"name": "qaqc_manager", "description": "QA/QC manager — same rights as qaqc_engineer (to be differentiated later)"},
+    {"name": "viewer", "description": "View-only access — cannot create documents or sign"},
 ]
+
+PERMISSIONS = [
+    # Documents
+    {"code": "documents.create", "description": "Create new documents (WIR, MIR, CIR, FAT)"},
+    {"code": "documents.edit", "description": "Edit existing documents"},
+    {"code": "documents.delete", "description": "Delete documents"},
+    {"code": "documents.sign", "description": "Sign documents as inspector"},
+    {"code": "documents.submit", "description": "Submit documents for approval"},
+    # Commissioning
+    {"code": "commissioning.manage", "description": "Manage requirement templates and assignments"},
+    {"code": "commissioning.view", "description": "View commissioning progress and tracking"},
+    # Master Data
+    {"code": "master_data.manage", "description": "Create/edit/delete master data (assets, disciplines, etc.)"},
+    # Reports
+    {"code": "reports.generate", "description": "Generate PDF reports"},
+    {"code": "reports.templates", "description": "Upload and manage report templates"},
+    # Admin
+    {"code": "admin.users", "description": "Manage users"},
+    {"code": "admin.roles", "description": "Manage roles and permissions"},
+    {"code": "admin.settings", "description": "Manage system settings"},
+]
+
+# Default permissions per role
+ROLE_PERMISSIONS = {
+    "super_admin": [p["code"] for p in PERMISSIONS],  # all
+    "admin": [p["code"] for p in PERMISSIONS],  # all
+    "site_engineer": ["documents.create", "documents.edit", "documents.sign", "documents.submit", "commissioning.view", "reports.generate"],
+    "qaqc_engineer": ["documents.create", "documents.edit", "documents.sign", "documents.submit", "commissioning.view", "commissioning.manage", "reports.generate"],
+    "qaqc_manager": ["documents.create", "documents.edit", "documents.delete", "documents.sign", "documents.submit", "commissioning.view", "commissioning.manage", "reports.generate"],
+    "viewer": ["commissioning.view"],
+}
 
 USERS = [
     {"email": "dev@jlwme.com", "password": "Dev12345", "full_name": "Dev Super Admin", "role": "super_admin", "is_superuser": True},
@@ -55,12 +88,16 @@ PROJECTS = [
     {"name": "DU Mercury", "code": "1728", "client_code": "MERAAS", "external_code": "M1610"},
 ]
 
-# Project 1728 approvers: AESG=cxm, CORE=cxa, RED=dc, SDLS=ta
+# Project 1728 default approver chains, per the spec:
+#   WIR/MIR → AESG (1) → Core Emirates (2)
+#   CIR     → RED Engineering (1) → Sudlows (2)
 PROJECT_APPROVERS_1728 = [
-    {"approver_code": "AESG", "title_code": "cxm"},
-    {"approver_code": "CORE", "title_code": "cxa"},
-    {"approver_code": "RED", "title_code": "dc"},
-    {"approver_code": "SDLS", "title_code": "ta"},
+    {"approver_code": "AESG", "title_code": "cxm", "document_type": "WIR", "approver_order": 1},
+    {"approver_code": "CORE", "title_code": "cxa", "document_type": "WIR", "approver_order": 2},
+    {"approver_code": "AESG", "title_code": "cxm", "document_type": "MIR", "approver_order": 1},
+    {"approver_code": "CORE", "title_code": "cxa", "document_type": "MIR", "approver_order": 2},
+    {"approver_code": "RED",  "title_code": "dc",  "document_type": "CIR", "approver_order": 1},
+    {"approver_code": "SDLS", "title_code": "ta",  "document_type": "CIR", "approver_order": 2},
 ]
 
 DISCIPLINES_1728 = [
@@ -94,9 +131,23 @@ async def seed():
         for r in ROLES:
             await get_or_create(session, Role, "name", r["name"], description=r["description"])
 
+        # Permissions
+        for p in PERMISSIONS:
+            await get_or_create(session, Permission, "code", p["code"], description=p["description"])
+
         await session.commit()
-        role_result = await session.execute(select(Role))
+        role_result = await session.execute(select(Role).options(selectinload(Role.permissions)))
         role_map = {r.name: r for r in role_result.scalars().all()}
+
+        # Assign default permissions to roles
+        perm_result = await session.execute(select(Permission))
+        perm_map = {p.code: p for p in perm_result.scalars().all()}
+        for role_name, perm_codes in ROLE_PERMISSIONS.items():
+            role = role_map.get(role_name)
+            if role and not role.permissions:
+                role.permissions = [perm_map[code] for code in perm_codes if code in perm_map]
+
+        await session.commit()
 
         # Users
         for u in USERS:
@@ -160,7 +211,8 @@ async def seed():
             existing = await session.execute(
                 select(ProjectApprover).where(
                     ProjectApprover.project_id == proj_1728.id,
-                    ProjectApprover.approver_id == approver_map[pa["approver_code"]].id,
+                    ProjectApprover.document_type == pa["document_type"],
+                    ProjectApprover.approver_order == pa["approver_order"],
                 )
             )
             if not existing.scalar_one_or_none():
@@ -168,6 +220,8 @@ async def seed():
                     project_id=proj_1728.id,
                     approver_id=approver_map[pa["approver_code"]].id,
                     approver_title_id=title_map[pa["title_code"]].id,
+                    document_type=pa["document_type"],
+                    approver_order=pa["approver_order"],
                 ))
         await session.commit()
 

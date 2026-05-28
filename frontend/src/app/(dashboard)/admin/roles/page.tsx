@@ -2,37 +2,21 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { type ColumnDef } from "@tanstack/react-table";
-import { Plus } from "lucide-react";
+import { Save } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Permission { id: string; code: string; description: string | null; }
 interface RoleItem { id: string; name: string; description: string | null; permissions: Permission[]; }
 
-const schema = z.object({
-  name: z.string().min(1, "Name is required"),
-  description: z.string(),
-  permission_ids: z.array(z.string()),
-});
-
-type FormValues = z.infer<typeof schema>;
-
 export default function RolesPage() {
   const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<RoleItem | null>(null);
+  const [changes, setChanges] = useState<Record<string, string[]>>({});
 
-  const { data: roles = [], isLoading } = useQuery<RoleItem[]>({
+  const { data: roles = [] } = useQuery<RoleItem[]>({
     queryKey: ["admin-roles"],
     queryFn: async () => (await api.get("/admin/roles")).data,
   });
@@ -42,86 +26,105 @@ export default function RolesPage() {
     queryFn: async () => (await api.get("/admin/permissions")).data,
   });
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { name: "", description: "", permission_ids: [] },
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      const payload = { ...values, description: values.description || null };
-      if (editing) return api.patch(`/admin/roles/${editing.id}`, payload);
-      return api.post("/admin/roles", payload);
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      for (const [roleId, permIds] of Object.entries(changes)) {
+        await api.patch(`/admin/roles/${roleId}`, { permission_ids: permIds });
+      }
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-roles"] }); closeDialog(); },
+    onSuccess: () => {
+      toast.success("Permissions saved");
+      setChanges({});
+      queryClient.invalidateQueries({ queryKey: ["admin-roles"] });
+    },
+    onError: () => toast.error("Failed to save permissions"),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/roles/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-roles"] }),
-  });
+  const getPermIds = (role: RoleItem): string[] => {
+    return changes[role.id] ?? role.permissions.map((p) => p.id);
+  };
 
-  const openCreate = () => { setEditing(null); form.reset({ name: "", description: "", permission_ids: [] }); setDialogOpen(true); };
-  const openEdit = (item: RoleItem) => { setEditing(item); form.reset({ name: item.name, description: item.description || "", permission_ids: item.permissions.map((p) => p.id) }); setDialogOpen(true); };
-  const closeDialog = () => { setDialogOpen(false); setEditing(null); };
+  const toggle = (role: RoleItem, permId: string) => {
+    const current = getPermIds(role);
+    const next = current.includes(permId) ? current.filter((id) => id !== permId) : [...current, permId];
+    setChanges({ ...changes, [role.id]: next });
+  };
 
-  const rowActions: RowAction<RoleItem>[] = [
-    { label: "Edit", onClick: openEdit },
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
-  ];
+  const hasChanges = Object.keys(changes).length > 0;
 
-  const columns: ColumnDef<RoleItem, unknown>[] = [
-    { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { accessorKey: "description", header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />, cell: ({ row }) => row.getValue("description") || "—" },
-    { id: "permissions", accessorFn: (row) => row.permissions.map((p) => p.code).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Permission" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.permissions.map((p) => <Badge key={p.id} variant="outline">{p.code}</Badge>)}</div>, meta: { title: "Permission" } },
-    { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
-  ];
+  // Group permissions by category
+  const groups: Record<string, Permission[]> = {};
+  for (const p of permissions) {
+    const cat = p.code.split(".")[0];
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(p);
+  }
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  const categoryLabels: Record<string, string> = {
+    documents: "Documents",
+    commissioning: "Commissioning",
+    master_data: "Master Data",
+    reports: "Reports",
+    admin: "Administration",
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Roles</h1>
-          <p className="text-sm text-muted-foreground">Manage roles and their permissions</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Roles & Permissions</h1>
+          <p className="text-sm text-muted-foreground">Manage what each role can access</p>
         </div>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Role</Button>
+        <Button onClick={() => saveMutation.mutate()} disabled={!hasChanges || saveMutation.isPending}>
+          <Save className="h-4 w-4 mr-2" />{saveMutation.isPending ? "Saving..." : "Save Changes"}
+        </Button>
       </div>
-      <DataTable columns={columns} data={roles} searchKey="name" searchPlaceholder="Search by name..." />
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit Role" : "Add Role"}</DialogTitle></DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="permission_ids" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Permissions</FormLabel>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {permissions.map((perm) => (
-                      <label key={perm.id} className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={field.value.includes(perm.id)}
-                          onCheckedChange={(checked) => {
-                            field.onChange(checked ? [...field.value, perm.id] : field.value.filter((id: string) => id !== perm.id));
-                          }}
-                        />
-                        {perm.code}
-                      </label>
-                    ))}
-                  </div>
-                </FormItem>
-              )} />
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+
+      <Card>
+        <CardContent className="pt-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 pr-4 font-medium text-muted-foreground min-w-[200px]">Permission</th>
+                {roles.map((role) => (
+                  <th key={role.id} className="text-center py-2 px-3 font-medium min-w-[100px]">
+                    <div>{role.name.replace(/_/g, " ")}</div>
+                    <div className="text-[10px] text-muted-foreground font-normal">{role.description?.split("—")[0]?.trim()}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(groups).map(([cat, perms]) => (
+                <>
+                  <tr key={cat}>
+                    <td colSpan={roles.length + 1} className="pt-4 pb-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {categoryLabels[cat] || cat}
+                    </td>
+                  </tr>
+                  {perms.map((perm) => (
+                    <tr key={perm.id} className="border-b border-border/50 hover:bg-accent/30">
+                      <td className="py-2 pr-4">
+                        <div className="font-medium">{perm.code.split(".")[1]?.replace(/_/g, " ")}</div>
+                        <div className="text-[10px] text-muted-foreground">{perm.description}</div>
+                      </td>
+                      {roles.map((role) => (
+                        <td key={role.id} className="text-center py-2 px-3">
+                          <Checkbox
+                            checked={getPermIds(role).includes(perm.id)}
+                            onCheckedChange={() => toggle(role, perm.id)}
+                            disabled={role.name === "super_admin"}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -23,17 +23,25 @@ interface Role { id: string; name: string; description: string | null; }
 interface Designation { id: string; name: string; }
 interface UserItem { id: string; email: string; full_name: string; designation_id: string | null; designation: Designation | null; is_active: boolean; is_superuser: boolean; roles: Role[]; }
 
+const passwordPolicy = z
+  .string()
+  .min(8, "At least 8 characters")
+  .regex(/[A-Z]/, "Must contain an uppercase letter")
+  .regex(/\d/, "Must contain a digit");
+
 const schema = z.object({
   email: z.string().min(1, "Email is required").email("Invalid email"),
   full_name: z.string().min(1, "Name is required"),
   designation_id: z.string().optional(),
+  // On create the password is required + policy-validated. On edit the field is left
+  // blank (handled at submit time below).
   password: z.string(),
   is_active: z.boolean(),
   role_ids: z.array(z.string()),
 });
 
 const resetSchema = z.object({
-  password: z.string().min(1, "Password is required"),
+  password: passwordPolicy,
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -79,14 +87,22 @@ export default function UsersPage() {
         delete payload.password;
         return api.patch(`/admin/users/${editing.id}`, payload);
       }
+      // Enforce policy at submit time so editing-without-password isn't blocked.
+      const pw = passwordPolicy.safeParse(values.password);
+      if (!pw.success) {
+        const msg = pw.error.issues[0]?.message || "Password does not meet policy";
+        throw Object.assign(new Error(msg), { response: { data: { detail: msg } } });
+      }
       return api.post("/admin/users", payload);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-users"] }); closeDialog(); },
-    onError: (e: any) => { 
+    onError: (e: any) => {
       const detail = e.response?.data?.detail;
       const status = e.response?.status;
       toast.error(detail || `Failed to save user (${status || 'network error'})`);
-      console.error("User save error:", e.response?.status, e.response?.data);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("User save error:", e.response?.status, e.response?.data);
+      }
     },
   });
 

@@ -1,4 +1,10 @@
+import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_PLACEHOLDER_SECRETS = {"change-me-in-production", "changeme", "secret", ""}
 
 
 class Settings(BaseSettings):
@@ -24,6 +30,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # CORS / environment
+    environment: str = "development"  # development | production
+    allowed_origins: str = "http://localhost:3000"
+
     @property
     def database_url(self) -> str:
         return (
@@ -31,5 +41,30 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def upload_dir_abs(self) -> Path:
+        return Path(self.upload_dir).expanduser().resolve()
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
 
 settings = Settings()
+
+# Fail fast on placeholder/weak SECRET_KEY in production. In development we warn loudly
+# but allow startup so first-time setup is not blocked.
+if settings.secret_key.strip() in _PLACEHOLDER_SECRETS or len(settings.secret_key) < 32:
+    if settings.environment.lower() == "production":
+        raise RuntimeError(
+            "SECRET_KEY is missing, weak, or set to a placeholder. "
+            "Generate a strong secret (e.g. `python -c 'import secrets;print(secrets.token_urlsafe(64))'`) "
+            "and set it via the SECRET_KEY environment variable before starting the server."
+        )
+    else:
+        import warnings
+        warnings.warn(
+            "SECRET_KEY is weak or a known placeholder. Tokens are forgeable. "
+            "Set a strong SECRET_KEY before any non-development deployment.",
+            stacklevel=2,
+        )

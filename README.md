@@ -40,7 +40,8 @@ This starts:
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run python -m app.seed        # Seeds roles, users, and master data
+uv run python -m app.seed                # Seeds roles, users, and base master data
+uv run python -m app.seed_commissioning  # Seeds commissioning master data (depends on app.seed)
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -65,7 +66,8 @@ npm run dev
 
 | Role | Email | Password |
 |------|-------|----------|
-| Super Admin | dev@jlwme.com | dev123 |
-| Admin | admin@jlwme.com | admin123 |
-| Site Engineer | site@jlwme.com | site123 |
-| QA/QC Engineer | qaqc@jlwme.com | qaqc123 |
+| Super Admin | dev@jlwme.com | Dev12345 |
+| Admin | admin@jlwme.com | Admin123 |
+| Site Engineer | site@jlwme.com | Site1234 |
+| QA/QC Engineer | qaqc@jlwme.com | Qaqc1234 |
+| QA/QC Manager | jerry@jlwme.com | Jerry123 |
