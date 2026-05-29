@@ -673,10 +673,13 @@ async def extract_preview_region(
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    text, via = extract_region_text(
-        data, page, (x, y, width, height),
-        target_field=target_field, force_ocr=force_ocr,
-    )
+    try:
+        text, via = extract_region_text(
+            data, page, (x, y, width, height),
+            target_field=target_field, force_ocr=force_ocr,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if target_field == "response_date":
         normalized = normalize_date_text(text)
         if normalized:
@@ -906,6 +909,24 @@ async def replace_round_file(
         att.size = len(data)
         att.filename = f"Approver {round_.approver_order} — Returned.pdf"
 
+    # Delete all user_attachment files for this round (new document = fresh start)
+    user_atts = (await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )).scalars().all()
+    for ua in user_atts:
+        try:
+            ua_path = (upload_root / ua.storage_path).resolve()
+            ua_path.relative_to(upload_root)
+            if ua_path.exists():
+                ua_path.unlink()
+        except (ValueError, OSError):
+            pass
+        await db.delete(ua)
+
     await db.commit()
     return {"status": "replaced", "filename": round_.returned_file_name}
 
@@ -957,13 +978,16 @@ async def extract_round_region(
     if len(body.bbox) != 4:
         raise HTTPException(status_code=400, detail="bbox must be [x, y, width, height]")
 
-    text, via = extract_region_text(
-        file_path.read_bytes(),
-        body.page,
-        tuple(body.bbox),
-        target_field=body.target_field,
-        force_ocr=body.force_ocr,
-    )
+    try:
+        text, via = extract_region_text(
+            file_path.read_bytes(),
+            body.page,
+            tuple(body.bbox),
+            target_field=body.target_field,
+            force_ocr=body.force_ocr,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if body.target_field == "response_date":
         normalized = normalize_date_text(text)
         if normalized:
@@ -1047,7 +1071,7 @@ async def upload_round_attachment(
     doc_id: UUID,
     round_id: UUID,
     file: UploadFile = File(...),
-    insert_after_page: int = Query(..., ge=0, description="Page number after which to insert (0-indexed)"),
+    insert_after_page: int | None = Query(None, ge=0, description="Page number after which to insert (0-indexed). Omit to upload without adding to bundle."),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -1145,6 +1169,93 @@ async def upload_round_attachment(
     }
 
 
+@router.get("/{doc_id}/approval-rounds/{round_id}/attachments")
+async def list_round_attachments(
+    doc_id: UUID,
+    round_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List all user_attachment files for a round."""
+    from app.models.document_attachment import DocumentAttachment
+
+    result = await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        ).order_by(DocumentAttachment.sort_order)
+    )
+    atts = result.scalars().all()
+    return [{"id": str(a.id), "filename": a.filename, "size": a.size, "insert_after_page": a.insert_after_page} for a in atts]
+
+
+@router.patch("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}")
+async def update_round_attachment(
+    doc_id: UUID,
+    round_id: UUID,
+    att_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Set or clear insert_after_page on a round attachment."""
+    from app.models.document_attachment import DocumentAttachment
+
+    att = (await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.id == att_id,
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    if "insert_after_page" in body:
+        att.insert_after_page = body["insert_after_page"]  # None = remove from bundle
+    await db.commit()
+    return {"id": str(att.id), "filename": att.filename, "insert_after_page": att.insert_after_page}
+
+
+@router.delete("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}", status_code=204)
+async def delete_round_attachment(
+    doc_id: UUID,
+    round_id: UUID,
+    att_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Delete a round attachment (only if not in bundle)."""
+    from app.models.document_attachment import DocumentAttachment
+
+    att = (await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.id == att_id,
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    if att.insert_after_page is not None:
+        raise HTTPException(status_code=400, detail="Cannot delete attachment that is in the bundle. Remove from bundle first.")
+
+    # Hard delete file + record
+    upload_root = settings.upload_dir_abs
+    file_path = (upload_root / att.storage_path).resolve()
+    try:
+        file_path.relative_to(upload_root)
+        if file_path.exists():
+            file_path.unlink()
+    except (ValueError, OSError):
+        pass
+    await db.delete(att)
+    await db.commit()
+
+
 @router.get("/{doc_id}/approval-rounds/{round_id}/bundle")
 async def download_round_bundle(
     doc_id: UUID,
@@ -1188,12 +1299,13 @@ async def download_round_bundle(
 
     returned_pdf_bytes = returned_file_path.read_bytes()
 
-    # Get all user attachments for this round
+    # Get only attachments that are in the bundle (have insert_after_page set)
     attachments_result = await db.execute(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_approval_round_id == round_id,
             DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.insert_after_page.isnot(None),
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(DocumentAttachment.insert_after_page, DocumentAttachment.sort_order)
@@ -1206,7 +1318,7 @@ async def download_round_bundle(
             content=returned_pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="Approver_{round_.approver_order}_Bundle.pdf"'
+                "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
             },
         )
 
@@ -1230,7 +1342,7 @@ async def download_round_bundle(
         content=merged_pdf,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="Approver_{round_.approver_order}_Bundle.pdf"'
+            "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
         },
     )
 

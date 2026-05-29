@@ -40,6 +40,7 @@ class AssetRequirement(BaseModel):
     required_for_tag: Mapped[str] = mapped_column(String(10))  # red, yellow, green, blue
     target_date: Mapped[date | None] = mapped_column(Date)
     actual_completion_date: Mapped[date | None] = mapped_column(Date)
+    approved_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
 
     # Relationships

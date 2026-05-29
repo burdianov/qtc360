@@ -8,6 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
+import { tagColors } from "@/lib/constants";
 import { useSelectedProject } from "@/hooks/use-project";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,13 +30,6 @@ interface TagTarget {
   actual_achieved_date: string | null;
   status: string;
 }
-
-const tagColors: Record<string, string> = {
-  red: "bg-red-500/15 text-red-500",
-  yellow: "bg-yellow-500/15 text-yellow-600",
-  green: "bg-emerald-500/15 text-emerald-500",
-  blue: "bg-blue-500/15 text-blue-500",
-};
 
 const statusColors: Record<string, string> = {
   not_started: "bg-muted text-muted-foreground",
@@ -97,8 +92,8 @@ export default function TagTargetsPage() {
     { accessorKey: "asset_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Asset" />, cell: ({ row }) => { const a = assetMap[row.original.asset_id]; return a ? <span className="font-mono text-xs">{a.tag_number}</span> : "—"; } },
     { id: "asset_name", header: "Name", cell: ({ row }) => assetMap[row.original.asset_id]?.name || "—" },
     { accessorKey: "tag_code", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, cell: ({ row }) => <Badge className={tagColors[row.original.tag_code] || ""}>{row.original.tag_code}</Badge> },
-    { accessorKey: "target_date", header: ({ column }) => <DataTableColumnHeader column={column} title="Target Date" /> },
-    { accessorKey: "actual_achieved_date", header: "Achieved", cell: ({ row }) => row.original.actual_achieved_date || "—" },
+    { accessorKey: "target_date", header: ({ column }) => <DataTableColumnHeader column={column} title="Target Date" />, cell: ({ row }) => formatDate(row.original.target_date) },
+    { accessorKey: "actual_achieved_date", header: "Achieved", cell: ({ row }) => formatDate(row.original.actual_achieved_date) },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace(/_/g, " ")}</Badge> },
     { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];

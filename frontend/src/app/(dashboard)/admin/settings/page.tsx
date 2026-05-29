@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { Trash2 } from "lucide-react";
 import { ProjectApproversCard } from "./project-approvers-card";
 
@@ -73,11 +74,16 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Project configuration</p>
+        <p className="text-sm text-muted-foreground">Project configuration and preferences</p>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Reference Number Configuration</CardTitle></CardHeader>
+      <Tabs tabs={[
+        {
+          id: "reference",
+          label: "Reference Numbers",
+          content: (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Reference Number Configuration</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Configure how document reference numbers are generated. Example: <code className="text-xs bg-muted px-1 py-0.5 rounded">MERC-JMJV-EL-WIR-0031</code>
@@ -141,10 +147,19 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
-
-      <ProjectApproversCard projectId={projectId} />
-
-      <DateFormatCard />
+          ),
+        },
+        {
+          id: "approvers",
+          label: "Approvers",
+          content: <ProjectApproversCard projectId={projectId} />,
+        },
+        {
+          id: "general",
+          label: "General",
+          content: <DateFormatCard />,
+        },
+      ]} />
     </div>
   );
 }

@@ -184,6 +184,8 @@ async def list_asset_requirements(
         )
     if required_for_tag:
         query = query.where(AssetRequirement.required_for_tag == required_for_tag)
+    # Sort by level then sort_order from the template
+    query = query.join(RequirementTemplate, AssetRequirement.requirement_template_id == RequirementTemplate.id, isouter=True).order_by(RequirementTemplate.level_code, RequirementTemplate.sort_order)
     result = await db.execute(query)
     return result.scalars().all()
 

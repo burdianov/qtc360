@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type ColumnDef } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
+import { tagColors } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Asset { id: string; name: string; tag_number: string; }
@@ -20,6 +22,7 @@ interface AssetRequirement {
   required_for_tag: string;
   target_date: string | null;
   actual_completion_date: string | null;
+  approved_date: string | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -86,9 +89,10 @@ export default function CommissioningRequirementsPage() {
         <span className="text-[10px] text-muted-foreground w-7">{row.original.progress_percent}%</span>
       </div>
     )},
-    { accessorKey: "required_for_tag", header: "Tag", cell: ({ row }) => <Badge variant="outline" className="text-xs capitalize">{row.original.required_for_tag}</Badge> },
-    { accessorKey: "target_date", header: "Target", cell: ({ row }) => <span className="text-xs">{row.original.target_date || "—"}</span> },
-    { accessorKey: "actual_completion_date", header: "Completed", cell: ({ row }) => <span className="text-xs">{row.original.actual_completion_date || "—"}</span> },
+    { accessorKey: "required_for_tag", header: "Tag", cell: ({ row }) => <Badge className={`text-xs capitalize ${tagColors[row.original.required_for_tag] || ""}`}>{row.original.required_for_tag}</Badge> },
+    { accessorKey: "target_date", header: "Target", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.target_date)}</span> },
+    { accessorKey: "actual_completion_date", header: "Completed", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.actual_completion_date)}</span> },
+    { accessorKey: "approved_date", header: "Approved", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.approved_date)}</span> },
   ];
 
   return (

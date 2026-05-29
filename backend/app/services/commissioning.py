@@ -89,9 +89,38 @@ async def recalculate_requirement_status(
     req.status = new_status
     req.progress_percent = progress
     if new_status == "achieved" and not req.actual_completion_date:
-        req.actual_completion_date = date.today()
+        # Set completion date from the linked document's inspector dates
+        from app.models.commissioning import DocumentRequirementLink
+        link_result = await db.execute(
+            select(DocumentRequirementLink.document_id)
+            .where(DocumentRequirementLink.asset_requirement_id == requirement_id)
+        )
+        doc_ids = [r[0] for r in link_result.all()]
+        if doc_ids:
+            doc_result = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
+            docs = doc_result.scalars().all()
+            inspector_dates = []
+            for d in docs:
+                for dt_str in [d.inspector_date_1, d.inspector_date_2]:
+                    if dt_str:
+                        try:
+                            inspector_dates.append(date.fromisoformat(dt_str))
+                        except ValueError:
+                            pass
+            if inspector_dates:
+                req.actual_completion_date = max(inspector_dates)
+            else:
+                req.actual_completion_date = date.today()
+            # Set approved_date from the document's approved_date
+            approved_dates = [d.approved_date.date() if d.approved_date else None for d in docs]
+            approved_dates = [d for d in approved_dates if d]
+            if approved_dates:
+                req.approved_date = max(approved_dates)
+        else:
+            req.actual_completion_date = date.today()
     elif new_status != "achieved":
         req.actual_completion_date = None
+        req.approved_date = None
 
     await db.flush()
     return new_status
@@ -129,7 +158,7 @@ async def recalculate_requirements_for_document(
                     wi.status = "approved"
                     wi.approved_date = date.today()
                     wi.linked_document_id = document_id
-        elif doc.status == "rejected":
+        elif doc.status in ("rejected", "superseded"):
             for wi in work_items:
                 if wi.linked_document_id == document_id:
                     wi.status = "not_started"

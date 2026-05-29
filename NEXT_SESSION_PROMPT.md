@@ -242,7 +242,7 @@ Applied the same dynamic action label + confirmation message pattern from WIR to
 - Default `date_format` = `DD.MM.YYYY`
 - Frontend `formatDate()` utility reads configured format; dashboard layout fetches on mount
 - Backend PDF generation uses configured format
-- Admin Settings page has Date Format card with dropdown
+- Admin Settings page has Date Format card in "General" tab
 
 ### ✅ Attachment System Improvements
 - Delete confirmation dialog on all attachment removals
@@ -251,33 +251,66 @@ Applied the same dynamic action label + confirmation message pattern from WIR to
 - Accepted format labels on all file upload points (PDF, DOCX, CSV, PNG/JPG)
 
 ### ✅ Approval Workflow Improvements
-- Record Response dialog: all fields optional except decision status + file
+- Record Response dialog: all fields optional except decision status + file; resets on open
 - Replace Document flow: opens Record Response dialog (with OCR capture) instead of direct file upload
-- Replace endpoint (`PUT /approval-rounds/{round_id}/file`): accepts Form fields, always overwrites all metadata
-- Removed "Add remarks for Approver 2" button (consolidated into "Add Attachment" on the round)
+- Replace endpoint (`PUT /approval-rounds/{round_id}/file`): accepts Form fields, always overwrites all metadata, deletes all previous round attachments
+- Removed "Add remarks for Approver 2" button (consolidated into "Upload Attachment" on the round)
 - Action buttons moved below rounds list
 - Replace button disabled after terminal status
 - PDF file name link uses authenticated download (no more 404)
-- Round bundle download uses authenticated request
+- Round bundle download uses authenticated request + extracts filename from Content-Disposition header
 - `response_time` field added to capture form and rounds display
+- Time normalization on capture (converts to HH:mm 24h for TimePicker AM/PM display)
+- Rounds collapsed by default
+- Smooth expand/collapse animation (grid-template-rows transition)
+- `Content-Disposition` exposed in CORS headers
+
+### ✅ Round Attachments Rework
+- Upload without page position (just stores the file)
+- Attachments list per round with: "Add to Bundle" (opens page position modal, 1-based) / "Remove from Bundle" / "Delete" (only if not in bundle, with styled confirmation)
+- Bundle only includes attachments with `insert_after_page` set
+- Replacing document deletes all previous round attachments
+- Button renamed to "Upload Attachment"
 
 ### ✅ PDF Region Picker Fix
 - Worker loaded from local node_modules (not CDN) — fixes "Failed to load PDF" error
 - Overlay positioned relative to PDF page content (not scroll container) — fixes coordinate mismatch
 - `originalWidth`/`originalHeight` used for coordinate conversion — fixes wrong region extraction
 - Error handling: validation error arrays properly stringified for toast
+- Tesseract OCR: raises clear error when not installed instead of silent empty return
 
 ### ✅ Form Locking After Approver Response
 - After approver 1 returns: General Info, Inspectors, Attachments, Actions sections disabled
 - Commissioning Linkage + Assets remain editable
 
+### ✅ Requirements Table Improvements
+- Added `approved_date` column to `AssetRequirement` model + migration `d1e2f3a4b5c6`
+- "Completed" column = latest inspector date from linked document
+- "Approved" column = document approved_date
+- Requirements sorted by `level_code` then `sort_order` (via join to RequirementTemplate)
+- Tag badges use colored styling from `lib/constants.ts` (refactored, single source of truth)
+- `formatDate()` applied to all date columns across all tables
+
+### ✅ Supersede Reverts Requirement Achievement
+- `recalculate_requirements_for_document` now reverts work items when document status is `"superseded"` (in addition to `"rejected"`)
+
+### ✅ Admin Settings Tabbed UI
+- Refactored into 3 tabs: Reference Numbers, Approvers, General
+- New reusable `Tabs` component at `components/ui/tabs.tsx`
+
+### ✅ Commissioning Tracking Filters Fix
+- Dropdowns show "All Disciplines" / "All Services" etc. instead of `__all__`
+- Selected items show their name instead of UUID
+
 ### ✅ Misc Fixes
-- Nested button hydration error fixed (sidebar footer `DropdownMenuTrigger` uses `render={<div />}` + `nativeButton={false}`)
+- Nested button hydration error fixed (sidebar footer)
 - Preview PDF disabled when form is dirty or unsaved
 - Template selector change marks form as dirty
 - `master-data/assets/page.tsx` — added missing `useSelectedProject` import
 - `api.ts` — removes `Content-Type` header for FormData requests (fixes multipart uploads)
 - Assets section collapsible (collapsed by default, ChevronDown icon)
+- Record Response dialog modal width fixed (`sm:max-w-5xl`)
+- `tagColors` refactored to single source in `lib/constants.ts`
 
 ### Migration Required for This Session
 
@@ -285,7 +318,7 @@ Run on first pull:
 ```bash
 cd backend && uv run alembic upgrade head
 ```
-Adds: `documents.remarks_1/2`, `documents.inspector_date_1/time_1/date_2/time_2`, `app_settings` table, `document_approval_rounds.response_time`.
+Adds: `documents.remarks_1/2`, `documents.inspector_date_1/time_1/date_2/time_2`, `app_settings` table, `document_approval_rounds.response_time`, `asset_requirements.approved_date`.
 
 ## Next Priorities
 

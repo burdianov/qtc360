@@ -130,6 +130,7 @@ export function ApprovalActionPanel({
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["approval-rounds", documentId] });
+    qc.invalidateQueries({ queryKey: ["round-attachments"] });
     qc.invalidateQueries({ queryKey: ["document", documentId] });
     qc.invalidateQueries({ queryKey: ["documents"] });
     onChanged?.();

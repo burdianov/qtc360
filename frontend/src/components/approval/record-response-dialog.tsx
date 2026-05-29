@@ -32,6 +32,19 @@ interface CapturedRegion {
   via: "native" | "ocr";
 }
 
+/** Normalize captured time text to HH:mm (24h) for the TimePicker. Handles "2:30 PM", "14:30", "2:30PM", etc. */
+function normalizeTime(raw: string): string {
+  const cleaned = raw.trim().replace(/\s+/g, " ");
+  const m = cleaned.match(/(\d{1,2})[:\.](\d{2})\s*(am|pm|AM|PM)?/i);
+  if (!m) return cleaned;
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = (m[3] || "").toUpperCase();
+  if (period === "PM" && h < 12) h += 12;
+  if (period === "AM" && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+
 export function RecordResponseDialog({
   open,
   onOpenChange,
@@ -52,6 +65,21 @@ export function RecordResponseDialog({
   const [armedField, setArmedField] = useState<Field | null>(null);
   const [lastRegion, setLastRegion] = useState<Partial<Record<Field, CapturedRegion>>>({});
   const [extracting, setExtracting] = useState(false);
+
+  // Reset all fields when dialog opens
+  useEffect(() => {
+    if (open) {
+      setFile(null);
+      setPreviewUrl(null);
+      setDecisionStatusId("");
+      setSignatoryName("");
+      setResponseDate("");
+      setResponseTime("");
+      setComments("");
+      setArmedField(null);
+      setLastRegion({});
+    }
+  }, [open]);
 
   // Sort statuses by letter so radios show A → D consistently across projects.
   const sortedStatuses = useMemo(
@@ -117,7 +145,7 @@ export function RecordResponseDialog({
       setLastRegion((prev) => ({ ...prev, [field]: { region, via } }));
       if (field === "signatory_name") setSignatoryName(text);
       else if (field === "response_date") setResponseDate(text);
-      else if (field === "response_time") setResponseTime(text);
+      else if (field === "response_time") setResponseTime(normalizeTime(text));
       else setComments((c) => (c ? c + " " + text : text));
       toast.success(`Captured ${field.replace("_", " ")} via ${via === "ocr" ? "OCR" : "native text"}`);
       return text;

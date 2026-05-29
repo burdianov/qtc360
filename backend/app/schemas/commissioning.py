@@ -95,6 +95,7 @@ class AssetRequirementOut(BaseModel):
     required_for_tag: str
     target_date: date | None
     actual_completion_date: date | None
+    approved_date: date | None
     notes: str | None
     created_at: datetime
 

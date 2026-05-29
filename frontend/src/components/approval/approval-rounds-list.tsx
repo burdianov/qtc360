@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus, RefreshCw } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -73,7 +73,7 @@ function RoundCard({
   decision: ApprovalStatus | null;
   onReplace?: (approverOrder: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const letter = decision?.letter?.toUpperCase() || null;
   const tone = letter === "C" ? "danger" : letter ? "success" : "muted";
@@ -81,10 +81,13 @@ function RoundCard({
   const handleDownloadBundle = async () => {
     try {
       const res = await api.get(`/documents/${documentId}/approval-rounds/${round.id}/bundle`, { responseType: "blob" });
+      const disposition = res.headers["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] || "bundle.pdf";
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `round_${round.approver_order}_${round.round_no}_bundle.pdf`;
+      a.download = filename;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch { toast.error("Failed to download bundle"); }
@@ -96,7 +99,7 @@ function RoundCard({
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/30"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      {expanded ? <ChevronDown className="h-4 w-4 transition-transform" /> : <ChevronRight className="h-4 w-4 transition-transform" />}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
             Approver {round.approver_order} — {party}
@@ -119,7 +122,11 @@ function RoundCard({
         )}
       </button>
 
-      {expanded && (
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+        style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
+      >
+        <div className="overflow-hidden">
         <div className="border-t px-3 py-2.5 space-y-2 text-sm">
           {round.signatory_name && (
             <div>
@@ -185,12 +192,14 @@ function RoundCard({
                 onClick={() => setUploadDialogOpen(true)}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add Attachment
+                Upload Attachment
               </Button>
             </div>
           )}
+          <RoundAttachmentsList documentId={documentId} roundId={round.id} locked={locked} />
         </div>
-      )}
+        </div>
+      </div>
 
       <UploadAttachmentDialog
         open={uploadDialogOpen}
@@ -214,7 +223,6 @@ function UploadAttachmentDialog({
   roundId: string;
 }) {
   const [file, setFile] = useState<File | null>(null);
-  const [insertAfterPage, setInsertAfterPage] = useState("0");
   const queryClient = useQueryClient();
 
   const uploadMutation = useMutation({
@@ -222,18 +230,13 @@ function UploadAttachmentDialog({
       if (!file) throw new Error("No file selected");
       const fd = new FormData();
       fd.append("file", file);
-      return api.post(
-        `/documents/${documentId}/approval-rounds/${roundId}/attachments?insert_after_page=${insertAfterPage}`,
-        fd,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
+      return api.post(`/documents/${documentId}/approval-rounds/${roundId}/attachments`, fd);
     },
     onSuccess: () => {
-      toast.success("Attachment uploaded successfully");
-      queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      toast.success("Attachment uploaded");
+      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
       onOpenChange(false);
       setFile(null);
-      setInsertAfterPage("0");
     },
     onError: (err: unknown) => {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -243,9 +246,9 @@ function UploadAttachmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Attachment to Round</DialogTitle>
+          <DialogTitle>Upload Attachment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -258,33 +261,140 @@ function UploadAttachmentDialog({
             />
             <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">
-              Insert After Page (0 = after first page)
-            </label>
-            <Input
-              type="number"
-              min="0"
-              value={insertAfterPage}
-              onChange={(e) => setInsertAfterPage(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Page numbers are 0-indexed. Enter 0 to insert after the first page, 1 for after the second page, etc.
-            </p>
-          </div>
         </div>
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => uploadMutation.mutate()}
-            disabled={!file || uploadMutation.isPending}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => uploadMutation.mutate()} disabled={!file || uploadMutation.isPending}>
             {uploadMutation.isPending ? "Uploading..." : "Upload"}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface RoundAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  insert_after_page: number | null;
+}
+
+function RoundAttachmentsList({ documentId, roundId, locked }: { documentId: string; roundId: string; locked?: boolean }) {
+  const queryClient = useQueryClient();
+  const [pageModalAtt, setPageModalAtt] = useState<RoundAttachment | null>(null);
+  const [pageValue, setPageValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<RoundAttachment | null>(null);
+
+  const { data: attachments = [] } = useQuery<RoundAttachment[]>({
+    queryKey: ["round-attachments", roundId],
+    queryFn: async () => (await api.get(`/documents/${documentId}/approval-rounds/${roundId}/attachments`)).data,
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: async ({ attId, insertAfterPage }: { attId: string; insertAfterPage: number | null }) =>
+      api.patch(`/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`, { insert_after_page: insertAfterPage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+      setPageModalAtt(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (attId: string) => api.delete(`/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`),
+    onSuccess: () => {
+      toast.success("Attachment deleted");
+      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || "Failed to delete");
+    },
+  });
+
+  if (attachments.length === 0) return null;
+
+  return (
+    <>
+      <div className="space-y-1.5 pt-1">
+        <p className="text-xs font-medium text-muted-foreground">Attachments</p>
+        {attachments.map((att) => {
+          const inBundle = att.insert_after_page !== null;
+          return (
+            <div key={att.id} className="flex items-center gap-2 text-xs rounded-md border px-2 py-1.5">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="flex-1 truncate">{att.filename}</span>
+              {inBundle && <span className="text-muted-foreground shrink-0">after p.{att.insert_after_page! + 1}</span>}
+              {!locked && (
+                <>
+                  {inBundle ? (
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-amber-600 hover:text-amber-700"
+                      onClick={() => patchMutation.mutate({ attId: att.id, insertAfterPage: null })}>
+                      Remove from Bundle
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-emerald-600 hover:text-emerald-700"
+                      onClick={() => { setPageModalAtt(att); setPageValue(""); }}>
+                      Add to Bundle
+                    </Button>
+                  )}
+                  {!inBundle && (
+                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-destructive"
+                      onClick={() => setDeleteTarget(att)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Dialog open={!!pageModalAtt} onOpenChange={(open) => { if (!open) setPageModalAtt(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Add to Bundle</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Insert <span className="font-medium text-foreground">{pageModalAtt?.filename}</span> into the bundle.
+            </p>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">After page number:</label>
+              <Input
+                type="number"
+                min="1"
+                value={pageValue}
+                onChange={(e) => setPageValue(e.target.value)}
+                placeholder="e.g. 1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Enter the page number after which this attachment should be inserted (starts from 1).</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <Button variant="outline" onClick={() => setPageModalAtt(null)}>Cancel</Button>
+            <Button disabled={!pageValue || patchMutation.isPending} onClick={() => {
+              const page = parseInt(pageValue);
+              if (isNaN(page) || page < 1) { toast.error("Enter a valid page number"); return; }
+              patchMutation.mutate({ attId: pageModalAtt!.id, insertAfterPage: page - 1 });
+            }}>
+              {patchMutation.isPending ? "Saving..." : "Add to Bundle"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Delete Attachment</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete &ldquo;{deleteTarget?.filename}&rdquo;? This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => { deleteMutation.mutate(deleteTarget!.id); setDeleteTarget(null); }}>Delete</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

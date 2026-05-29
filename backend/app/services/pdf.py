@@ -220,7 +220,7 @@ def extract_region_text(
             logger.warning(
                 "Tesseract binary not found; native text was empty for this region"
             )
-            return "", "native"
+            raise ValueError("OCR unavailable: Tesseract is not installed on the server")
         except Exception:
             logger.exception("Tesseract OCR failed")
             return "", "native"

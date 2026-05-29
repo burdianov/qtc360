@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Download } from "lucide-react";
 import api from "@/lib/api";
+import { tagColors } from "@/lib/constants";
 import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -46,12 +47,6 @@ interface AssetProgress {
   blue_tag: boolean;
 }
 
-const tagColors: Record<string, string> = {
-  red: "bg-red-500/15 text-red-500",
-  yellow: "bg-yellow-500/15 text-yellow-600",
-  green: "bg-emerald-500/15 text-emerald-500",
-  blue: "bg-blue-500/15 text-blue-500",
-};
 
 const statusColors: Record<string, string> = {
   not_started: "bg-muted text-muted-foreground",
@@ -186,7 +181,7 @@ export default function CommissioningTrackingPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <Select value={filterDiscipline || "__all__"} onValueChange={(v) => { setFilterDiscipline(v === "__all__" ? "" : v); setFilterService(""); setFilterAssetType(""); }}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Discipline" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue>{filterDiscipline ? disciplines.find((d) => d.id === filterDiscipline)?.name : "All Disciplines"}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Disciplines</SelectItem>
             {disciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
@@ -194,7 +189,7 @@ export default function CommissioningTrackingPage() {
         </Select>
 
         <Select value={filterService || "__all__"} onValueChange={(v) => { setFilterService(v === "__all__" ? "" : v); setFilterAssetType(""); }}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Service" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue>{filterService ? filteredServices.find((s) => s.id === filterService)?.name : "All Services"}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Services</SelectItem>
             {filteredServices.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -202,7 +197,7 @@ export default function CommissioningTrackingPage() {
         </Select>
 
         <Select value={filterAssetType || "__all__"} onValueChange={(v) => setFilterAssetType(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Asset Type" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue>{filterAssetType ? filteredAssetTypes.find((t) => t.id === filterAssetType)?.name : "All Asset Types"}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Asset Types</SelectItem>
             {filteredAssetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
@@ -210,7 +205,7 @@ export default function CommissioningTrackingPage() {
         </Select>
 
         <Select value={filterTag || "__all__"} onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Filter by tag" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue>{filterTag ? `${filterTag.charAt(0).toUpperCase() + filterTag.slice(1)} Tag` : "All Tags"}</SelectValue></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Tags</SelectItem>
             <SelectItem value="red">Red Tag (not achieved)</SelectItem>

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -61,7 +62,7 @@ export default function DocumentsPage() {
       return <Badge className={statusColors[status] || ""}>{label}</Badge>;
     }},
     { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
-    { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="text-xs text-muted-foreground">{new Date(row.original.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })}</span> },
+    { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="text-xs text-muted-foreground">{formatDate(row.original.created_at)}</span> },
   ];
 
   if (isLoading) return <div className="p-6">Loading...</div>;
