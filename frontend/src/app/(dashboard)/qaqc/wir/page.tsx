@@ -20,6 +20,7 @@ interface Document {
   status: string;
   current_approver_order: number | null;
   created_at: string;
+  created_by: string | null;
 }
 
 export default function WIRPage() {
@@ -35,8 +36,23 @@ export default function WIRPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/documents/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", "WIR", project?.id] }),
+    onSuccess: () => {
+      toast.success("Document removed");
+      queryClient.invalidateQueries({ queryKey: ["documents", "WIR", project?.id] });
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || "Failed to remove document");
+    },
   });
+
+  const isSubmitted = (doc: Document) => {
+    const submittedStatuses = [
+      "with_approver_1", "with_approver_2",
+      "approver_1_returned", "approved", "approved_with_comments", "rejected"
+    ];
+    return submittedStatuses.includes(doc.status);
+  };
 
   const rowActions: RowAction<Document>[] = [
     { label: "Edit", onClick: (row) => router.push(`/qaqc/wir/${row.id}`) },
@@ -48,7 +64,15 @@ export default function WIRPage() {
         setTimeout(() => URL.revokeObjectURL(url), 60000);
       } catch { toast.error("PDF generation failed"); }
     }},
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this item? This action cannot be undone." },
+    {
+      label: (row) => isSubmitted(row) ? "Supersede" : "Delete",
+      onClick: (row) => deleteMutation.mutate(row.id),
+      destructive: true,
+      separator: true,
+      confirm: (row) => isSubmitted(row)
+        ? "This document was submitted to an approver. It will be marked as superseded and the serial number will not be reused. Continue?"
+        : "This document was not submitted. It will be permanently deleted along with all attachments, and its serial number will be available for reuse. Continue?",
+    },
   ];
 
   const columns: ColumnDef<Document, unknown>[] = [

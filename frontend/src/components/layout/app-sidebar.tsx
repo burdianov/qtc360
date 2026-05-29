@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, ChevronLeft, LogOut, Settings, User } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronsUpDown, LogOut, Settings, User } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -191,9 +191,10 @@ export function AppSidebar() {
                       {user?.email || ""}
                     </span>
                   </div>
+                  <ChevronsUpDown className="ml-auto h-4 w-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-48">
+              <DropdownMenuContent side="top" align="start" sideOffset={12} className="w-[var(--anchor-width)]">
                 <div className="px-2 py-1.5">
                   <p className="text-sm font-medium">{user?.full_name}</p>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>

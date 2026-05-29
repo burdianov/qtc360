@@ -387,17 +387,126 @@ async def delete_document(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.delete")),
 ):
+    """Delete or supersede a document.
+
+    Logic:
+    - Only the document creator or admin/super_admin can delete/supersede
+    - If document was submitted to at least one approver: SUPERSEDE
+      (mark as superseded, keep the serial number incremented)
+    - If document was NOT submitted: HARD DELETE
+      (delete document + all attachments, decrement serial so it can be reused)
+    """
+    from app.models.document_attachment import DocumentAttachment
+    from app.models.document_approval_round import DocumentApprovalRound
+
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        .with_for_update()
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
-    doc.is_deleted = True
-    # Recalculate before commit so the soft-delete and the requirement reset land atomically.
-    await recalculate_requirements_for_document(db, doc_id)
-    await record_audit(db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id, summary=f"Deleted {doc.document_type} '{doc.reference_no}'")
+
+    # Authorization: only creator or admin/super_admin can delete/supersede
+    is_admin = user.is_superuser or any(
+        r.name in ("admin", "super_admin") for r in (user.roles or [])
+    )
+    is_creator = doc.created_by == user.id
+    if not (is_admin or is_creator):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the document creator or an administrator can delete/supersede this document",
+        )
+
+    # Check if submitted to any approver
+    rounds_result = await db.execute(
+        select(DocumentApprovalRound).where(
+            DocumentApprovalRound.document_id == doc.id,
+            DocumentApprovalRound.is_deleted == False,  # noqa: E712
+        )
+    )
+    has_been_submitted = rounds_result.scalar_one_or_none() is not None
+    # Also consider explicit status states that imply submission
+    submitted_statuses = {
+        "with_approver_1", "with_approver_2",
+        "approver_1_returned", "approved", "approved_with_comments", "rejected"
+    }
+    is_submitted = has_been_submitted or doc.status in submitted_statuses
+
+    if is_submitted:
+        # SUPERSEDE: mark as superseded (preserve serial number)
+        doc.status = "superseded"
+        doc.is_deleted = True
+        await recalculate_requirements_for_document(db, doc_id)
+        await record_audit(
+            db, user_id=user.id, action="supersede", entity_type="document", entity_id=doc.id,
+            summary=f"Superseded {doc.document_type} '{doc.reference_no}' (was submitted to approver)"
+        )
+    else:
+        # HARD DELETE: remove document, attachments, and decrement serial
+        upload_root = settings.upload_dir_abs
+
+        # Delete attachment files from disk
+        attachments_result = await db.execute(
+            select(DocumentAttachment).where(
+                DocumentAttachment.document_id == doc.id,
+            )
+        )
+        attachments = attachments_result.scalars().all()
+        for att in attachments:
+            try:
+                file_path = (upload_root / att.storage_path).resolve()
+                if file_path.exists() and file_path.is_file():
+                    try:
+                        file_path.relative_to(upload_root)
+                        file_path.unlink()
+                    except ValueError:
+                        pass  # Path outside upload_root, skip
+            except Exception:
+                pass  # Best-effort file cleanup
+
+        # Hard delete attachments from DB
+        from sqlalchemy import delete as sa_delete
+        await db.execute(
+            sa_delete(DocumentAttachment).where(
+                DocumentAttachment.document_id == doc.id,
+            )
+        )
+
+        # Hard delete document_assets links
+        await db.execute(
+            sa_delete(document_assets).where(
+                document_assets.c.document_id == doc.id,
+            )
+        )
+
+        # Decrement serial number so it can be reused
+        config_result = await db.execute(
+            select(ReferenceNumberConfig)
+            .where(
+                ReferenceNumberConfig.project_id == doc.project_id,
+                ReferenceNumberConfig.doc_type == doc.document_type,
+            )
+            .with_for_update()
+        )
+        config = config_result.scalar_one_or_none()
+        if config and config.next_serial and config.next_serial > (config.serial_start or 1):
+            # Only decrement if it makes sense (avoid going below start)
+            config.next_serial = config.next_serial - 1
+
+        await recalculate_requirements_for_document(db, doc_id)
+        await record_audit(
+            db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id,
+            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted, serial reused)"
+        )
+
+        # Hard delete the document itself
+        await db.execute(
+            sa_delete(Document).where(Document.id == doc.id)
+        )
+
     try:
         await db.commit()
     except IntegrityError:

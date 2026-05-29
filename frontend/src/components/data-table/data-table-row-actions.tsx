@@ -13,11 +13,11 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 export interface RowAction<TData> {
-  label: string;
+  label: string | ((row: TData) => string);
   onClick: (row: TData) => void;
   destructive?: boolean;
   separator?: boolean;
-  confirm?: string;
+  confirm?: string | ((row: TData) => string);
 }
 
 interface DataTableRowActionsProps<TData> {
@@ -27,6 +27,12 @@ interface DataTableRowActionsProps<TData> {
 
 export function DataTableRowActions<TData>({ row, actions }: DataTableRowActionsProps<TData>) {
   const [confirmAction, setConfirmAction] = useState<RowAction<TData> | null>(null);
+
+  const resolveLabel = (action: RowAction<TData>) =>
+    typeof action.label === "function" ? action.label(row) : action.label;
+
+  const resolveConfirm = (action: RowAction<TData>) =>
+    typeof action.confirm === "function" ? action.confirm(row) : action.confirm;
 
   return (
     <>
@@ -43,7 +49,7 @@ export function DataTableRowActions<TData>({ row, actions }: DataTableRowActions
                 onClick={() => action.confirm ? setConfirmAction(action) : action.onClick(row)}
                 className={action.destructive ? "text-destructive" : undefined}
               >
-                {action.label}
+                {resolveLabel(action)}
               </DropdownMenuItem>
             </span>
           ))}
@@ -53,13 +59,13 @@ export function DataTableRowActions<TData>({ row, actions }: DataTableRowActions
       <Dialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogTitle>{confirmAction ? resolveLabel(confirmAction) : "Confirm"}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">{confirmAction?.confirm}</p>
+          <p className="text-sm text-muted-foreground">{confirmAction ? resolveConfirm(confirmAction) : ""}</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmAction(null)}>Cancel</Button>
             <Button variant="destructive" onClick={() => { confirmAction?.onClick(row); setConfirmAction(null); }}>
-              Delete
+              {confirmAction ? resolveLabel(confirmAction) : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
