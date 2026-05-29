@@ -36,7 +36,9 @@ router.include_router(create_crud_router(prefix="/clients", tag="clients", model
 router.include_router(create_crud_router(prefix="/projects", tag="projects", model=Project, create_schema=ProjectCreate, update_schema=ProjectUpdate, response_schema=ProjectResponse, eager=[Project.client]))
 router.include_router(create_crud_router(prefix="/approver-titles", tag="approver-titles", model=ApproverTitle, create_schema=ApproverTitleCreate, update_schema=ApproverTitleUpdate, response_schema=ApproverTitleResponse))
 router.include_router(create_crud_router(prefix="/approvers", tag="approvers", model=Approver, create_schema=ApproverCreate, update_schema=ApproverUpdate, response_schema=ApproverResponse, eager=[Approver.title]))
-router.include_router(create_crud_router(prefix="/project-approvers", tag="project-approvers", model=ProjectApprover, create_schema=ProjectApproverCreate, update_schema=ProjectApproverUpdate, response_schema=ProjectApproverResponse, eager=[ProjectApprover.approver, ProjectApprover.approver_title]))
+from sqlalchemy.orm import selectinload
+
+router.include_router(create_crud_router(prefix="/project-approvers", tag="project-approvers", model=ProjectApprover, create_schema=ProjectApproverCreate, update_schema=ProjectApproverUpdate, response_schema=ProjectApproverResponse, eager=[selectinload(ProjectApprover.approver).selectinload(Approver.title), ProjectApprover.approver_title], hard_delete=True))
 router.include_router(create_crud_router(prefix="/disciplines", tag="disciplines", model=Discipline, create_schema=DisciplineCreate, update_schema=DisciplineUpdate, response_schema=DisciplineResponse))
 router.include_router(create_crud_router(prefix="/services", tag="services", model=Service, create_schema=ServiceCreate, update_schema=ServiceUpdate, response_schema=ServiceResponse))
 router.include_router(create_crud_router(prefix="/asset-types", tag="asset-types", model=AssetType, create_schema=AssetTypeCreate, update_schema=AssetTypeUpdate, response_schema=AssetTypeResponse))

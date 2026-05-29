@@ -35,6 +35,35 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 logger = logging.getLogger(__name__)
 
+# Date format cache (loaded once per process from DB)
+_date_format_cache: str | None = None
+
+
+async def _load_date_format(db: AsyncSession) -> str:
+    global _date_format_cache
+    if _date_format_cache is None:
+        from app.models.app_setting import AppSetting
+        result = await db.execute(select(AppSetting).where(AppSetting.key == "date_format"))
+        item = result.scalar_one_or_none()
+        _date_format_cache = item.value if item else "DD.MM.YYYY"
+    return _date_format_cache
+
+
+_FORMAT_MAP = {
+    "DD.MM.YYYY": "%d.%m.%Y",
+    "MM/DD/YYYY": "%m/%d/%Y",
+    "YYYY-MM-DD": "%Y-%m-%d",
+    "DD-MM-YYYY": "%d-%m-%Y",
+    "DD/MM/YYYY": "%d/%m/%Y",
+}
+
+
+def _format_date(dt, fmt: str | None = None) -> str:
+    if not dt:
+        return ""
+    py_fmt = _FORMAT_MAP.get(fmt or _date_format_cache or "DD.MM.YYYY", "%d.%m.%Y")
+    return dt.strftime(py_fmt)
+
 
 def _safe_filename_for_disposition(name: str) -> str:
     """Build a safe Content-Disposition filename, blocking header-splitting via CR/LF."""
@@ -259,6 +288,9 @@ async def generate_report(
     if document.project_id != body.project_id:
         raise HTTPException(status_code=400, detail="Document does not belong to this project")
 
+    # Load date format setting
+    await _load_date_format(db)
+
     # Build context from document
     context = _build_context(document)
 
@@ -267,6 +299,9 @@ async def generate_report(
 
     # Convert to PDF
     pdf_bytes = _convert_to_pdf(docx_bytes)
+
+    # Stamp vector signatures onto the PDF (resolution-independent)
+    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document)
 
     # Append attachments as additional pages
     from app.models.document_attachment import DocumentAttachment
@@ -333,7 +368,7 @@ def _build_context(document: Document) -> dict:
         "ref_no": document.reference_no or "",
         "revision": str(document.revision_no or 0),
         "prj_no": "",
-        "date": document.inspection_date.strftime("%d/%m/%Y") if document.inspection_date else "",
+        "date": _format_date(document.inspection_date),
         "subject": document.title or "",
         "description_of_inspection": document.description or "",
         "gen_loc": document.location or "",
@@ -369,15 +404,12 @@ def _build_context(document: Document) -> dict:
         if inspector:
             ctx[f"inspected_by_{i}"] = inspector.full_name
             ctx[f"designation_{i}"] = inspector.designation.name if inspector.designation else ""
-            ctx[f"date_{i}"] = document.submitted_date.strftime("%d/%m/%Y") if document.submitted_date else ""
-            ctx[f"time_{i}"] = document.submitted_date.strftime("%H:%M") if document.submitted_date else ""
-            ctx[f"remarks_{i}"] = ""
         else:
             ctx[f"inspected_by_{i}"] = ""
             ctx[f"designation_{i}"] = ""
-            ctx[f"date_{i}"] = ""
-            ctx[f"time_{i}"] = ""
-            ctx[f"remarks_{i}"] = ""
+        ctx[f"date_{i}"] = getattr(document, f"inspector_date_{i}", "") or ""
+        ctx[f"time_{i}"] = getattr(document, f"inspector_time_{i}", "") or ""
+        ctx[f"remarks_{i}"] = getattr(document, f"remarks_{i}", "") or ""
 
     if document.project:
         ctx["prj_no"] = document.project.code or ""
@@ -390,18 +422,18 @@ def _build_context(document: Document) -> dict:
 
 
 def _fill_template(template_bytes: bytes, context: dict, document: Document) -> bytes:
-    """Fill a DOCX template with context data and signature images, using a sandboxed Jinja env."""
+    """Fill a DOCX template with context data, using a sandboxed Jinja env.
+    Signatures are NOT embedded as images here — they are stamped as vector text
+    onto the final PDF by _stamp_vector_signatures().
+    """
     doc = DocxTemplate(io.BytesIO(template_bytes))
 
-    sig_data: dict[str, bytes] = {}
     signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         key = f"insp_sign_{i}"
         if inspector and signed_flags[i - 1]:
-            font_id = inspector.signature_font or "dancing_script"
-            sig_name = inspector.signature_text or inspector.full_name
-            sig_data[key] = render_signature(sig_name, font_id)
-            context[key] = f"__SIG_PLACEHOLDER_{i}__"
+            # Short marker that won't be split by LibreOffice
+            context[key] = f"SIGMARK{i}"
         else:
             context[key] = ""
 
@@ -409,11 +441,126 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     doc.render(context, jinja_env=sandbox_env)
     buf = io.BytesIO()
     doc.save(buf)
-
-    if sig_data:
-        buf = io.BytesIO(_insert_signatures_fitted(buf.getvalue(), sig_data))
-
     return buf.getvalue()
+
+
+def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
+    """Overlay vector text signatures onto the PDF using reportlab.
+    Finds the signature marker text and draws the signature font text at that location.
+    """
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from pypdf import PdfReader, PdfWriter
+    import fitz  # PyMuPDF
+
+    signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
+    inspectors = [document.site_engineer, document.qaqc_engineer]
+
+    # Collect signature info
+    sigs_to_stamp: list[dict] = []
+    for i, inspector in enumerate(inspectors, start=1):
+        if inspector and signed_flags[i - 1]:
+            sig_name = inspector.signature_text or inspector.full_name
+            font_id = inspector.signature_font or "dancing_script"
+            marker = f"SIGMARK{i}"
+            sigs_to_stamp.append({"marker": marker, "name": sig_name, "font_id": font_id})
+
+    if not sigs_to_stamp:
+        return pdf_bytes
+
+    # Register signature fonts with reportlab
+    fonts_dir = Path(__file__).parent.parent.parent / "fonts"
+    from app.services.signature import SIGNATURE_FONTS
+    registered_fonts: set[str] = set()
+    for sig in sigs_to_stamp:
+        fid = sig["font_id"]
+        if fid not in registered_fonts:
+            font_file = SIGNATURE_FONTS.get(fid, SIGNATURE_FONTS["dancing_script"])
+            font_path = fonts_dir / font_file
+            try:
+                pdfmetrics.registerFont(TTFont(fid, str(font_path)))
+            except Exception:
+                pass
+            registered_fonts.add(fid)
+
+    # Use PyMuPDF to find marker text positions
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    for sig in sigs_to_stamp:
+        marker = sig["marker"]
+        for page_idx in range(len(pdf_doc)):
+            page = pdf_doc[page_idx]
+            instances = page.search_for(marker)
+            if instances:
+                # Take the first instance
+                rect = instances[0]
+                sig["page"] = page_idx
+                sig["x"] = rect.x0
+                sig["y"] = rect.y0
+                sig["width"] = rect.width
+                sig["height"] = rect.height
+                sig["page_height"] = page.rect.height
+                # Redact the marker text (white it out)
+                for inst in instances:
+                    page.add_redact_annot(inst, fill=(1, 1, 1))
+                page.apply_redactions()
+                break
+
+    # Save the redacted PDF
+    redacted_bytes = pdf_doc.tobytes()
+    pdf_doc.close()
+
+    # Now overlay vector signatures using reportlab
+    reader = PdfReader(io.BytesIO(redacted_bytes))
+    writer = PdfWriter()
+
+    for page_idx in range(len(reader.pages)):
+        page = reader.pages[page_idx]
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+
+        # Check if any signature goes on this page
+        page_sigs = [s for s in sigs_to_stamp if s.get("page") == page_idx]
+
+        if page_sigs:
+            # Create overlay with reportlab
+            overlay_buf = io.BytesIO()
+            c = canvas.Canvas(overlay_buf, pagesize=(page_width, page_height))
+
+            for sig in page_sigs:
+                font_id = sig["font_id"]
+                name = sig["name"]
+                # PyMuPDF coords: origin top-left; reportlab: origin bottom-left
+                x = sig["x"]
+                y = page_height - sig["y"] - sig["height"]
+                # Draw signature text
+                font_size = sig["height"] * 0.8  # fit within the cell height
+                try:
+                    c.setFont(font_id, font_size)
+                except Exception:
+                    c.setFont("Helvetica", font_size)
+                # Parse color
+                color_hex = "#1a237e"
+                r = int(color_hex[1:3], 16) / 255
+                g = int(color_hex[3:5], 16) / 255
+                b = int(color_hex[5:7], 16) / 255
+                c.setFillColorRGB(r, g, b)
+                c.drawString(x, y, name)
+
+            c.save()
+            overlay_buf.seek(0)
+
+            # Merge overlay onto page
+            overlay_reader = PdfReader(overlay_buf)
+            page.merge_page(overlay_reader.pages[0])
+
+        writer.add_page(page)
+
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 def _insert_signatures_fitted(docx_bytes: bytes, sig_data: dict[str, bytes]) -> bytes:

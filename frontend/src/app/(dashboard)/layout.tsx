@@ -6,6 +6,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Navbar } from "@/components/layout/navbar";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { AuthGuard } from "@/components/providers/auth-guard";
+import api from "@/lib/api";
+import { setDateFormat } from "@/lib/format-date";
 
 function getInitialOpen(): boolean {
   if (typeof window === "undefined") return true;
@@ -35,6 +37,12 @@ export default function DashboardLayout({
   useEffect(() => {
     document.cookie = `sidebar_state=${open}; path=/; max-age=${60 * 60 * 24 * 7}`;
   }, [open]);
+
+  useEffect(() => {
+    api.get("/admin/settings/date_format").then((res) => {
+      if (res.data?.value) setDateFormat(res.data.value);
+    }).catch(() => {});
+  }, []);
 
   return (
     <AuthGuard>

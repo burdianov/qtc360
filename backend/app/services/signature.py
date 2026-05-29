@@ -40,10 +40,11 @@ def _load_font(font_id: str, font_size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(font_path), font_size)
 
 
-def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48, color: str = "#1a237e") -> bytes:
+def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 72, color: str = "#1a237e") -> bytes:
     """Render a name as a signature PNG image.
 
-    Returns PNG bytes suitable for embedding in DOCX via InlineImage.
+    Returns high-resolution PNG bytes suitable for embedding in DOCX via InlineImage.
+    Rendered at large size so it remains crisp when zoomed in the final PDF.
     """
     if not _HEX_COLOR_RE.match(color or ""):
         color = "#1a237e"
@@ -54,8 +55,8 @@ def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48
     dummy = Image.new("RGBA", (1, 1))
     draw = ImageDraw.Draw(dummy)
     bbox = draw.textbbox((0, 0), name, font=font)
-    text_w = bbox[2] - bbox[0] + 20  # padding
-    text_h = bbox[3] - bbox[1] + 16
+    text_w = bbox[2] - bbox[0] + 40  # padding
+    text_h = bbox[3] - bbox[1] + 32
 
     # Render on transparent background
     img = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
@@ -65,9 +66,9 @@ def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 48
     g = int(color[3:5], 16)
     b = int(color[5:7], 16)
 
-    draw.text((10, -bbox[1] + 8), name, font=font, fill=(r, g, b, 255))
+    draw.text((20, -bbox[1] + 16), name, font=font, fill=(r, g, b, 255))
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf, format="PNG", dpi=(300, 300))
     return buf.getvalue()
 

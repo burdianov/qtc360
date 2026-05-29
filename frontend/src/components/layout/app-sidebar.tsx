@@ -42,13 +42,16 @@ export function AppSidebar() {
   const logout = useLogout();
   const initials = user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
 
+  const isAdmin = user?.is_superuser || user?.roles?.some((r) => r.name === "admin" || r.name === "super_admin");
+  const visibleNavigation = navigation.filter((g) => g.label !== "Administration" || isAdmin);
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(navigation.map((g) => [g.label, true]))
+    Object.fromEntries(visibleNavigation.map((g) => [g.label, true]))
   );
 
   // Open the group containing the active route on navigation
   useEffect(() => {
-    const group = navigation.find((g) => g.items.some((item) => item.url === pathname));
+    const group = visibleNavigation.find((g) => g.items.some((item) => item.url === pathname));
     if (group && !openGroups[group.label]) {
       setOpenGroups((prev) => ({ ...prev, [group.label]: true }));
     }
@@ -121,7 +124,7 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <SidebarContent>
-        {navigation.map((group) => {
+        {visibleNavigation.map((group) => {
           return (
           <Collapsible
             key={group.label}
@@ -176,7 +179,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger className="w-full">
+              <DropdownMenuTrigger className="w-full" render={<div />} nativeButton={false}>
                 <SidebarMenuButton tooltip={user?.full_name || "Profile"} className="h-10">
                   <div className="flex h-4 w-4 items-center justify-center">
                     <Avatar className="h-7 w-7">

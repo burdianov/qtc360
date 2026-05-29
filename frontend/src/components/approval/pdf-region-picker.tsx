@@ -6,10 +6,12 @@ import { ChevronLeft, ChevronRight, Crosshair } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-// PDF.js worker. react-pdf 10 ships matching pdfjs-dist; we point at the
-// public CDN copy keyed off the runtime version so we can't drift.
+// PDF.js worker. Use local copy from node_modules via Next.js public serving.
 if (typeof window !== "undefined") {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url
+  ).toString();
 }
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -137,25 +139,26 @@ export function PdfRegionPicker({ fileUrl, armed, onCapture, onCancelArm }: Prop
         )}
       </div>
 
-      <div className="relative border rounded-md overflow-auto bg-muted/20" style={{ maxHeight: 520 }}>
-        {fileObj ? (
-          <Document file={fileObj} onLoadSuccess={({ numPages }) => setNumPages(numPages)}>
-            <Page
-              pageNumber={pageNumber}
-              width={pageWidth}
-              renderAnnotationLayer={false}
-              renderTextLayer={false}
-              onLoadSuccess={(p: { width: number; height: number }) => setPdfDims({ w: p.width, h: p.height })}
-            />
-          </Document>
-        ) : (
-          <div className="p-8 text-center text-xs text-muted-foreground">No PDF selected</div>
-        )}
-        <div
-          ref={overlayRef}
-          className={
-            "absolute inset-0 " +
-            (armed ? "cursor-crosshair" : "pointer-events-none")
+      <div className="relative border rounded-md overflow-y-auto bg-muted/20" style={{ maxHeight: 500 }}>
+        <div className="relative inline-block">
+          {fileObj ? (
+            <Document file={fileObj} onLoadSuccess={({ numPages }) => setNumPages(numPages)}>
+              <Page
+                pageNumber={pageNumber}
+                width={pageWidth}
+                renderAnnotationLayer={false}
+                renderTextLayer={false}
+                onLoadSuccess={(p: any) => setPdfDims({ w: p.originalWidth || p.width, h: p.originalHeight || p.height })}
+              />
+            </Document>
+          ) : (
+            <div className="p-8 text-center text-xs text-muted-foreground">No PDF selected</div>
+          )}
+          <div
+            ref={overlayRef}
+            className={
+              "absolute inset-0 " +
+              (armed ? "cursor-crosshair" : "pointer-events-none")
           }
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -172,6 +175,7 @@ export function PdfRegionPicker({ fileUrl, armed, onCapture, onCancelArm }: Prop
               }}
             />
           )}
+        </div>
         </div>
       </div>
     </div>

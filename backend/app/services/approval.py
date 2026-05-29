@@ -160,8 +160,8 @@ async def record_response(
     doc: Document,
     approver_order: int,
     decision_status_id: uuid.UUID,
-    signatory_name: str,
-    response_date: date,
+    signatory_name: str | None,
+    response_date: date | None,
     comments: str | None,
 ) -> DocumentApprovalRound:
     """Stamp the open round with the approver's decision and advance the document.

@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type DocType = "WIR" | "MIR" | "CIR" | "FAT";
@@ -33,6 +33,7 @@ export function ProjectApproversCard({ projectId }: { projectId: string | undefi
   const [docType, setDocType] = useState<DocType>("WIR");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedApproverId, setSelectedApproverId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ProjectApprover | null>(null);
 
   const { data: projectApprovers = [] } = useQuery<ProjectApprover[]>({
     queryKey: ["project-approvers", projectId],
@@ -156,7 +157,7 @@ export function ProjectApproversCard({ projectId }: { projectId: string | undefi
                   variant="ghost"
                   size="sm"
                   className="text-destructive"
-                  onClick={() => removeMutation.mutate(pa.id)}
+                  onClick={() => setDeleteTarget(pa)}
                   disabled={removeMutation.isPending}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -216,6 +217,21 @@ export function ProjectApproversCard({ projectId }: { projectId: string | undefi
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Remove Approver</DialogTitle>
+              <DialogDescription>
+                Remove <span className="font-medium text-foreground">{deleteTarget?.approver.name}</span> from the {docType} approval chain?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button variant="destructive" disabled={removeMutation.isPending} onClick={() => { removeMutation.mutate(deleteTarget!.id); setDeleteTarget(null); }}>Remove</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </CardContent>

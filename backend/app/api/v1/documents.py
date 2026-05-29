@@ -4,7 +4,7 @@ from typing import Any
 from uuid import UUID
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -654,7 +654,7 @@ async def extract_preview_region(
     """
     from app.services.pdf import extract_region_text, normalize_date_text
 
-    if target_field not in ("signatory_name", "response_date", "comments"):
+    if target_field not in ("signatory_name", "response_date", "response_time", "comments"):
         raise HTTPException(status_code=400, detail="Invalid target_field")
 
     doc = (await db.execute(
@@ -734,8 +734,9 @@ async def record_response_endpoint(
     doc_id: UUID,
     approver_order: int = Query(..., ge=1, le=10),
     decision_status_id: UUID = Query(...),
-    signatory_name: str = Query(..., min_length=1, max_length=255),
-    response_date: str = Query(..., description="ISO date yyyy-MM-dd"),
+    signatory_name: str = Query("", max_length=255),
+    response_date: str = Query("", description="ISO date yyyy-MM-dd"),
+    response_time: str | None = Query(None, max_length=10),
     comments: str | None = Query(None, max_length=4000),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -760,10 +761,12 @@ async def record_response_endpoint(
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    try:
-        parsed_date = date_cls.fromisoformat(response_date)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="response_date must be ISO yyyy-MM-dd")
+    parsed_date = None
+    if response_date:
+        try:
+            parsed_date = date_cls.fromisoformat(response_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="response_date must be ISO yyyy-MM-dd")
 
     doc = (await db.execute(
         select(Document)
@@ -776,7 +779,7 @@ async def record_response_endpoint(
 
     round_ = await record_response(
         db, doc, approver_order, decision_status_id,
-        signatory_name, parsed_date, comments,
+        signatory_name or None, parsed_date, comments or None,
     )
     await db.flush()
 
@@ -792,6 +795,7 @@ async def record_response_endpoint(
     returned_path.write_bytes(data)
     round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
     round_.returned_file_name = file.filename or "returned.pdf"
+    round_.response_time = response_time
 
     # Save the returned PDF as a single attachment
     db.add(DocumentAttachment(
@@ -822,6 +826,88 @@ async def record_response_endpoint(
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(round_)
     return round_
+
+
+@router.put(
+    "/{doc_id}/approval-rounds/{round_id}/file",
+    status_code=200,
+)
+async def replace_round_file(
+    doc_id: UUID,
+    round_id: UUID,
+    file: UploadFile = File(...),
+    signatory_name: str | None = Form(None),
+    response_date: str | None = Form(None),
+    response_time: str | None = Form(None),
+    comments: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Replace the returned PDF for an approval round. Always overwrites all metadata."""
+    from datetime import date as date_cls
+    from app.models.document_attachment import DocumentAttachment
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+    data = await file.read()
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    round_ = (await db.execute(
+        select(DocumentApprovalRound).where(
+            DocumentApprovalRound.id == round_id,
+            DocumentApprovalRound.document_id == doc_id,
+        )
+    )).scalar_one_or_none()
+    if not round_:
+        raise HTTPException(status_code=404, detail="Round not found")
+
+    upload_root = settings.upload_dir_abs
+    upload_dir = (upload_root / "approval-rounds" / str(round_.id)).resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    returned_path = (upload_dir / "returned.pdf").resolve()
+    returned_path.write_bytes(data)
+    round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
+    round_.returned_file_name = file.filename or "returned.pdf"
+
+    # Always overwrite metadata (None/empty = clear)
+    round_.signatory_name = signatory_name or None
+    round_.comments = comments or None
+    round_.response_time = response_time or None
+    if response_date:
+        try:
+            round_.response_date = date_cls.fromisoformat(response_date)
+        except ValueError:
+            round_.response_date = None
+    else:
+        round_.response_date = None
+
+    # Update the returned_pdf attachment
+    att = (await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "returned_pdf",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if att:
+        att.storage_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
+        att.size = len(data)
+        att.filename = f"Approver {round_.approver_order} — Returned.pdf"
+
+    await db.commit()
+    return {"status": "replaced", "filename": round_.returned_file_name}
 
 
 @router.post(
@@ -1373,69 +1459,78 @@ async def download_document_bundle(
     at their specified page positions.
     """
     from fastapi.responses import Response
+    from sqlalchemy.orm import selectinload
     from app.models.document_attachment import DocumentAttachment
     from app.services.pdf_merge import merge_pdf_bundle
-    from app.services.reports import generate_document_pdf
+    from app.api.v1.reports import _build_context, _fill_template, _convert_to_pdf, _stamp_vector_signatures
+    from app.models.doc_template import DocTemplate
 
     doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        .options(
+            selectinload(Document.discipline),
+            selectinload(Document.project),
+            selectinload(Document.site_engineer).selectinload(User.designation),
+            selectinload(Document.qaqc_engineer).selectinload(User.designation),
+        )
     )).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    # Generate the document PDF
-    try:
-        main_pdf_bytes = await generate_document_pdf(db, doc)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+    # Get template
+    if doc.template_id:
+        template = (await db.execute(select(DocTemplate).where(DocTemplate.id == doc.template_id))).scalar_one_or_none()
+    else:
+        template = (await db.execute(
+            select(DocTemplate).where(
+                DocTemplate.project_id == doc.project_id,
+                DocTemplate.doc_type == doc.document_type,
+                DocTemplate.is_active == True,  # noqa: E712
+                DocTemplate.is_deleted == False,  # noqa: E712
+            )
+        )).scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="No template found for this document type")
 
-    # Get all user attachments for this document (only PDFs with insert_after_page set)
+    # Generate PDF
+    context = _build_context(doc)
+    docx_bytes = _fill_template(template.file, context, doc)
+    main_pdf_bytes = _convert_to_pdf(docx_bytes)
+    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc)
+
+    # Get all user attachments for this document
     attachments_result = await db.execute(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == doc_id,
             DocumentAttachment.kind == "user",
-            DocumentAttachment.insert_after_page.isnot(None),
-            DocumentAttachment.content_type == "application/pdf",
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
-        .order_by(DocumentAttachment.insert_after_page, DocumentAttachment.sort_order)
+        .order_by(DocumentAttachment.sort_order)
     )
     attachments = attachments_result.scalars().all()
 
-    # If no attachments with page positions, just return the main PDF
+    # If no attachments, just return the main PDF
     if not attachments:
         return Response(
             content=main_pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="{doc.reference_no}_Bundle.pdf"'
+                "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
             },
         )
 
-    # Load attachment files and prepare for merging
-    upload_root = settings.upload_dir_abs
-    attachment_data = []
-    for att in attachments:
-        att_path = (upload_root / att.storage_path).resolve()
-        try:
-            att_path.relative_to(upload_root)
-        except ValueError:
-            continue  # Skip invalid paths
-        if not att_path.exists():
-            continue  # Skip missing files
-        att_bytes = att_path.read_bytes()
-        attachment_data.append((att_bytes, att.insert_after_page or 0))
-
-    # Merge PDFs
-    merged_pdf = merge_pdf_bundle(main_pdf_bytes, attachment_data)
+    # Merge all attachments (PDFs appended, images converted to PDF pages)
+    from app.api.v1.reports import _merge_attachments_with_status
+    merged_pdf, _ = _merge_attachments_with_status(main_pdf_bytes, attachments)
 
     return Response(
         content=merged_pdf,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{doc.reference_no}_Bundle.pdf"'
+            "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
         },
     )
 

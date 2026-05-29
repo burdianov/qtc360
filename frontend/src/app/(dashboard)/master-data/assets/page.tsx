@@ -9,6 +9,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
 import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
+import { useSelectedProject } from "@/hooks/use-project";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,6 +32,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function AssetsPage() {
   const queryClient = useQueryClient();
+  const project = useSelectedProject();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
   const [filterTypeId, setFilterTypeId] = useState<string>("");

@@ -62,6 +62,12 @@ class DocumentCreate(BaseModel):
     inspection_date: datetime | None = None
     delivery_note: str | None = None
     asset_type_id: UUID | None = None
+    remarks_1: str | None = None
+    remarks_2: str | None = None
+    inspector_date_1: str | None = None
+    inspector_time_1: str | None = None
+    inspector_date_2: str | None = None
+    inspector_time_2: str | None = None
     # Signatories
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
@@ -80,6 +86,12 @@ class DocumentUpdate(BaseModel):
     inspection_date: datetime | None = None
     delivery_note: str | None = None
     asset_type_id: UUID | None = None
+    remarks_1: str | None = None
+    remarks_2: str | None = None
+    inspector_date_1: str | None = None
+    inspector_time_1: str | None = None
+    inspector_date_2: str | None = None
+    inspector_time_2: str | None = None
     site_engineer_id: UUID | None = None
     qaqc_engineer_id: UUID | None = None
     status: DOCUMENT_STATUSES | None = None
@@ -110,6 +122,12 @@ class DocumentResponse(BaseModel):
     inspection_date: datetime | None
     delivery_note: str | None
     asset_type_id: UUID | None
+    remarks_1: str | None
+    remarks_2: str | None
+    inspector_date_1: str | None
+    inspector_time_1: str | None
+    inspector_date_2: str | None
+    inspector_time_2: str | None
     created_by: UUID | None
     updated_by: UUID | None
     created_at: datetime
@@ -133,6 +151,7 @@ class DocumentApprovalRoundResponse(BaseModel):
     submitted_at: datetime | None
     returned_at: datetime | None
     response_date: datetime | None
+    response_time: str | None
     returned_file_name: str | None
     remarks_file_name: str | None
     created_at: datetime

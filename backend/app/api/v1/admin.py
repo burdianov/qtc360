@@ -242,3 +242,41 @@ async def list_audit_logs(
     q = q.offset(offset).limit(limit)
     result = await db.execute(q)
     return result.scalars().all()
+
+
+# --- App Settings ---
+from app.models.app_setting import AppSetting
+
+
+@router.get("/settings/{key}")
+async def get_setting(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    result = await db.execute(select(AppSetting).where(AppSetting.key == key, AppSetting.is_deleted == False))  # noqa: E712
+    item = result.scalar_one_or_none()
+    if not item:
+        # Return defaults
+        defaults = {"date_format": "DD.MM.YYYY"}
+        return {"key": key, "value": defaults.get(key, "")}
+    return {"key": item.key, "value": item.value}
+
+
+@router.put("/settings/{key}")
+async def set_setting(
+    key: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    value = body.get("value", "")
+    result = await db.execute(select(AppSetting).where(AppSetting.key == key))
+    item = result.scalar_one_or_none()
+    if item:
+        item.value = value
+        item.is_deleted = False
+    else:
+        db.add(AppSetting(key=key, value=value))
+    await db.commit()
+    return {"key": key, "value": value}

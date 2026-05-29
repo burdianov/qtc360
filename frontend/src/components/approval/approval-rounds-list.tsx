@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus, RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import api from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 import type { ApprovalRound, ApprovalStatus, ProjectApprover } from "./approval-action-panel";
 
 interface Props {
@@ -17,6 +18,8 @@ interface Props {
   rounds: ApprovalRound[];
   projectApprovers: ProjectApprover[];
   approvalStatuses: ApprovalStatus[];
+  locked?: boolean;
+  onReplace?: (approverOrder: number) => void;
 }
 
 export function ApprovalRoundsList({
@@ -24,6 +27,8 @@ export function ApprovalRoundsList({
   rounds,
   projectApprovers,
   approvalStatuses,
+  locked,
+  onReplace,
 }: Props) {
   if (rounds.length === 0) return null;
 
@@ -36,6 +41,7 @@ export function ApprovalRoundsList({
             key={round.id}
             documentId={documentId}
             round={round}
+            locked={locked}
             party={
               projectApprovers.find((pa) => pa.approver_order === round.approver_order)?.approver.name || "—"
             }
@@ -44,6 +50,7 @@ export function ApprovalRoundsList({
                 ? approvalStatuses.find((s) => s.id === round.decision_status_id) || null
                 : null
             }
+            onReplace={onReplace}
           />
         ))}
       </div>
@@ -54,21 +61,33 @@ export function ApprovalRoundsList({
 function RoundCard({
   documentId,
   round,
+  locked,
   party,
   decision,
+  onReplace,
 }: {
   documentId: string;
   round: ApprovalRound;
+  locked?: boolean;
   party: string;
   decision: ApprovalStatus | null;
+  onReplace?: (approverOrder: number) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const letter = decision?.letter?.toUpperCase() || null;
   const tone = letter === "C" ? "danger" : letter ? "success" : "muted";
 
-  const handleDownloadBundle = () => {
-    window.open(`/api/v1/documents/${documentId}/approval-rounds/${round.id}/bundle`, "_blank");
+  const handleDownloadBundle = async () => {
+    try {
+      const res = await api.get(`/documents/${documentId}/approval-rounds/${round.id}/bundle`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `round_${round.approver_order}_${round.round_no}_bundle.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { toast.error("Failed to download bundle"); }
   };
 
   return (
@@ -83,8 +102,8 @@ function RoundCard({
             Approver {round.approver_order} — {party}
           </div>
           <div className="text-xs text-muted-foreground">
-            {round.submitted_at ? `Submitted ${new Date(round.submitted_at).toLocaleDateString()}` : "Not submitted"}
-            {round.response_date && ` · Responded ${new Date(round.response_date).toLocaleDateString()}`}
+            {round.submitted_at ? `Submitted ${formatDate(round.submitted_at)}` : "Not submitted"}
+            {round.response_date && ` · Responded ${formatDate(round.response_date)}${round.response_time ? ` ${round.response_time}` : ""}`}
           </div>
         </div>
         {decision ? (
@@ -115,13 +134,31 @@ function RoundCard({
           )}
           {round.returned_file_name && (
             <div className="flex items-center gap-2">
-              <a
-                href={`/api/v1/documents/${documentId}/approval-rounds/${round.id}/file`}
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await api.get(`/documents/${documentId}/approval-rounds/${round.id}/bundle`, { responseType: "blob" });
+                    const url = URL.createObjectURL(res.data);
+                    window.open(url, "_blank");
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                  } catch { toast.error("Failed to open file"); }
+                }}
                 className="flex items-center gap-2 text-xs text-sky-500 hover:underline"
               >
                 <FileText className="h-3.5 w-3.5" />
                 {round.returned_file_name}
-              </a>
+              </button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                disabled={locked}
+                onClick={() => onReplace?.(round.approver_order)}
+              >
+                <RefreshCw className="mr-1 h-3 w-3" />
+                Replace
+              </Button>
             </div>
           )}
           {round.remarks_file_name && (
@@ -219,7 +256,7 @@ function UploadAttachmentDialog({
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
             />
-            {file && <p className="text-xs text-muted-foreground mt-1">Selected: {file.name}</p>}
+            <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1.5 block">

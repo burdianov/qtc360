@@ -38,6 +38,7 @@ export function DocumentAttachments({
 }: Props) {
   const [editingPagePosition, setEditingPagePosition] = useState<number | null>(null);
   const [pagePositionValue, setPagePositionValue] = useState("");
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const handleAddAttachments = () => {
@@ -75,16 +76,21 @@ export function DocumentAttachments({
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     e.dataTransfer.setData("text/plain", String(index));
+    e.dataTransfer.effectAllowed = "move";
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
   };
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
-    const dragIndex = parseInt(e.dataTransfer.getData("text/plain"));
-    if (dragIndex === dropIndex) return;
+    e.stopPropagation();
+    const data = e.dataTransfer.getData("text/plain");
+    if (!data) return;
+    const dragIndex = parseInt(data);
+    if (isNaN(dragIndex) || dragIndex === dropIndex) return;
 
     const newAttachments = [...attachments];
     const [removed] = newAttachments.splice(dragIndex, 1);
@@ -166,10 +172,10 @@ export function DocumentAttachments({
 
       {attachments.length === 0 ? (
         <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No attachments. Click "Add Files" to upload.
+          No attachments. Click "Add Files" to upload.<br /><span className="text-xs">Accepted formats: PDF, PNG, JPG</span>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2" onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
           {attachments.map((att, i) => (
             <div
               key={i}
@@ -205,7 +211,7 @@ export function DocumentAttachments({
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                onClick={() => handleRemove(i)}
+                onClick={() => setConfirmDeleteIndex(i)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -213,6 +219,21 @@ export function DocumentAttachments({
           ))}
         </div>
       )}
+
+      <Dialog open={confirmDeleteIndex !== null} onOpenChange={(open) => !open && setConfirmDeleteIndex(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Attachment</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete &ldquo;{confirmDeleteIndex !== null ? attachments[confirmDeleteIndex]?.name : ""}&rdquo;?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeleteIndex(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { handleRemove(confirmDeleteIndex!); setConfirmDeleteIndex(null); }}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editingPagePosition !== null} onOpenChange={(open) => !open && setEditingPagePosition(null)}>
         <DialogContent className="max-w-md">

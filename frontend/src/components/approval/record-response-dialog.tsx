@@ -9,11 +9,12 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PdfRegionPicker, type PdfRegion } from "./pdf-region-picker";
 import type { ApprovalStatus } from "./approval-action-panel";
 
-type Field = "signatory_name" | "response_date" | "comments";
+type Field = "signatory_name" | "response_date" | "response_time" | "comments";
 
 interface Props {
   open: boolean;
@@ -22,6 +23,7 @@ interface Props {
   approverOrder: number;
   approverName: string;
   approvalStatuses: ApprovalStatus[];
+  roundId?: string;
   onSuccess: () => void;
 }
 
@@ -37,6 +39,7 @@ export function RecordResponseDialog({
   approverOrder,
   approverName,
   approvalStatuses,
+  roundId,
   onSuccess,
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
@@ -44,6 +47,7 @@ export function RecordResponseDialog({
   const [decisionStatusId, setDecisionStatusId] = useState("");
   const [signatoryName, setSignatoryName] = useState("");
   const [responseDate, setResponseDate] = useState(new Date().toISOString().slice(0, 10));
+  const [responseTime, setResponseTime] = useState("");
   const [comments, setComments] = useState("");
   const [armedField, setArmedField] = useState<Field | null>(null);
   const [lastRegion, setLastRegion] = useState<Partial<Record<Field, CapturedRegion>>>({});
@@ -90,15 +94,17 @@ export function RecordResponseDialog({
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("page", String(region.page));
-      fd.append("x", String(region.x));
-      fd.append("y", String(region.y));
-      fd.append("width", String(region.width));
-      fd.append("height", String(region.height));
-      fd.append("target_field", field);
-      fd.append("force_ocr", force ? "true" : "false");
+      const params = new URLSearchParams({
+        page: String(region.page),
+        x: String(region.x),
+        y: String(region.y),
+        width: String(region.width),
+        height: String(region.height),
+        target_field: field,
+        force_ocr: force ? "true" : "false",
+      });
       const res = await api.post(
-        `/documents/${documentId}/extract-preview`,
+        `/documents/${documentId}/extract-preview?${params.toString()}`,
         fd,
         { headers: { "Content-Type": "multipart/form-data" } },
       );
@@ -111,12 +117,14 @@ export function RecordResponseDialog({
       setLastRegion((prev) => ({ ...prev, [field]: { region, via } }));
       if (field === "signatory_name") setSignatoryName(text);
       else if (field === "response_date") setResponseDate(text);
+      else if (field === "response_time") setResponseTime(text);
       else setComments((c) => (c ? c + " " + text : text));
       toast.success(`Captured ${field.replace("_", " ")} via ${via === "ocr" ? "OCR" : "native text"}`);
       return text;
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      toast.error(detail || "Capture failed");
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      const msg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg).join(", ") : "Capture failed";
+      toast.error(msg);
       return null;
     } finally {
       setExtracting(false);
@@ -141,26 +149,37 @@ export function RecordResponseDialog({
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!file || !decisionStatusId || !signatoryName || !responseDate) {
+      if (!file || !decisionStatusId) {
         throw new Error("missing");
       }
       const fd = new FormData();
       fd.append("file", file);
+
+      if (roundId) {
+        // Replace mode — PUT with form fields
+        if (signatoryName) fd.append("signatory_name", signatoryName);
+        if (responseDate) fd.append("response_date", responseDate);
+        if (responseTime) fd.append("response_time", responseTime);
+        if (comments) fd.append("comments", comments);
+        return api.put(`/documents/${documentId}/approval-rounds/${roundId}/file`, fd);
+      }
+
+      // New recording — POST with query params
       const params = new URLSearchParams({
         approver_order: String(approverOrder),
         decision_status_id: decisionStatusId,
         signatory_name: signatoryName,
         response_date: responseDate,
       });
+      if (responseTime) params.set("response_time", responseTime);
       if (comments) params.set("comments", comments);
       return api.post(
         `/documents/${documentId}/approval-rounds?${params.toString()}`,
         fd,
-        { headers: { "Content-Type": "multipart/form-data" } },
       );
     },
     onSuccess: () => {
-      toast.success(`Approver ${approverOrder} response recorded`);
+      toast.success(roundId ? "Document replaced" : `Approver ${approverOrder} response recorded`);
       onSuccess();
       onOpenChange(false);
     },
@@ -172,7 +191,7 @@ export function RecordResponseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             Record Approver {approverOrder} response{approverName ? ` — ${approverName}` : ""}
@@ -196,6 +215,8 @@ export function RecordResponseDialog({
             setSignatoryName={setSignatoryName}
             responseDate={responseDate}
             setResponseDate={setResponseDate}
+            responseTime={responseTime}
+            setResponseTime={setResponseTime}
             comments={comments}
             setComments={setComments}
             armedField={armedField}
@@ -214,7 +235,7 @@ export function RecordResponseDialog({
             <Button
               onClick={() => submitMutation.mutate()}
               disabled={
-                !file || !decisionStatusId || !signatoryName || !responseDate || submitMutation.isPending
+                !file || !decisionStatusId || submitMutation.isPending
               }
             >
               {submitMutation.isPending ? "Saving..." : "Save response"}
@@ -236,7 +257,7 @@ function FileInput({ file, onFile }: { file: File | null; onFile: (f: File | nul
         onChange={(e) => onFile(e.target.files?.[0] || null)}
         className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
       />
-      {file && <p className="text-xs text-muted-foreground mt-1">Selected: {file.name}</p>}
+      <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
     </div>
   );
 }
@@ -249,6 +270,8 @@ interface FormSideProps {
   setSignatoryName: (v: string) => void;
   responseDate: string;
   setResponseDate: (v: string) => void;
+  responseTime: string;
+  setResponseTime: (v: string) => void;
   comments: string;
   setComments: (v: string) => void;
   armedField: Field | null;
@@ -263,6 +286,7 @@ function FormSide(props: FormSideProps) {
     sortedStatuses, decisionStatusId, setDecisionStatusId,
     signatoryName, setSignatoryName,
     responseDate, setResponseDate,
+    responseTime, setResponseTime,
     comments, setComments,
     armedField, armField, disableArm, retryAsOcr, captured,
   } = props;
@@ -316,6 +340,17 @@ function FormSide(props: FormSideProps) {
         retryAsOcr={retryAsOcr}
         captured={captured.response_date}
         type="date"
+      />
+      <CaptureRow
+        label="Response time"
+        field="response_time"
+        value={responseTime}
+        onChange={setResponseTime}
+        armed={armedField === "response_time"}
+        armField={armField}
+        disableArm={disableArm}
+        retryAsOcr={retryAsOcr}
+        captured={captured.response_time}
       />
       <CaptureRow
         label="Comments"
@@ -379,6 +414,8 @@ function CaptureRow({
       </div>
       {textarea ? (
         <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} />
+      ) : type === "date" ? (
+        <DatePicker value={value} onChange={onChange} placeholder="Select date" />
       ) : (
         <Input type={type || "text"} value={value} onChange={(e) => onChange(e.target.value)} />
       )}

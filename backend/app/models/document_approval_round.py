@@ -35,6 +35,7 @@ class DocumentApprovalRound(BaseModel):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_date: Mapped[date | None] = mapped_column(Date)
+    response_time: Mapped[str | None] = mapped_column(String(10))
     returned_file_path: Mapped[str | None] = mapped_column(String(1000))
     returned_file_name: Mapped[str | None] = mapped_column(String(255))
     remarks_file_path: Mapped[str | None] = mapped_column(String(1000))

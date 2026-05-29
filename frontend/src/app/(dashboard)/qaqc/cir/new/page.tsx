@@ -453,8 +453,8 @@ function NewCIRPageContent() {
                 attachments={attachments}
                 onAttachmentsChange={setAttachments}
                 onDirtyChange={() => setIsDirty(true)}
-                showPagePosition={true}
-                showDownloadBundle={true}
+                showPagePosition={false}
+                showDownloadBundle={false}
               />
             </CardContent>
           </Card>

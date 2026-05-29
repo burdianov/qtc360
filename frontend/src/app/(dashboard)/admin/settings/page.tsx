@@ -143,6 +143,59 @@ export default function SettingsPage() {
       </Card>
 
       <ProjectApproversCard projectId={projectId} />
+
+      <DateFormatCard />
     </div>
+  );
+}
+
+function DateFormatCard() {
+  const qc = useQueryClient();
+  const [dateFormat, setDateFormat] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  const { data } = useQuery<{ key: string; value: string }>({
+    queryKey: ["app-setting", "date_format"],
+    queryFn: async () => (await api.get("/admin/settings/date_format")).data,
+  });
+
+  if (data && !loaded) {
+    setDateFormat(data.value);
+    setLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.put("/admin/settings/date_format", { value: dateFormat }),
+    onSuccess: () => {
+      toast.success("Date format saved");
+      qc.invalidateQueries({ queryKey: ["app-setting", "date_format"] });
+    },
+  });
+
+  const FORMAT_OPTIONS = ["DD.MM.YYYY", "MM/DD/YYYY", "YYYY-MM-DD", "DD-MM-YYYY", "DD/MM/YYYY"];
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Date Format</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Set the date display format used across the application and in generated PDFs.
+        </p>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Format</label>
+            <Select value={dateFormat} onValueChange={setDateFormat}>
+              <SelectTrigger className="w-44"><SelectValue placeholder="Select format" /></SelectTrigger>
+              <SelectContent>
+                {FORMAT_OPTIONS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !dateFormat}>
+            {saveMutation.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -82,7 +82,7 @@ function Input({ file, onFile }: { file: File | null; onFile: (f: File | null) =
         onChange={(e) => onFile(e.target.files?.[0] || null)}
         className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
       />
-      {file && <p className="text-xs text-muted-foreground">Selected: {file.name}</p>}
+      <p className="text-xs text-muted-foreground">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
     </div>
   );
 }

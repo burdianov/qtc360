@@ -43,6 +43,16 @@ class Document(BaseModel):
     drawing_ref: Mapped[str | None] = mapped_column(String(255))
     inspection_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Inspector remarks
+    remarks_1: Mapped[str | None] = mapped_column(Text)
+    remarks_2: Mapped[str | None] = mapped_column(Text)
+
+    # Inspector date/time (manually entered)
+    inspector_date_1: Mapped[str | None] = mapped_column(String(20))
+    inspector_time_1: Mapped[str | None] = mapped_column(String(10))
+    inspector_date_2: Mapped[str | None] = mapped_column(String(20))
+    inspector_time_2: Mapped[str | None] = mapped_column(String(10))
+
     # MIR context fields
     delivery_note: Mapped[str | None] = mapped_column(String(255))
 

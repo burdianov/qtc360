@@ -34,6 +34,7 @@ export interface ApprovalRound {
   submitted_at: string | null;
   returned_at: string | null;
   response_date: string | null;
+  response_time: string | null;
   returned_file_name: string | null;
   remarks_file_name: string | null;
 }
@@ -158,22 +159,11 @@ export function ApprovalActionPanel({
         </Button>
       );
     } else {
-      // A / B / D → submit to Approver 2. B also exposes the optional remarks slot.
+      // A / B / D → submit to Approver 2.
       primary = (
-        <div className="flex flex-col gap-2 w-full">
-          {approver1Letter === "B" && approver1Round && (
-            <Button
-              variant="outline"
-              onClick={() => { setRemarksRound(approver1Round); setRemarksOpen(true); }}
-            >
-              <MessageSquare className="mr-2 h-4 w-4" />
-              {approver1Round.remarks_file_name ? "Replace remarks file" : "Add remarks for Approver 2 (optional)"}
-            </Button>
-          )}
-          <Button onClick={() => { setSubmitOrder(2); setSubmitOpen(true); }}>
-            <Send className="mr-2 h-4 w-4" />Submit to Approver 2
-          </Button>
-        </div>
+        <Button onClick={() => { setSubmitOrder(2); setSubmitOpen(true); }}>
+          <Send className="mr-2 h-4 w-4" />Submit to Approver 2
+        </Button>
       );
     }
   } else if (documentStatus === "with_approver_2") {
@@ -250,14 +240,16 @@ export function ApprovalActionPanel({
 
       {chainPreview}
 
-      {primary && <div className="pt-1">{primary}</div>}
-
       <ApprovalRoundsList
         documentId={documentId}
         rounds={rounds}
         projectApprovers={chain}
         approvalStatuses={approvalStatuses}
+        locked={["approved", "approved_with_comments", "rejected", "superseded", "cancelled"].includes(documentStatus)}
+        onReplace={(order) => { setRecordOrder(order); setRecordOpen(true); }}
       />
+
+      {primary && <div className="pt-1">{primary}</div>}
 
       <SubmitToApproverDialog
         open={submitOpen}
@@ -274,6 +266,7 @@ export function ApprovalActionPanel({
         approverOrder={recordOrder}
         approverName={chain.find((c) => c.approver_order === recordOrder)?.approver.name || ""}
         approvalStatuses={approvalStatuses}
+        roundId={rounds.find((r) => r.approver_order === recordOrder && r.decision_status_id)?.id}
         onSuccess={refresh}
       />
       <AddRemarksDialog

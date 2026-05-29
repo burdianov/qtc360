@@ -146,6 +146,7 @@ export function DataTableToolbar<TData>({
                   <Upload className="mr-2 h-4 w-4" />
                   Select CSV File
                 </Button>
+                <p className="text-xs text-muted-foreground text-center">Accepted format: CSV</p>
               </div>
             </div>
           </DialogContent>

@@ -12,10 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useSelectedProject } from "@/hooks/use-project";
+import { useCurrentUser } from "@/hooks/use-auth";
 
 export default function TemplatesPage() {
   const qc = useQueryClient();
   const project = useSelectedProject();
+  const { data: currentUser } = useCurrentUser();
+  const canManageTemplates = currentUser?.permissions?.includes("reports.templates") || currentUser?.is_superuser;
   const projectId = project?.id;
   const [docType, setDocType] = useState("WIR");
   const [name, setName] = useState("");
@@ -61,6 +64,7 @@ export default function TemplatesPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Upload Template</CardTitle></CardHeader>
         <CardContent>
+          {canManageTemplates ? (
           <div className="flex gap-4 flex-wrap items-end">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Doc Type</label>
@@ -81,11 +85,15 @@ export default function TemplatesPage() {
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">DOCX File</label>
               <input type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
+              <p className="text-xs text-muted-foreground mt-1">Accepted format: DOCX</p>
             </div>
             <Button onClick={handleUpload} disabled={uploading || !file || !name}>
               <Upload className="h-4 w-4 mr-2" />{uploading ? "Uploading..." : "Upload"}
             </Button>
           </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Only administrators can upload templates.</p>
+          )}
         </CardContent>
       </Card>
 
@@ -111,9 +119,11 @@ export default function TemplatesPage() {
                   <Button variant="ghost" size="sm" onClick={() => window.open(`${api.defaults.baseURL}/reports/templates/${t.id}/download`)}>
                     Download
                   </Button>
+                  {canManageTemplates && (
                   <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(t)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
+                  )}
                 </div>
               ))}
             </div>

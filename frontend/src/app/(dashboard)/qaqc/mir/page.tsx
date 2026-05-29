@@ -6,6 +6,7 @@ import { type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -35,12 +36,32 @@ export default function MIRPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/documents/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents", "MIR", project?.id] }),
+    onSuccess: () => {
+      toast.success("Document removed");
+      queryClient.invalidateQueries({ queryKey: ["documents", "MIR", project?.id] });
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || "Failed to remove document");
+    },
   });
+
+  const isSubmitted = (doc: Document) => {
+    const submittedStatuses = ["with_approver_1", "with_approver_2", "approver_1_returned", "approved", "approved_with_comments", "rejected"];
+    return submittedStatuses.includes(doc.status);
+  };
 
   const rowActions: RowAction<Document>[] = [
     { label: "Edit", onClick: (row) => router.push(`/qaqc/mir/new?id=${row.id}`) },
-    { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Delete this MIR?" },
+    {
+      label: (row) => isSubmitted(row) ? "Supersede" : "Delete",
+      onClick: (row) => deleteMutation.mutate(row.id),
+      destructive: true,
+      separator: true,
+      confirm: (row) => isSubmitted(row)
+        ? "This document was submitted to an approver. It will be marked as superseded and the serial number will not be reused. Continue?"
+        : "This document was not submitted. It will be permanently deleted along with all attachments, and its serial number will be available for reuse. Continue?",
+    },
   ];
 
   const columns: ColumnDef<Document, unknown>[] = [

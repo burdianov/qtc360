@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, Loader2, X, Send, PenLine } from "lucide-react";
+import { ArrowLeft, Loader2, X, Send, PenLine, Download, ChevronDown } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -43,6 +44,12 @@ const schema = z.object({
   drawing_reference: z.string().optional(),
   inspector_1_id: z.string().optional(),
   inspector_2_id: z.string().optional(),
+  remarks_1: z.string().optional(),
+  remarks_2: z.string().optional(),
+  inspector_date_1: z.string().optional(),
+  inspector_time_1: z.string().optional(),
+  inspector_date_2: z.string().optional(),
+  inspector_time_2: z.string().optional(),
   date: z.string().optional(),
 });
 
@@ -68,6 +75,7 @@ function NewWIRPageContent() {
   const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
   const [assetSearch, setAssetSearch] = useState("");
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
   const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean; insert_after_page?: number | null }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
@@ -136,6 +144,12 @@ function NewWIRPageContent() {
       drawing_reference: "",
       inspector_1_id: "",
       inspector_2_id: "",
+      remarks_1: "",
+      remarks_2: "",
+      inspector_date_1: "",
+      inspector_time_1: "",
+      inspector_date_2: "",
+      inspector_time_2: "",
       date: new Date().toISOString().split("T")[0],
     },
   });
@@ -146,6 +160,8 @@ function NewWIRPageContent() {
     queryFn: async () => (await api.get(`/documents/${editId}`)).data,
     enabled: !!editId,
   });
+
+  const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
 
   useEffect(() => {
     if (existingDoc) {
@@ -159,6 +175,12 @@ function NewWIRPageContent() {
         drawing_reference: existingDoc.drawing_ref || "",
         inspector_1_id: existingDoc.site_engineer_id || "",
         inspector_2_id: existingDoc.qaqc_engineer_id || "",
+        remarks_1: existingDoc.remarks_1 || "",
+        remarks_2: existingDoc.remarks_2 || "",
+        inspector_date_1: existingDoc.inspector_date_1 || "",
+        inspector_time_1: existingDoc.inspector_time_1 || "",
+        inspector_date_2: existingDoc.inspector_date_2 || "",
+        inspector_time_2: existingDoc.inspector_time_2 || "",
         date: existingDoc.inspection_date ? existingDoc.inspection_date.split("T")[0] : "",
       });
       setSigned({
@@ -267,6 +289,12 @@ function NewWIRPageContent() {
     inspection_date: values.date || null,
     site_engineer_id: values.inspector_1_id || null,
     qaqc_engineer_id: values.inspector_2_id || null,
+    remarks_1: values.remarks_1 || null,
+    remarks_2: values.remarks_2 || null,
+    inspector_date_1: values.inspector_date_1 || null,
+    inspector_time_1: values.inspector_time_1 || null,
+    inspector_date_2: values.inspector_date_2 || null,
+    inspector_time_2: values.inspector_time_2 || null,
     asset_ids: selectedAssets.map((a) => a.id),
   });
 
@@ -450,6 +478,7 @@ function NewWIRPageContent() {
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v), () => toast.error("Please fill in all required fields"))} noValidate className="space-y-6">
 
           {/* Basic Info */}
+          <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none">
           <Card>
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -462,7 +491,7 @@ function NewWIRPageContent() {
               <div>
                 <FormItem>
                   <FormLabel>Template</FormLabel>
-                  <Select value={selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : "")} onValueChange={(v: any) => setSelectedTemplateId(v)} disabled={docTemplates.length <= 1}>
+                  <Select value={selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : "")} onValueChange={(v: any) => { setSelectedTemplateId(v); setIsDirty(true); }} disabled={docTemplates.length <= 1}>
                     <SelectTrigger><SelectValue placeholder="Select template">{(() => { const t = docTemplates.find((t) => t.id === (selectedTemplateId || (docTemplates.length === 1 ? docTemplates[0].id : ""))); return t ? `${t.name} (v${t.version})` : ""; })()}</SelectValue></SelectTrigger>
                     <SelectContent>{docTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name} (v{t.version}){t.is_active ? " ✓" : ""}</SelectItem>)}</SelectContent>
                   </Select>
@@ -505,6 +534,7 @@ function NewWIRPageContent() {
               )} />
             </CardContent>
           </Card>
+          </fieldset>
 
           {/* Commissioning Linkage */}
           <Card>
@@ -529,7 +559,13 @@ function NewWIRPageContent() {
 
           {/* Assets */}
           <Card className={!commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
-            <CardHeader><CardTitle className="text-base">Assets ({selectedAssets.length} selected)</CardTitle></CardHeader>
+            <CardHeader className="cursor-pointer" onClick={() => setAssetsOpen(!assetsOpen)}>
+              <CardTitle className="text-base flex items-center justify-between">
+                Assets ({selectedAssets.length} selected)
+                <ChevronDown className={"h-4 w-4 text-muted-foreground transition-transform " + (assetsOpen ? "rotate-180" : "")} />
+              </CardTitle>
+            </CardHeader>
+            {assetsOpen && (
             <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <Select value={assetTypeFilter} onValueChange={(v: any) => setAssetTypeFilter(v === "__all__" ? "" : v)}>
@@ -590,32 +626,55 @@ function NewWIRPageContent() {
                 </div>
               )}
             </CardContent>
+            )}
           </Card>
 
           {/* Inspectors & Signatures */}
+          <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
             <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-3">
-                  <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Inspected by 1</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger className="w-full min-w-[280px]"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
-                        <SelectContent>
-                          {users.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              <span className="inline-flex items-baseline gap-2 w-full">
-                                <span>{u.full_name}:</span>
-                                <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )} />
+            <CardContent>
+              <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+                {/* Row 1: Inspector select */}
+                <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Inspected by 1</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <span className="inline-flex items-baseline gap-2 w-full">
+                              <span>{u.full_name}:</span>
+                              <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Inspected by 2</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            <span className="inline-flex items-baseline gap-2 w-full">
+                              <span>{u.full_name}:</span>
+                              <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+
+                {/* Row 2: Signature boxes */}
+                <div>
                   <div
                     className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
                       signed.inspector1
@@ -624,47 +683,21 @@ function NewWIRPageContent() {
                           ? "border-border hover:border-primary/50 cursor-pointer"
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
-                    onClick={() => {
-                      if (currentUser?.id === inspector1Id && !signed.inspector1) handleSign("site_engineer");
-                    }}
+                    onClick={() => { if (currentUser?.id === inspector1Id && !signed.inspector1) handleSign("site_engineer"); }}
                   >
                     {signed.inspector1 ? (
-                      <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
-                        alt="Signature"
-                        className="h-10 object-contain"
-                      />
+                      <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector1Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" />
                     ) : (
-                      <span className="text-sm text-muted-foreground">
-                        {currentUser?.id === inspector1Id ? "Click to sign" : "Awaiting signature"}
-                      </span>
+                      <span className="text-sm text-muted-foreground">{currentUser?.id === inspector1Id ? "Click to sign" : "Awaiting signature"}</span>
                     )}
                   </div>
-                  {currentUser?.id === inspector1Id && (
-                    <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
-                      <PenLine className="h-3 w-3" />Change signature style
-                    </Link>
-                  )}
+                  <div className="h-5 mt-1">
+                    {currentUser?.id === inspector1Id && (
+                      <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Inspected by 2</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl><SelectTrigger className="w-full min-w-[280px]"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
-                        <SelectContent>
-                          {users.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              <span className="inline-flex items-baseline gap-2 w-full">
-                                <span>{u.full_name}:</span>
-                                <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )} />
+                <div>
                   <div
                     className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
                       signed.inspector2
@@ -673,28 +706,72 @@ function NewWIRPageContent() {
                           ? "border-border hover:border-primary/50 cursor-pointer"
                           : "border-border opacity-50 cursor-not-allowed"
                     }`}
-                    onClick={() => {
-                      if (currentUser?.id === inspector2Id && !signed.inspector2) handleSign("qaqc_engineer");
-                    }}
+                    onClick={() => { if (currentUser?.id === inspector2Id && !signed.inspector2) handleSign("qaqc_engineer"); }}
                   >
                     {signed.inspector2 ? (
-                      <img
-                        src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
-                        alt="Signature"
-                        className="h-10 object-contain"
-                      />
+                      <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" />
                     ) : (
-                      <span className="text-sm text-muted-foreground">
-                        {currentUser?.id === inspector2Id ? "Click to sign" : "Awaiting signature"}
-                      </span>
+                      <span className="text-sm text-muted-foreground">{currentUser?.id === inspector2Id ? "Click to sign" : "Awaiting signature"}</span>
                     )}
                   </div>
-                  {currentUser?.id === inspector2Id && (
-                    <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
-                      <PenLine className="h-3 w-3" />Change signature style
-                    </Link>
-                  )}
+                  <div className="h-5 mt-1">
+                    {currentUser?.id === inspector2Id && (
+                      <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>
+                    )}
+                  </div>
                 </div>
+
+                {/* Row 3: Date & Time */}
+                <fieldset disabled={currentUser?.id !== inspector1Id} className="disabled:opacity-50 disabled:pointer-events-none">
+                  <div className="grid grid-cols-2 gap-2">
+                    <FormField control={form.control} name="inspector_date_1" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date</FormLabel>
+                        <FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" /></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="inspector_time_1" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Time</FormLabel>
+                        <FormControl><TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                </fieldset>
+                <fieldset disabled={currentUser?.id !== inspector2Id} className="disabled:opacity-50 disabled:pointer-events-none">
+                  <div className="grid grid-cols-2 gap-2">
+                    <FormField control={form.control} name="inspector_date_2" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date</FormLabel>
+                        <FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" /></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="inspector_time_2" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Time</FormLabel>
+                        <FormControl><TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" /></FormControl>
+                      </FormItem>
+                    )} />
+                  </div>
+                </fieldset>
+
+                {/* Row 4: Remarks */}
+                <fieldset disabled={currentUser?.id !== inspector1Id} className="disabled:opacity-50 disabled:pointer-events-none">
+                  <FormField control={form.control} name="remarks_1" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Remarks</FormLabel>
+                      <FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl>
+                    </FormItem>
+                  )} />
+                </fieldset>
+                <fieldset disabled={currentUser?.id !== inspector2Id} className="disabled:opacity-50 disabled:pointer-events-none">
+                  <FormField control={form.control} name="remarks_2" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Remarks</FormLabel>
+                      <FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl>
+                    </FormItem>
+                  )} />
+                </fieldset>
               </div>
             </CardContent>
           </Card>
@@ -710,16 +787,16 @@ function NewWIRPageContent() {
                 attachments={attachments}
                 onAttachmentsChange={setAttachments}
                 onDirtyChange={() => setIsDirty(true)}
-                showPagePosition={true}
-                showDownloadBundle={true}
+                showPagePosition={false}
+                showDownloadBundle={false}
               />
             </CardContent>
           </Card>
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            {editId && (
-              <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => {
+            {editId && (<>
+              <Button type="button" variant="outline" disabled={pdfLoading || !editId || isDirty || form.formState.isDirty} onClick={async () => {
                 setPdfLoading(true);
                 try {
                   const payload: any = { document_id: editId, project_id: project!.id };
@@ -733,7 +810,20 @@ function NewWIRPageContent() {
               }}>
                 {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
               </Button>
-            )}
+              <Button type="button" variant="outline" disabled={!editId || !signed.inspector1 || !signed.inspector2 || isDirty || form.formState.isDirty} onClick={async () => {
+                try {
+                  const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" });
+                  const url = URL.createObjectURL(res.data);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${referenceNo || "document"}.pdf`;
+                  a.click();
+                  setTimeout(() => URL.revokeObjectURL(url), 60000);
+                } catch { toast.error("Failed to download document"); }
+              }}>
+                <Download className="h-4 w-4 mr-2" />Download Document
+              </Button>
+            </>)}
             <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
             <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
@@ -742,6 +832,7 @@ function NewWIRPageContent() {
               <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
             </Button>
           </div>
+          </fieldset>
         </form>
       </Form>
 

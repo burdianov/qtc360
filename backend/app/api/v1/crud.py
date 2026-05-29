@@ -29,6 +29,7 @@ def create_crud_router(
     response_schema: Type[PydanticModel],
     eager: list[InstrumentedAttribute] | None = None,
     write_permission: str = "master_data.manage",
+    hard_delete: bool = False,
 ) -> APIRouter:
     router = APIRouter(prefix=prefix, tags=[tag])
     _update_schema = update_schema or create_schema
@@ -37,8 +38,12 @@ def create_crud_router(
     def _base_query():
         stmt = select(model).where(model.is_deleted == False)  # noqa: E712
         if eager:
+            from sqlalchemy.orm.strategy_options import _AbstractLoad
             for rel in eager:
-                stmt = stmt.options(selectinload(rel))
+                if isinstance(rel, _AbstractLoad):
+                    stmt = stmt.options(rel)
+                else:
+                    stmt = stmt.options(selectinload(rel))
         return stmt
 
     def _scope_to_user(stmt, user: User):
@@ -152,7 +157,10 @@ def create_crud_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
         if has_project:
             await assert_user_in_project(user, getattr(item, "project_id", None))
-        item.is_deleted = True
+        if hard_delete:
+            await db.delete(item)
+        else:
+            item.is_deleted = True
         await db.commit()
 
     return router
