@@ -76,7 +76,11 @@ function NewMIRPageContent() {
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({ queryKey: ["disciplines"], queryFn: async () => (await api.get("/disciplines")).data });
   const { data: users = [] } = useQuery<User[]>({ queryKey: ["users"], queryFn: async () => (await api.get("/auth/users")).data });
-  const { data: assets = [] } = useQuery<Asset[]>({ queryKey: ["assets"], queryFn: async () => (await api.get("/assets")).data });
+  const { data: assets = [] } = useQuery<Asset[]>({
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
+  });
   const { data: services = [] } = useQuery<Service[]>({ queryKey: ["services"], queryFn: async () => (await api.get("/services")).data });
   const { data: assetTypes = [] } = useQuery<AssetType[]>({ queryKey: ["asset-types"], queryFn: async () => (await api.get("/asset-types")).data });
 

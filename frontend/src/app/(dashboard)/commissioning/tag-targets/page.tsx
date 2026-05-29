@@ -59,13 +59,15 @@ export default function TagTargetsPage() {
   const [editing, setEditing] = useState<TagTarget | null>(null);
 
   const { data: assets = [] } = useQuery<Asset[]>({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get("/assets")).data,
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: targets = [], isLoading } = useQuery<TagTarget[]>({
-    queryKey: ["tag-targets"],
-    queryFn: async () => (await api.get("/commissioning/tag-targets")).data,
+    queryKey: ["tag-targets", project?.id],
+    queryFn: async () => (await api.get("/commissioning/tag-targets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const assetMap = Object.fromEntries(assets.map((a) => [a.id, a]));

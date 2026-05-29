@@ -106,9 +106,12 @@ export default function DashboardPage() {
 }
 
 function LevelProgress() {
+  const project = useSelectedProject();
+
   const { data: requirements = [] } = useQuery<{ status: string; required_for_tag: string }[]>({
-    queryKey: ["asset-requirements-all"],
-    queryFn: async () => (await api.get("/commissioning/asset-requirements")).data,
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const levels = [
@@ -142,9 +145,12 @@ function LevelProgress() {
 }
 
 function TagSummary() {
+  const project = useSelectedProject();
+
   const { data: requirements = [] } = useQuery<{ asset_id: string; status: string; required_for_tag: string }[]>({
-    queryKey: ["asset-requirements-all"],
-    queryFn: async () => (await api.get("/commissioning/asset-requirements")).data,
+    queryKey: ["asset-requirements-all", project?.id],
+    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   // Count unique assets that achieved each tag

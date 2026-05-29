@@ -88,8 +88,9 @@ function NewWIRPageContent() {
   });
 
   const { data: assets = [] } = useQuery<Asset[]>({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get("/assets")).data,
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: services = [] } = useQuery<Service[]>({

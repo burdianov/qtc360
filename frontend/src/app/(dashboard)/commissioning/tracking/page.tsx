@@ -73,8 +73,9 @@ export default function CommissioningTrackingPage() {
   const [filterAssetType, setFilterAssetType] = useState<string>("");
 
   const { data: assets = [] } = useQuery<(Asset & { asset_type_id: string })[]>({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get("/assets")).data,
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({

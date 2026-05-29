@@ -36,8 +36,9 @@ export default function AssetsPage() {
   const [filterTypeId, setFilterTypeId] = useState<string>("");
 
   const { data: assets = [], isLoading } = useQuery<Asset[]>({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get("/assets")).data,
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: assetTypes = [] } = useQuery<AssetType[]>({

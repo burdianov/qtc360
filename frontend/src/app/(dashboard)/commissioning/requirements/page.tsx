@@ -44,8 +44,9 @@ export default function CommissioningRequirementsPage() {
   const [selectedAssetId, setSelectedAssetId] = useState<string>("");
 
   const { data: assets = [] } = useQuery<Asset[]>({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get("/assets")).data,
+    queryKey: ["assets", project?.id],
+    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
+    enabled: !!project?.id,
   });
 
   const { data: templates = [] } = useQuery<RequirementTemplate[]>({
