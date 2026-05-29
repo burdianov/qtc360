@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import api from "@/lib/api";
 import type { ApprovalRound, ApprovalStatus, ProjectApprover } from "./approval-action-panel";
 
 interface Props {
@@ -57,8 +63,13 @@ function RoundCard({
   decision: ApprovalStatus | null;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const letter = decision?.letter?.toUpperCase() || null;
   const tone = letter === "C" ? "danger" : letter ? "success" : "muted";
+
+  const handleDownloadBundle = () => {
+    window.open(`/api/v1/documents/${documentId}/approval-rounds/${round.id}/bundle`, "_blank");
+  };
 
   return (
     <div className="rounded-md border">
@@ -103,13 +114,15 @@ function RoundCard({
             </div>
           )}
           {round.returned_file_name && (
-            <a
-              href={`/api/v1/documents/${documentId}/approval-rounds/${round.id}/file`}
-              className="flex items-center gap-2 text-xs text-sky-500 hover:underline"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              {round.returned_file_name}
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/api/v1/documents/${documentId}/approval-rounds/${round.id}/file`}
+                className="flex items-center gap-2 text-xs text-sky-500 hover:underline"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                {round.returned_file_name}
+              </a>
+            </div>
           )}
           {round.remarks_file_name && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -117,8 +130,124 @@ function RoundCard({
               Remarks: {round.remarks_file_name}
             </div>
           )}
+          {round.returned_file_name && (
+            <div className="flex gap-2 pt-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                onClick={handleDownloadBundle}
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                Download Bundle
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                onClick={() => setUploadDialogOpen(true)}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add Attachment
+              </Button>
+            </div>
+          )}
         </div>
       )}
+
+      <UploadAttachmentDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        documentId={documentId}
+        roundId={round.id}
+      />
     </div>
+  );
+}
+
+function UploadAttachmentDialog({
+  open,
+  onOpenChange,
+  documentId,
+  roundId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  documentId: string;
+  roundId: string;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [insertAfterPage, setInsertAfterPage] = useState("0");
+  const queryClient = useQueryClient();
+
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error("No file selected");
+      const fd = new FormData();
+      fd.append("file", file);
+      return api.post(
+        `/documents/${documentId}/approval-rounds/${roundId}/attachments?insert_after_page=${insertAfterPage}`,
+        fd,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+    },
+    onSuccess: () => {
+      toast.success("Attachment uploaded successfully");
+      queryClient.invalidateQueries({ queryKey: ["document", documentId] });
+      onOpenChange(false);
+      setFile(null);
+      setInsertAfterPage("0");
+    },
+    onError: (err: unknown) => {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(detail || "Failed to upload attachment");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Attachment to Round</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">PDF File</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
+            />
+            {file && <p className="text-xs text-muted-foreground mt-1">Selected: {file.name}</p>}
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Insert After Page (0 = after first page)
+            </label>
+            <Input
+              type="number"
+              min="0"
+              value={insertAfterPage}
+              onChange={(e) => setInsertAfterPage(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Page numbers are 0-indexed. Enter 0 to insert after the first page, 1 for after the second page, etc.
+            </p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => uploadMutation.mutate()}
+            disabled={!file || uploadMutation.isPending}
+          >
+            {uploadMutation.isPending ? "Uploading..." : "Upload"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

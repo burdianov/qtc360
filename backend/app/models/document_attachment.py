@@ -30,6 +30,7 @@ class DocumentAttachment(BaseModel):
     content_type: Mapped[str] = mapped_column(String(100))
     size: Mapped[int] = mapped_column(Integer)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    insert_after_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     approval_round: Mapped["DocumentApprovalRound | None"] = relationship(  # noqa: F821
         back_populates="attachments"

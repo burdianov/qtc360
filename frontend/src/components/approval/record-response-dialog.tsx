@@ -207,7 +207,7 @@ export function RecordResponseDialog({
         </div>
         <div className="flex items-center justify-between pt-4 border-t mt-4">
           <p className="text-xs text-muted-foreground">
-            File splits into cover + per-page attachments on save.
+            PDF will be saved as a single file. You can add attachments later.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

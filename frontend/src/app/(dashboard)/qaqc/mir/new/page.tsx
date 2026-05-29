@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, GripVertical, Loader2, Plus, Trash2, X, Send, PenLine } from "lucide-react";
+import { ArrowLeft, Loader2, X, Send, PenLine } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { CommissioningLinkagePanel, type CommissioningLinkage } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
+import { DocumentAttachments } from "@/components/document-attachments";
 
 interface Discipline { id: string; name: string; code: string; }
 interface User { id: string; full_name: string; designation: { id: string; name: string } | null; signature_text: string | null; signature_font: string | null; }
@@ -65,7 +66,7 @@ function NewMIRPageContent() {
   const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
   const [assetSearch, setAssetSearch] = useState("");
   const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
-  const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean }[]>([]);
+  const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean; insert_after_page?: number | null }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
@@ -250,7 +251,10 @@ function NewMIRPageContent() {
     for (const att of newAtts) {
       const fd = new FormData();
       fd.append("file", att.file!);
-      await api.post(`/documents/${docId}/attachments`, fd, { headers: { "Content-Type": undefined } });
+      const params = att.insert_after_page !== undefined && att.insert_after_page !== null
+        ? `?insert_after_page=${att.insert_after_page}`
+        : "";
+      await api.post(`/documents/${docId}/attachments${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } });
     }
     const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
     if (existingIds.length > 0) await api.patch(`/documents/${docId}/attachments/reorder`, existingIds);
@@ -312,27 +316,6 @@ function NewMIRPageContent() {
 
   const addAsset = (id: string) => { const a = assets.find((x) => x.id === id); if (a && !selectedAssets.find((x) => x.id === id)) { setSelectedAssets([...selectedAssets, a]); setIsDirty(true); } };
   const removeAsset = (id: string) => { setSelectedAssets(selectedAssets.filter((a) => a.id !== id)); setIsDirty(true); };
-
-  const addAttachment = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.accept = ".pdf,.jpg,.jpeg,.png";
-    input.onchange = (e) => {
-      const files = (e.target as HTMLInputElement).files;
-      if (files) { setAttachments([...attachments, ...Array.from(files).map((f) => ({ file: f, name: f.name, size: f.size }))]); setIsDirty(true); }
-    };
-    input.click();
-  };
-
-  const removeAttachment = async (index: number) => {
-    const att = attachments[index];
-    if (att.isExisting && att.id && editId) {
-      await api.delete(`/documents/${editId}/attachments/${att.id}`).catch(() => {});
-    }
-    setAttachments(attachments.filter((_, i) => i !== index));
-    setIsDirty(true);
-  };
 
   return (
     <div className="space-y-6">
@@ -462,37 +445,18 @@ function NewMIRPageContent() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <CardTitle className="text-base">Attachments</CardTitle>
-              <Button type="button" variant="outline" size="sm" onClick={addAttachment}><Plus className="h-4 w-4 mr-1" />Add Files</Button>
             </CardHeader>
             <CardContent>
-              {attachments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No attachments added yet. Accepted: PDF, JPG, PNG.</p>
-              ) : (
-                <div className="space-y-2">
-                  {attachments.map((att, i) => (
-                    <div key={i} draggable
-                      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const from = Number(e.dataTransfer.getData("text/plain"));
-                        if (from === i) return;
-                        const items = [...attachments];
-                        const [moved] = items.splice(from, 1);
-                        items.splice(i, 0, moved);
-                        setAttachments(items);
-                      }}
-                      className="flex items-center gap-3 rounded-md border border-border px-3 py-2 transition-colors hover:bg-accent/50">
-                      <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
-                      <span className="flex-1 text-sm truncate">{att.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{(att.size / 1024).toFixed(0)} KB</span>
-                      <button type="button" onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <DocumentAttachments
+                documentId={editId || undefined}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+                onDirtyChange={() => setIsDirty(true)}
+                showPagePosition={true}
+                showDownloadBundle={true}
+              />
             </CardContent>
           </Card>
 

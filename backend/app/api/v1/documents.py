@@ -632,12 +632,10 @@ async def record_response_endpoint(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
-    """Record a response from approver N: upload returned PDF, capture decision,
-    auto-split into cover + per-page attachments."""
+    """Record a response from approver N: upload returned PDF as a single file."""
     from datetime import date as date_cls
 
     from app.services.approval import record_response
-    from app.services.pdf import split_returned_pdf
     from app.models.document_attachment import DocumentAttachment
 
     suffix = Path(file.filename or "").suffix.lower()
@@ -673,15 +671,6 @@ async def record_response_endpoint(
     )
     await db.flush()
 
-    # Use the template snapshot locked at submission time, not whichever
-    # template happens to be active right now. Admin can upload a newer
-    # template version mid-flight without shifting the split boundary.
-    cover_pages = doc.cover_page_count or 1
-    if not cover_pages or cover_pages < 1:
-        cover_pages = 1
-
-    cover_pdf, attachment_pdfs = split_returned_pdf(data, cover_pages)
-
     upload_root = settings.upload_dir_abs
     upload_dir = (upload_root / "approval-rounds" / str(round_.id)).resolve()
     try:
@@ -695,31 +684,17 @@ async def record_response_endpoint(
     round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
     round_.returned_file_name = file.filename or "returned.pdf"
 
-    cover_path = (upload_dir / "cover.pdf").resolve()
-    cover_path.write_bytes(cover_pdf)
+    # Save the returned PDF as a single attachment
     db.add(DocumentAttachment(
         document_id=doc.id,
         document_approval_round_id=round_.id,
-        kind="cover",
-        filename=f"Approver {approver_order} — Cover.pdf",
-        storage_path=str(cover_path.relative_to(upload_root)).replace("\\", "/"),
+        kind="returned_pdf",
+        filename=f"Approver {approver_order} — Returned.pdf",
+        storage_path=str(returned_path.relative_to(upload_root)).replace("\\", "/"),
         content_type="application/pdf",
-        size=len(cover_pdf),
+        size=len(data),
         sort_order=0,
     ))
-    for idx, att_bytes in enumerate(attachment_pdfs, start=1):
-        att_path = (upload_dir / f"attachment-{idx}.pdf").resolve()
-        att_path.write_bytes(att_bytes)
-        db.add(DocumentAttachment(
-            document_id=doc.id,
-            document_approval_round_id=round_.id,
-            kind="response_attachment",
-            filename=f"Approver {approver_order} — Attachment-{idx}.pdf",
-            storage_path=str(att_path.relative_to(upload_root)).replace("\\", "/"),
-            content_type="application/pdf",
-            size=len(att_bytes),
-            sort_order=idx,
-        ))
 
     await record_audit(
         db, user_id=user.id, action="approval_response", entity_type="document", entity_id=doc.id,
@@ -869,6 +844,202 @@ async def upload_round_remarks(
     return round_
 
 
+@router.post(
+    "/{doc_id}/approval-rounds/{round_id}/attachments",
+    status_code=201,
+)
+async def upload_round_attachment(
+    doc_id: UUID,
+    round_id: UUID,
+    file: UploadFile = File(...),
+    insert_after_page: int = Query(..., ge=0, description="Page number after which to insert (0-indexed)"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Upload an additional attachment to an approval round with page position.
+
+    The attachment will be inserted after the specified page in the final merged bundle.
+    insert_after_page is 0-indexed (0 = after first page of returned PDF).
+    """
+    from app.models.document_attachment import DocumentAttachment
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail="Attachment must be a PDF")
+    declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
+    if declared_mime and declared_mime != "application/pdf":
+        raise HTTPException(status_code=400, detail=f"Unsupported MIME type {declared_mime!r}")
+
+    data = await file.read()
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    round_ = (await db.execute(
+        select(DocumentApprovalRound).where(
+            DocumentApprovalRound.id == round_id,
+            DocumentApprovalRound.document_id == doc_id,
+        )
+    )).scalar_one_or_none()
+    if not round_:
+        raise HTTPException(status_code=404, detail="Round not found")
+
+    upload_root = settings.upload_dir_abs
+    upload_dir = (upload_root / "approval-rounds" / str(round_.id) / "attachments").resolve()
+    try:
+        upload_dir.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Bad upload path")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get next sort order for this round
+    count_result = await db.execute(
+        select(func.count()).select_from(DocumentAttachment).where(
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )
+    existing_count = count_result.scalar() or 0
+
+    file_id = str(uuid_mod.uuid4())
+    storage_filename = f"{file_id}.pdf"
+    file_path = (upload_dir / storage_filename).resolve()
+    try:
+        file_path.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Bad upload path")
+    file_path.write_bytes(data)
+
+    att = DocumentAttachment(
+        document_id=doc.id,
+        document_approval_round_id=round_.id,
+        kind="user_attachment",
+        filename=file.filename or "attachment.pdf",
+        storage_path=str(file_path.relative_to(upload_root)).replace("\\", "/"),
+        content_type="application/pdf",
+        size=len(data),
+        sort_order=existing_count,
+        insert_after_page=insert_after_page,
+    )
+    db.add(att)
+
+    await record_audit(
+        db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id,
+        summary=f"Added attachment to approval round {round_.approver_order}",
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Conflict — please retry")
+    await db.refresh(att)
+    return {
+        "id": str(att.id),
+        "filename": att.filename,
+        "size": att.size,
+        "insert_after_page": att.insert_after_page,
+    }
+
+
+@router.get("/{doc_id}/approval-rounds/{round_id}/bundle")
+async def download_round_bundle(
+    doc_id: UUID,
+    round_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download the complete merged PDF bundle for an approval round.
+
+    Merges the returned PDF with all user-uploaded attachments at their
+    specified page positions.
+    """
+    from fastapi.responses import Response
+    from app.models.document_attachment import DocumentAttachment
+    from app.services.pdf_merge import merge_pdf_bundle
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    round_ = (await db.execute(
+        select(DocumentApprovalRound).where(
+            DocumentApprovalRound.id == round_id,
+            DocumentApprovalRound.document_id == doc_id,
+        )
+    )).scalar_one_or_none()
+    if not round_ or not round_.returned_file_path:
+        raise HTTPException(status_code=404, detail="Round or returned file not found")
+
+    upload_root = settings.upload_dir_abs
+    returned_file_path = (upload_root / round_.returned_file_path).resolve()
+    try:
+        returned_file_path.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Bad file path")
+    if not returned_file_path.exists():
+        raise HTTPException(status_code=404, detail="Returned file is missing on disk")
+
+    returned_pdf_bytes = returned_file_path.read_bytes()
+
+    # Get all user attachments for this round
+    attachments_result = await db.execute(
+        select(DocumentAttachment)
+        .where(
+            DocumentAttachment.document_approval_round_id == round_id,
+            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+        .order_by(DocumentAttachment.insert_after_page, DocumentAttachment.sort_order)
+    )
+    attachments = attachments_result.scalars().all()
+
+    # If no attachments, just return the returned PDF
+    if not attachments:
+        return Response(
+            content=returned_pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="Approver_{round_.approver_order}_Bundle.pdf"'
+            },
+        )
+
+    # Load attachment files and prepare for merging
+    attachment_data = []
+    for att in attachments:
+        att_path = (upload_root / att.storage_path).resolve()
+        try:
+            att_path.relative_to(upload_root)
+        except ValueError:
+            continue  # Skip invalid paths
+        if not att_path.exists():
+            continue  # Skip missing files
+        att_bytes = att_path.read_bytes()
+        attachment_data.append((att_bytes, att.insert_after_page or 0))
+
+    # Merge PDFs
+    merged_pdf = merge_pdf_bundle(returned_pdf_bytes, attachment_data)
+
+    return Response(
+        content=merged_pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Approver_{round_.approver_order}_Bundle.pdf"'
+        },
+    )
+
+
 @router.post("/{doc_id}/start-new-revision", response_model=DocumentResponse, status_code=201)
 async def start_new_revision(
     doc_id: UUID,
@@ -967,6 +1138,7 @@ async def list_attachments(
 async def upload_attachment(
     doc_id: UUID,
     file: UploadFile = File(...),
+    insert_after_page: int = Query(None, ge=0, description="Page number after which to insert (0-indexed, optional)"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -1027,6 +1199,7 @@ async def upload_attachment(
         content_type=declared_mime or "application/octet-stream",
         size=len(data),
         sort_order=existing_count,
+        insert_after_page=insert_after_page,
     )
     db.add(att)
     try:
@@ -1035,7 +1208,7 @@ async def upload_attachment(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(att)
-    return {"id": str(att.id), "filename": att.filename, "size": att.size}
+    return {"id": str(att.id), "filename": att.filename, "size": att.size, "insert_after_page": att.insert_after_page}
 
 
 @router.delete("/{doc_id}/attachments/{att_id}", status_code=204)
@@ -1077,4 +1250,83 @@ async def reorder_attachments(
         )
     await db.commit()
     return {"status": "ok"}
+
+
+@router.get("/{doc_id}/bundle")
+async def download_document_bundle(
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download the complete merged PDF bundle for a document.
+
+    Generates the document PDF and merges it with all user-uploaded attachments
+    at their specified page positions.
+    """
+    from fastapi.responses import Response
+    from app.models.document_attachment import DocumentAttachment
+    from app.services.pdf_merge import merge_pdf_bundle
+    from app.services.reports import generate_document_pdf
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    # Generate the document PDF
+    try:
+        main_pdf_bytes = await generate_document_pdf(db, doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+    # Get all user attachments for this document (only PDFs with insert_after_page set)
+    attachments_result = await db.execute(
+        select(DocumentAttachment)
+        .where(
+            DocumentAttachment.document_id == doc_id,
+            DocumentAttachment.kind == "user",
+            DocumentAttachment.insert_after_page.isnot(None),
+            DocumentAttachment.content_type == "application/pdf",
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+        .order_by(DocumentAttachment.insert_after_page, DocumentAttachment.sort_order)
+    )
+    attachments = attachments_result.scalars().all()
+
+    # If no attachments with page positions, just return the main PDF
+    if not attachments:
+        return Response(
+            content=main_pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{doc.reference_no}_Bundle.pdf"'
+            },
+        )
+
+    # Load attachment files and prepare for merging
+    upload_root = settings.upload_dir_abs
+    attachment_data = []
+    for att in attachments:
+        att_path = (upload_root / att.storage_path).resolve()
+        try:
+            att_path.relative_to(upload_root)
+        except ValueError:
+            continue  # Skip invalid paths
+        if not att_path.exists():
+            continue  # Skip missing files
+        att_bytes = att_path.read_bytes()
+        attachment_data.append((att_bytes, att.insert_after_page or 0))
+
+    # Merge PDFs
+    merged_pdf = merge_pdf_bundle(main_pdf_bytes, attachment_data)
+
+    return Response(
+        content=merged_pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{doc.reference_no}_Bundle.pdf"'
+        },
+    )
 
