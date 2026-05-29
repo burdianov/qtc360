@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Props {
@@ -63,12 +64,7 @@ export function SubmitToApproverDialog({
           </p>
           <div>
             <label className="text-xs text-muted-foreground mb-1.5 block">Submission date</label>
-            <Input
-              type="date"
-              value={submittedDate}
-              onChange={(e) => setSubmittedDate(e.target.value)}
-              max={today}
-            />
+            <DatePicker value={submittedDate} onChange={setSubmittedDate} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

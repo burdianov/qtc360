@@ -46,6 +46,22 @@ ALLOWED_ATTACHMENT_MIMES = {
 MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 MAX_ATTACHMENTS_PER_DOC = 200
 
+# Default revision suffix format. Configurable via app_settings key "revision_suffix_format".
+_DEFAULT_REVISION_SUFFIX = "{ref}-REV-{rev}"
+
+
+async def _build_download_filename(db: AsyncSession, doc: "Document") -> str:
+    """Build PDF download filename, appending revision suffix if rev > 0."""
+    ref = doc.reference_no or "document"
+    if doc.revision_no <= 0:
+        return f"{ref}.pdf"
+    from app.models.app_setting import AppSetting
+    result = await db.execute(select(AppSetting).where(AppSetting.key == "revision_suffix_format"))
+    setting = result.scalar_one_or_none()
+    fmt = setting.value if setting else _DEFAULT_REVISION_SUFFIX
+    name = fmt.replace("{ref}", ref).replace("{rev}", str(doc.revision_no))
+    return f"{name}.pdf"
+
 
 async def _allocate_serial(
     db: AsyncSession,
@@ -140,6 +156,60 @@ async def generate_ref_number(
     return {"reference_number": ref}
 
 
+@router.get("/rejected-for-revision")
+async def list_rejected_for_revision(
+    project_id: UUID = Query(...),
+    document_type: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_project_access()),
+):
+    """List rejected documents available for revision (not yet superseded by a newer revision)."""
+    from sqlalchemy.orm import selectinload
+    query = (
+        select(Document)
+        .options(selectinload(Document.discipline))
+        .where(
+            Document.project_id == project_id,
+            Document.status == "rejected",
+            Document.is_deleted == False,  # noqa: E712
+        )
+        .order_by(Document.document_type, Document.reference_no)
+    )
+    if document_type:
+        query = query.where(Document.document_type == document_type.upper())
+    result = await db.execute(query)
+    docs = result.scalars().all()
+
+    # Exclude docs that already have a newer revision
+    out = []
+    for doc in docs:
+        newer = (await db.execute(
+            select(func.count()).select_from(Document).where(
+                Document.reference_no == doc.reference_no,
+                Document.revision_no > doc.revision_no,
+                Document.project_id == project_id,
+                Document.is_deleted == False,  # noqa: E712
+                Document.status != "superseded",
+            )
+        )).scalar()
+        if not newer:
+            out.append(doc)
+
+    # Group by discipline
+    grouped: dict[str, list[dict]] = {}
+    for doc in out:
+        disc_name = doc.discipline.name if doc.discipline else "No Discipline"
+        grouped.setdefault(disc_name, []).append({
+            "id": str(doc.id),
+            "reference_no": doc.reference_no,
+            "revision_no": doc.revision_no,
+            "title": doc.title,
+            "document_type": doc.document_type,
+            "discipline_id": str(doc.discipline_id) if doc.discipline_id else None,
+        })
+    return grouped
+
+
 @router.get("", response_model=list[DocumentResponse])
 async def list_documents(
     project_id: UUID = Query(...),
@@ -197,9 +267,22 @@ async def create_document(
 ):
     await assert_user_in_project(user, body.project_id)
 
-    data = body.model_dump(exclude={"asset_ids"})
+    data = body.model_dump(exclude={"asset_ids", "revision_of_id"})
 
-    # Server-side ref number generation if not provided
+    # Handle revision workflow: copy reference_no, set revision_no, mark old as superseded
+    if body.revision_of_id:
+        old_doc = (await db.execute(
+            select(Document).where(Document.id == body.revision_of_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+        )).scalar_one_or_none()
+        if not old_doc:
+            raise HTTPException(status_code=404, detail="Source document for revision not found")
+        if old_doc.status != "rejected":
+            raise HTTPException(status_code=400, detail="Can only create revision of a rejected document")
+        data["reference_no"] = old_doc.reference_no
+        data["revision_no"] = old_doc.revision_no + 1
+        old_doc.status = "superseded"
+
+    # Server-side ref number generation if not provided (new submission only)
     if not data.get("reference_no"):
         disc_code = ""
         if body.discipline_id:
@@ -214,8 +297,6 @@ async def create_document(
             doc_type=body.document_type,
         )
         if config is None:
-            # Fallback: count existing docs of this type for the project. Not race-safe, but
-            # only used when no ref-config row exists; the unique constraint will catch dupes.
             count_q = select(func.count()).select_from(Document).where(
                 Document.project_id == body.project_id,
                 Document.document_type == body.document_type,
@@ -251,7 +332,7 @@ async def create_document(
         for aid in body.asset_ids:
             await db.execute(document_assets.insert().values(document_id=doc.id, asset_id=aid))
 
-    await record_audit(db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id, summary=f"Created {doc.document_type} '{doc.reference_no}'")
+    await record_audit(db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id, summary=f"Created {doc.document_type} '{doc.reference_no}' rev {doc.revision_no}")
     try:
         await db.commit()
     except IntegrityError:
@@ -523,29 +604,69 @@ async def notify_signatories(
     user: User = Depends(get_current_user),
 ):
     from app.models.notification import Notification
+    from sqlalchemy.orm import selectinload
 
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        select(Document).options(selectinload(Document.discipline)).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
+    if doc.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Only the document creator can notify signatories")
+
+    # Detect previously notified signatories by checking existing notifications for this doc
+    existing_notifs = (await db.execute(
+        select(Notification).where(
+            Notification.link.contains(str(doc_id)),
+            Notification.title == "Signature Required",
+        )
+    )).scalars().all()
+    previously_notified_ids = {n.user_id for n in existing_notifs}
+
     link = f"/qaqc/{doc.document_type.lower()}/new?id={doc_id}"
+    disc_name = doc.discipline.name if doc.discipline else "—"
     notified = []
 
-    for user_id in [doc.site_engineer_id, doc.qaqc_engineer_id]:
-        if user_id and user_id != user.id:
-            notification = Notification(
-                user_id=user_id,
-                project_id=doc.project_id,
-                title="Signature Required",
-                message=f"You are requested to sign {doc.document_type}: {doc.title}",
-                link=link,
-            )
-            db.add(notification)
-            notified.append(str(user_id))
+    msg = (
+        f"You are requested to sign {doc.document_type} {doc.reference_no} (Rev {doc.revision_no}).\n"
+        f"Subject: {doc.title}\n"
+        f"Discipline: {disc_name}"
+    )
+
+    # Notify current signatories who haven't signed
+    current_signatory_ids = set()
+    for user_id, is_signed in [(doc.site_engineer_id, doc.site_engineer_signed), (doc.qaqc_engineer_id, doc.qaqc_engineer_signed)]:
+        if user_id:
+            current_signatory_ids.add(user_id)
+            if not is_signed and user_id != user.id:
+                notification = Notification(
+                    user_id=user_id,
+                    project_id=doc.project_id,
+                    title=f"Signature Required — {doc.reference_no}",
+                    message=msg,
+                    link=link,
+                )
+                db.add(notification)
+                notified.append(str(user_id))
+
+    # Notify removed signatories that they are no longer required
+    removed_ids = previously_notified_ids - current_signatory_ids - {user.id}
+    for removed_id in removed_ids:
+        notification = Notification(
+            user_id=removed_id,
+            project_id=doc.project_id,
+            title=f"Signature No Longer Required — {doc.reference_no}",
+            message=(
+                f"You are no longer required to sign {doc.document_type} {doc.reference_no} (Rev {doc.revision_no}).\n"
+                f"Subject: {doc.title}\n"
+                f"Discipline: {disc_name}"
+            ),
+            link=link,
+        )
+        db.add(notification)
 
     await db.commit()
     return {"notified": notified}
@@ -821,6 +942,42 @@ async def record_response_endpoint(
     )
     if doc.status in ("approved", "approved_with_comments", "rejected"):
         await recalculate_requirements_for_document(db, doc.id)
+
+    # Notify creator + signatories on rejection or approval
+    if doc.status in ("rejected", "approved", "approved_with_comments"):
+        from app.models.notification import Notification
+        from sqlalchemy.orm import selectinload
+        disc_result = await db.execute(
+            select(Document).options(selectinload(Document.discipline)).where(Document.id == doc.id)
+        )
+        doc_with_disc = disc_result.scalar_one()
+        disc_name = doc_with_disc.discipline.name if doc_with_disc.discipline else "—"
+        link = f"/qaqc/{doc.document_type.lower()}/new?id={doc_id}"
+
+        if doc.status == "rejected":
+            title = f"Document Rejected — {doc.reference_no}"
+            message = (
+                f"{doc.document_type} {doc.reference_no} (Rev {doc.revision_no}) has been REJECTED by Approver {approver_order}.\n\n"
+                f"Subject: {doc.title}\n"
+                f"Discipline: {disc_name}\n"
+                f"Signatory: {signatory_name or '—'}\n"
+                f"Comments: {comments or 'None'}\n\n"
+                f"Action required: Start a new revision to resubmit."
+            )
+        else:
+            status_label = "Approved" if doc.status == "approved" else "Approved with Comments"
+            title = f"Document {status_label} — {doc.reference_no}"
+            message = (
+                f"{doc.document_type} {doc.reference_no} (Rev {doc.revision_no}) has been {status_label.upper()}.\n\n"
+                f"Subject: {doc.title}\n"
+                f"Discipline: {disc_name}\n"
+                f"Signatory: {signatory_name or '—'}\n"
+                f"Comments: {comments or 'None'}"
+            )
+
+        recipients = {doc.created_by, doc.site_engineer_id, doc.qaqc_engineer_id} - {None}
+        for uid in recipients:
+            db.add(Notification(user_id=uid, project_id=doc.project_id, title=title, message=message, link=link))
 
     try:
         await db.commit()
@@ -1314,11 +1471,12 @@ async def download_round_bundle(
 
     # If no attachments, just return the returned PDF
     if not attachments:
+        fname = await _build_download_filename(db, doc)
         return Response(
             content=returned_pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
+                "Content-Disposition": f'attachment; filename="{fname}"'
             },
         )
 
@@ -1338,11 +1496,12 @@ async def download_round_bundle(
     # Merge PDFs
     merged_pdf = merge_pdf_bundle(returned_pdf_bytes, attachment_data)
 
+    fname = await _build_download_filename(db, doc)
     return Response(
         content=merged_pdf,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
+            "Content-Disposition": f'attachment; filename="{fname}"'
         },
     )
 
@@ -1609,7 +1768,7 @@ async def download_document_bundle(
     # Generate PDF
     context = _build_context(doc)
     docx_bytes = _fill_template(template.file, context, doc)
-    main_pdf_bytes = _convert_to_pdf(docx_bytes)
+    main_pdf_bytes = await _convert_to_pdf(docx_bytes)
     main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc)
 
     # Get all user attachments for this document
@@ -1626,11 +1785,12 @@ async def download_document_bundle(
 
     # If no attachments, just return the main PDF
     if not attachments:
+        fname = await _build_download_filename(db, doc)
         return Response(
             content=main_pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
+                "Content-Disposition": f'attachment; filename="{fname}"'
             },
         )
 
@@ -1638,11 +1798,12 @@ async def download_document_bundle(
     from app.api.v1.reports import _merge_attachments_with_status
     merged_pdf, _ = _merge_attachments_with_status(main_pdf_bytes, attachments)
 
+    fname = await _build_download_filename(db, doc)
     return Response(
         content=merged_pdf,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{doc.reference_no}.pdf"'
+            "Content-Disposition": f'attachment; filename="{fname}"'
         },
     )
 

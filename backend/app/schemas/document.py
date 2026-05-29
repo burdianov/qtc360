@@ -28,7 +28,7 @@ TAG_CODES = Literal["red", "yellow", "green", "blue"]
 VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"internally_signed", "cancelled"},
     "internally_signed": {"with_approver_1", "draft", "cancelled"},
-    "with_approver_1": {"approver_1_returned", "cancelled"},
+    "with_approver_1": {"approver_1_returned", "rejected", "cancelled"},
     "approver_1_returned": {
         "with_approver_2",
         "approved",
@@ -61,6 +61,8 @@ class DocumentCreate(BaseModel):
     drawing_ref: str | None = None
     inspection_date: datetime | None = None
     delivery_note: str | None = None
+    material_submittals: str | None = None
+    qty: str | None = None
     asset_type_id: UUID | None = None
     remarks_1: str | None = None
     remarks_2: str | None = None
@@ -73,6 +75,8 @@ class DocumentCreate(BaseModel):
     qaqc_engineer_id: UUID | None = None
     # Assets
     asset_ids: list[UUID] = []
+    # Revision: if set, creates a new revision of the rejected document
+    revision_of_id: UUID | None = None
 
 
 class DocumentUpdate(BaseModel):
@@ -85,6 +89,8 @@ class DocumentUpdate(BaseModel):
     drawing_ref: str | None = None
     inspection_date: datetime | None = None
     delivery_note: str | None = None
+    material_submittals: str | None = None
+    qty: str | None = None
     asset_type_id: UUID | None = None
     remarks_1: str | None = None
     remarks_2: str | None = None
@@ -121,6 +127,8 @@ class DocumentResponse(BaseModel):
     drawing_ref: str | None
     inspection_date: datetime | None
     delivery_note: str | None
+    material_submittals: str | None
+    qty: str | None
     asset_type_id: UUID | None
     remarks_1: str | None
     remarks_2: str | None

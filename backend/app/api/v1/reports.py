@@ -1,7 +1,6 @@
 """Report generation: docxtpl fills Word templates, LibreOffice converts to PDF."""
 import io
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -298,7 +297,7 @@ async def generate_report(
     docx_bytes = _fill_template(template.file, context, document)
 
     # Convert to PDF
-    pdf_bytes = _convert_to_pdf(docx_bytes)
+    pdf_bytes = await _convert_to_pdf(docx_bytes)
 
     # Stamp vector signatures onto the PDF (resolution-independent)
     pdf_bytes = _stamp_vector_signatures(pdf_bytes, document)
@@ -312,7 +311,14 @@ async def generate_report(
     )
     attachments = att_result.scalars().all()
 
-    pdf_filename = f"{doc_type.upper()}_{document.reference_no or 'draft'}.pdf"
+    pdf_filename = f"{doc_type.upper()}_{document.reference_no or 'draft'}"
+    if document.revision_no > 0:
+        from app.models.app_setting import AppSetting as AS2
+        rev_fmt_result = await db.execute(select(AS2).where(AS2.key == "revision_suffix_format"))
+        rev_fmt_row = rev_fmt_result.scalar_one_or_none()
+        rev_fmt = rev_fmt_row.value if rev_fmt_row else "{ref}-REV-{rev}"
+        pdf_filename = rev_fmt.replace("{ref}", pdf_filename).replace("{rev}", str(document.revision_no))
+    pdf_filename += ".pdf"
 
     if attachments:
         pdf_bytes, missing = _merge_attachments_with_status(pdf_bytes, attachments)
@@ -348,7 +354,7 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
         buf = io.BytesIO()
         doc.save(buf)
         test_docx = buf.getvalue()
-        pdf = _convert_to_pdf(test_docx)
+        pdf = await _convert_to_pdf(test_docx)
         if pdf and len(pdf) > 0:
             return {"status": "healthy", "pdf_engine": "libreoffice", "pdf_size": len(pdf)}
         raise HTTPException(status_code=503, detail="PDF engine returned empty output")
@@ -418,6 +424,16 @@ def _build_context(document: Document) -> dict:
 
     ctx["discipline"] = document.discipline.name if document.discipline else ""
 
+    # MIR-specific placeholders
+    ctx["delivery notes"] = document.delivery_note or ""
+    ctx["material_submittals"] = document.material_submittals or ""
+    ctx["qty"] = document.qty or ""
+    # MIR uses single inspector format
+    ctx["inspected by"] = ctx.get("inspected_by_1", "")
+    ctx["inspected_by_sign"] = ctx.get("insp_sign_1", "") if hasattr(document, "site_engineer_signed") and document.site_engineer_signed else ""
+    ctx["ins_date"] = ctx.get("date_1", "")
+    ctx["ins_time"] = ctx.get("time_1", "")
+
     return ctx
 
 
@@ -432,10 +448,12 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         key = f"insp_sign_{i}"
         if inspector and signed_flags[i - 1]:
-            # Short marker that won't be split by LibreOffice
             context[key] = f"SIGMARK{i}"
         else:
             context[key] = ""
+
+    # MIR uses inspected_by_sign instead of insp_sign_1
+    context["inspected_by_sign"] = context.get("insp_sign_1", "")
 
     sandbox_env = SandboxedEnvironment()
     doc.render(context, jinja_env=sandbox_env)
@@ -535,12 +553,23 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
                 # PyMuPDF coords: origin top-left; reportlab: origin bottom-left
                 x = sig["x"]
                 y = page_height - sig["y"] - sig["height"]
-                # Draw signature text
-                font_size = sig["height"] * 0.8  # fit within the cell height
+                # Draw signature text — fit within both cell height and width
+                font_size = sig["height"] * 0.8
                 try:
                     c.setFont(font_id, font_size)
                 except Exception:
                     c.setFont("Helvetica", font_size)
+                # Scale down if text is wider than available cell width
+                cell_width = page_width * 0.3  # typical signature cell is ~30% of page width
+                # Measure text width at current font size
+                from reportlab.pdfbase.pdfmetrics import stringWidth
+                text_width = stringWidth(name, font_id, font_size)
+                if text_width > cell_width and text_width > 0:
+                    font_size = font_size * (cell_width / text_width)
+                    try:
+                        c.setFont(font_id, font_size)
+                    except Exception:
+                        c.setFont("Helvetica", font_size)
                 # Parse color
                 color_hex = "#1a237e"
                 r = int(color_hex[1:3], 16) / 255
@@ -614,33 +643,48 @@ def _insert_signatures_fitted(docx_bytes: bytes, sig_data: dict[str, bytes]) -> 
     return out.getvalue()
 
 
-def _convert_to_pdf(docx_bytes: bytes) -> bytes:
-    """Convert DOCX to PDF using LibreOffice headless."""
+async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
+    """Convert DOCX to PDF via Gotenberg (preferred) or LibreOffice fallback."""
+    import asyncio
+    import httpx
+
+    # Try Gotenberg first
+    gotenberg_url = settings.gotenberg_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{gotenberg_url}/forms/libreoffice/convert",
+                files={"files": ("document.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+            )
+            if resp.status_code == 200:
+                return resp.content
+            logger.warning("Gotenberg returned %s, falling back to local LibreOffice", resp.status_code)
+    except Exception as e:
+        logger.warning("Gotenberg unavailable (%s), falling back to local LibreOffice", e)
+
+    # Fallback: local LibreOffice
     libre = settings.libreoffice_path
     with tempfile.TemporaryDirectory() as tmp_dir:
         docx_path = Path(tmp_dir) / "document.docx"
         docx_path.write_bytes(docx_bytes)
 
         cmd = [
-            libre,
-            "--headless",
-            "--norestore",
-            "--nologo",
-            "--nofirststartwizard",
-            "--convert-to", "pdf",
-            "--outdir", tmp_dir,
-            str(docx_path),
+            libre, "--headless", "--norestore", "--nologo",
+            "--nofirststartwizard", "--convert-to", "pdf",
+            "--outdir", tmp_dir, str(docx_path),
         ]
         try:
-            proc = subprocess.run(cmd, capture_output=True, timeout=60)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
         except FileNotFoundError:
-            logger.exception("LibreOffice binary not found at %s", libre)
-            raise HTTPException(status_code=500, detail="PDF engine not configured")
-        except subprocess.TimeoutExpired:
-            logger.error("LibreOffice conversion timed out")
+            raise HTTPException(status_code=500, detail="PDF engine not configured (Gotenberg down, LibreOffice not found)")
+        except asyncio.TimeoutError:
+            proc.kill()
             raise HTTPException(status_code=500, detail="PDF generation timed out")
         if proc.returncode != 0:
-            logger.error("LibreOffice exited %s; stderr=%r", proc.returncode, proc.stderr[-500:] if proc.stderr else b"")
+            logger.error("LibreOffice exited %s; stderr=%r", proc.returncode, stderr[-500:] if stderr else b"")
             raise HTTPException(status_code=500, detail="Report generation failed")
 
         pdf_path = Path(tmp_dir) / "document.pdf"

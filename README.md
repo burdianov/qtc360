@@ -32,7 +32,7 @@ docker compose up -d
 
 This starts:
 - **PostgreSQL** on port 5432 (required for backend)
-- **pgAdmin** on port 5050 (optional, for DB management)
+- **Gotenberg** on port 3100 (DOCX→PDF conversion)
 
 ### 3. Backend
 
@@ -60,7 +60,6 @@ npm run dev
 | Frontend | http://localhost:3000 | See below |
 | Backend API | http://localhost:8000 | — |
 | API Docs | http://localhost:8000/docs | — |
-| pgAdmin | http://localhost:5050 | admin@qtc360.local / admin |
 
 ## Test Accounts
 

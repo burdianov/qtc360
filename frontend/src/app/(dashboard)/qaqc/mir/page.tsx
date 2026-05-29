@@ -51,13 +51,17 @@ export default function MIRPage() {
     return submittedStatuses.includes(doc.status);
   };
 
+  const isTerminal = (doc: Document) => ["approved", "approved_with_comments", "rejected", "superseded"].includes(doc.status);
+
   const rowActions: RowAction<Document>[] = [
-    { label: "Edit", onClick: (row) => router.push(`/qaqc/mir/new?id=${row.id}`) },
+    { label: "View", onClick: (row) => router.push(`/qaqc/mir/new?id=${row.id}`), hidden: (row) => !isTerminal(row) },
+    { label: "Edit", onClick: (row) => router.push(`/qaqc/mir/new?id=${row.id}`), hidden: (row) => isTerminal(row) },
     {
       label: (row) => isSubmitted(row) ? "Supersede" : "Delete",
       onClick: (row) => deleteMutation.mutate(row.id),
       destructive: true,
       separator: true,
+      hidden: (row) => row.status === "superseded",
       confirm: (row) => isSubmitted(row)
         ? "This document was submitted to an approver. It will be marked as superseded and the serial number will not be reused. Continue?"
         : "This document was not submitted. It will be permanently deleted along with all attachments, and its serial number will be available for reuse. Continue?",
@@ -88,7 +92,7 @@ export default function MIRPage() {
         </div>
         <Button onClick={() => router.push("/qaqc/mir/new")}><Plus className="mr-2 h-4 w-4" />New MIR</Button>
       </div>
-      <DataTable columns={columns} data={documents} searchKey="title" searchPlaceholder="Search by title..." onRowClick={(row) => router.push(`/qaqc/mir/new?id=${row.id}`)} />
+      <DataTable columns={columns} data={documents} searchKey="title" searchPlaceholder="Search by title..." />
     </div>
   );
 }

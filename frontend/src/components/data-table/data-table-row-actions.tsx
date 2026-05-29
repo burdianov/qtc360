@@ -18,6 +18,7 @@ export interface RowAction<TData> {
   destructive?: boolean;
   separator?: boolean;
   confirm?: string | ((row: TData) => string);
+  hidden?: (row: TData) => boolean;
 }
 
 interface DataTableRowActionsProps<TData> {
@@ -42,7 +43,7 @@ export function DataTableRowActions<TData>({ row, actions }: DataTableRowActions
           <span className="sr-only">Open menu</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {actions.map((action, i) => (
+          {actions.filter((a) => !a.hidden || !a.hidden(row)).map((action, i) => (
             <span key={i}>
               {action.separator && <DropdownMenuSeparator />}
               <DropdownMenuItem

@@ -157,7 +157,7 @@ export default function SettingsPage() {
         {
           id: "general",
           label: "General",
-          content: <DateFormatCard />,
+          content: <><DateFormatCard /><div className="mt-4"><RevisionSuffixCard /></div></>,
         },
       ]} />
     </div>
@@ -210,6 +210,51 @@ function DateFormatCard() {
             {saveMutation.isPending ? "Saving..." : "Save"}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RevisionSuffixCard() {
+  const qc = useQueryClient();
+  const [format, setFormat] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  const { data } = useQuery<{ key: string; value: string }>({
+    queryKey: ["app-setting", "revision_suffix_format"],
+    queryFn: async () => (await api.get("/admin/settings/revision_suffix_format")).data,
+  });
+
+  if (data && !loaded) {
+    setFormat(data.value);
+    setLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.put("/admin/settings/revision_suffix_format", { value: format }),
+    onSuccess: () => {
+      toast.success("Revision suffix format saved");
+      qc.invalidateQueries({ queryKey: ["app-setting", "revision_suffix_format"] });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Revision Suffix Format</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Format for document filenames when revision &gt; 0. Use <code className="text-xs bg-muted px-1 rounded">{"{ref}"}</code> for reference number and <code className="text-xs bg-muted px-1 rounded">{"{rev}"}</code> for revision number.
+        </p>
+        <div className="flex items-end gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Format</label>
+            <Input value={format} onChange={(e) => setFormat(e.target.value)} placeholder="{ref}-REV-{rev}" className="w-64 font-mono text-sm" />
+          </div>
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !format}>
+            {saveMutation.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Example: <span className="font-mono">MERC-JMJV-EL-WIR-0031-REV-1.pdf</span></p>
       </CardContent>
     </Card>
   );

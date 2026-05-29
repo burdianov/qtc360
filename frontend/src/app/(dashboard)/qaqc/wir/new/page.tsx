@@ -81,9 +81,20 @@ function NewWIRPageContent() {
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
   const [referenceNo, setReferenceNo] = useState<string>("");
+  const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [isDirty, setIsDirty] = useState(!editId);
+  const [submissionMode, setSubmissionMode] = useState<"new" | "revision">("new");
+  const [revisionOfId, setRevisionOfId] = useState<string | null>(null);
+  const [savedSignatories, setSavedSignatories] = useState<{ inspector1: string; inspector2: string }>({ inspector1: "", inspector2: "" });
+
+  // Fetch rejected documents for revision selection
+  const { data: rejectedDocs = {} } = useQuery<Record<string, { id: string; reference_no: string; revision_no: number; title: string; document_type: string; discipline_id: string | null }[]>>({
+    queryKey: ["rejected-for-revision", project?.id, "WIR"],
+    queryFn: async () => (await api.get("/documents/rejected-for-revision", { params: { project_id: project?.id, document_type: "WIR" } })).data,
+    enabled: !!project?.id && !editId && submissionMode === "revision",
+  });
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -162,6 +173,7 @@ function NewWIRPageContent() {
   });
 
   const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const fullyLocked = !!existingDoc && ["approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
 
   useEffect(() => {
     if (existingDoc) {
@@ -188,6 +200,8 @@ function NewWIRPageContent() {
         inspector2: !!existingDoc.qaqc_engineer_signed,
       });
       setReferenceNo(existingDoc.reference_no || "");
+      setRevisionNo(existingDoc.revision_no || 0);
+      setSavedSignatories({ inspector1: existingDoc.site_engineer_id || "", inspector2: existingDoc.qaqc_engineer_id || "" });
       // Restore selected assets
       if (existingDoc.asset_ids?.length && assets.length > 0) {
         const ids = new Set(existingDoc.asset_ids);
@@ -231,6 +245,59 @@ function NewWIRPageContent() {
     }
   }, [editId]);
 
+  // Pre-fill form from selected rejected document for revision
+  useEffect(() => {
+    if (!revisionOfId || editId) return;
+    (async () => {
+      try {
+        const { data: doc } = await api.get(`/documents/${revisionOfId}`);
+        form.reset({
+          subject: doc.title || "",
+          discipline_id: doc.discipline_id || "",
+          description: doc.description || "",
+          general_location: doc.location || "",
+          floor_level_room: doc.floor_level || "",
+          approved_rams: doc.rams_ref || "",
+          drawing_reference: doc.drawing_ref || "",
+          inspector_1_id: doc.site_engineer_id || "",
+          inspector_2_id: doc.qaqc_engineer_id || "",
+          remarks_1: doc.remarks_1 || "",
+          remarks_2: doc.remarks_2 || "",
+          inspector_date_1: doc.inspector_date_1 || "",
+          inspector_time_1: doc.inspector_time_1 || "",
+          inspector_date_2: doc.inspector_date_2 || "",
+          inspector_time_2: doc.inspector_time_2 || "",
+          date: new Date().toISOString().split("T")[0],
+        });
+        setReferenceNo(doc.reference_no || "");
+        setRevisionNo(doc.revision_no + 1);
+        // Restore assets
+        if (doc.asset_ids?.length && assets.length > 0) {
+          const ids = new Set(doc.asset_ids);
+          setSelectedAssets(assets.filter((a: Asset) => ids.has(a.id)));
+        }
+        // Restore commissioning linkage
+        const linksRes = await api.get("/commissioning/document-links", { params: { document_id: revisionOfId } });
+        const links = linksRes.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+        if (links.length > 0) {
+          const firstArId = links[0].asset_requirement_id;
+          const ar = allAssetRequirements.find((r) => r.id === firstArId);
+          if (ar) {
+            const hasWorkItems = links.some((l) => l.requirement_work_item_id != null);
+            setCommissioningLinkage({
+              requirementTemplateId: ar.requirement_template_id,
+              isPartialScope: hasWorkItems,
+              checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!),
+              deleteExistingIds: [],
+              newItems: [],
+            });
+          }
+        }
+        setIsDirty(true);
+      } catch { toast.error("Failed to load rejected document data"); }
+    })();
+  }, [revisionOfId, assets.length, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
 
@@ -249,14 +316,14 @@ function NewWIRPageContent() {
     : null;
 
   useEffect(() => {
-    if (!editId && disciplineId && project?.id && disciplines.length > 0) {
+    if (!editId && !revisionOfId && disciplineId && project?.id && disciplines.length > 0) {
       const disciplineCode = disciplines.find((d) => d.id === disciplineId)?.code || "";
       api.get("/documents/generate-ref-number", {
         params: { project_id: project.id, doc_type: "WIR", discipline_code: disciplineCode },
       }).then((res) => setReferenceNo(res.data.reference_number))
         .catch(() => toast.error("Failed to generate reference number"));
     }
-  }, [editId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, revisionOfId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
@@ -296,6 +363,7 @@ function NewWIRPageContent() {
     inspector_date_2: values.inspector_date_2 || null,
     inspector_time_2: values.inspector_time_2 || null,
     asset_ids: selectedAssets.map((a) => a.id),
+    ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
   });
 
   const saveCommissioningLinkage = async (docId: string | null) => {
@@ -393,6 +461,9 @@ function NewWIRPageContent() {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
       setAssetSearch("");
       setIsDirty(false);
+      setRevisionOfId(null);
+      if (res?.data?.revision_no !== undefined) setRevisionNo(res.data.revision_no);
+      form.reset(form.getValues());
       queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
       if (!editId && res?.data?.id) {
         router.replace(`/qaqc/wir/new?id=${res.data.id}`);
@@ -477,6 +548,47 @@ function NewWIRPageContent() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v), () => toast.error("Please fill in all required fields"))} noValidate className="space-y-6">
 
+          {/* Submission Mode (only for new documents) */}
+          {!editId && (
+            <Card>
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="submission_mode" checked={submissionMode === "new"} onChange={() => { setSubmissionMode("new"); setRevisionOfId(null); setRevisionNo(0); setReferenceNo(""); }} className="h-4 w-4" />
+                    <span className="text-sm font-medium">New Submission</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="submission_mode" checked={submissionMode === "revision"} onChange={() => setSubmissionMode("revision")} className="h-4 w-4" />
+                    <span className="text-sm font-medium">Revision</span>
+                  </label>
+                </div>
+                {submissionMode === "revision" && (
+                  <div className="space-y-2">
+                    <FormLabel>Select Rejected Document</FormLabel>
+                    <Select value={revisionOfId || ""} onValueChange={(v: string) => setRevisionOfId(v)}>
+                      <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) — ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(rejectedDocs).map(([discipline, docs]) => (
+                          <div key={discipline}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{discipline}</div>
+                            {docs.map((doc) => (
+                              <SelectItem key={doc.id} value={doc.id}>
+                                {doc.reference_no} (Rev {doc.revision_no}) — {doc.title}
+                              </SelectItem>
+                            ))}
+                          </div>
+                        ))}
+                        {Object.keys(rejectedDocs).length === 0 && (
+                          <div className="px-2 py-3 text-sm text-muted-foreground text-center">No rejected documents available</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Basic Info */}
           <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none">
           <Card>
@@ -485,7 +597,14 @@ function NewWIRPageContent() {
               <div>
                 <FormItem>
                   <FormLabel>Reference Number</FormLabel>
-                  <Input value={referenceNo} disabled className="font-mono bg-muted" placeholder="Select discipline to generate..." />
+                  <div className="flex gap-2">
+                    <Input value={referenceNo} disabled className="font-mono bg-muted flex-1" placeholder="Select discipline to generate..." />
+                    {(revisionNo > 0 || editId) && (
+                      <div className="flex items-center px-3 rounded-md border bg-muted text-sm font-mono whitespace-nowrap">
+                        Rev {revisionNo}
+                      </div>
+                    )}
+                  </div>
                 </FormItem>
               </div>
               <div>
@@ -537,7 +656,8 @@ function NewWIRPageContent() {
           </fieldset>
 
           {/* Commissioning Linkage */}
-          <Card>
+          {/* Commissioning Linkage */}
+          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
@@ -558,7 +678,7 @@ function NewWIRPageContent() {
           </Card>
 
           {/* Assets */}
-          <Card className={!commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
+          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : !commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
             <CardHeader className="cursor-pointer" onClick={() => setAssetsOpen(!assetsOpen)}>
               <CardTitle className="text-base flex items-center justify-between">
                 Assets ({selectedAssets.length} selected)
@@ -639,7 +759,7 @@ function NewWIRPageContent() {
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Inspected by 1</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
                         {users.map((u) => (
@@ -657,7 +777,7 @@ function NewWIRPageContent() {
                 <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Inspected by 2</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
                         {users.map((u) => (
@@ -816,7 +936,7 @@ function NewWIRPageContent() {
                   const url = URL.createObjectURL(res.data);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `${referenceNo || "document"}.pdf`;
+                  a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`;
                   a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 60000);
                 } catch { toast.error("Failed to download document"); }
@@ -828,7 +948,7 @@ function NewWIRPageContent() {
             <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
             </Button>
-            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
+            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2) || (!!editId && (currentUser?.id !== existingDoc?.created_by)) || (!!editId && inspector1Id === savedSignatories.inspector1 && inspector2Id === savedSignatories.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
               <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
             </Button>
           </div>

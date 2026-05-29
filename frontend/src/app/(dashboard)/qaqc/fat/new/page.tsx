@@ -129,6 +129,9 @@ function NewFATPageContent() {
     enabled: !!editId,
   });
 
+  const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const fullyLocked = !!existingDoc && ["approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+
   useEffect(() => {
     if (existingDoc) {
       form.reset({
@@ -258,6 +261,7 @@ function NewFATPageContent() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-6">
+          <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none">
           <Card>
             <CardHeader><CardTitle className="text-base">General Information</CardTitle></CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -302,10 +306,11 @@ function NewFATPageContent() {
               )} />
             </CardContent>
           </Card>
+          </fieldset>
 
           {/* Assets loaded by type */}
           {assetTypeId && (
-            <Card>
+            <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}>
               <CardHeader><CardTitle className="text-base">Assets ({selectedAssetIds.length}/{filteredAssets.length} selected)</CardTitle></CardHeader>
               <CardContent>
                 {filteredAssets.length === 0 ? (
@@ -330,7 +335,7 @@ function NewFATPageContent() {
           )}
 
           {/* Commissioning Linkage */}
-          <Card>
+          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
@@ -343,6 +348,7 @@ function NewFATPageContent() {
           </Card>
 
           {/* Inspectors & Signatures */}
+          <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
             <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -438,6 +444,7 @@ function NewFATPageContent() {
               {mutation.isPending ? "Saving..." : "Save as Draft"}
             </Button>
           </div>
+          </fieldset>
         </form>
       </Form>
 

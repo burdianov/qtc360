@@ -55,6 +55,8 @@ class Document(BaseModel):
 
     # MIR context fields
     delivery_note: Mapped[str | None] = mapped_column(String(255))
+    material_submittals: Mapped[str | None] = mapped_column(Text)
+    qty: Mapped[str | None] = mapped_column(String(100))
 
     # FAT context fields
     asset_type_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("asset_types.id"))

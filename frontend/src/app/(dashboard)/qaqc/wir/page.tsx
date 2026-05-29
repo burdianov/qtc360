@@ -54,8 +54,11 @@ export default function WIRPage() {
     return submittedStatuses.includes(doc.status);
   };
 
+  const isTerminal = (doc: Document) => ["approved", "approved_with_comments", "rejected", "superseded"].includes(doc.status);
+
   const rowActions: RowAction<Document>[] = [
-    { label: "Edit", onClick: (row) => router.push(`/qaqc/wir/${row.id}`) },
+    { label: "View", onClick: (row) => router.push(`/qaqc/wir/new?id=${row.id}`), hidden: (row) => !isTerminal(row) },
+    { label: "Edit", onClick: (row) => router.push(`/qaqc/wir/new?id=${row.id}`), hidden: (row) => isTerminal(row) },
     { label: "Generate PDF", onClick: async (row) => {
       try {
         const res = await api.post(`/reports/generate/WIR`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" });
@@ -69,6 +72,7 @@ export default function WIRPage() {
       onClick: (row) => deleteMutation.mutate(row.id),
       destructive: true,
       separator: true,
+      hidden: (row) => row.status === "superseded",
       confirm: (row) => isSubmitted(row)
         ? "This document was submitted to an approver. It will be marked as superseded and the serial number will not be reused. Continue?"
         : "This document was not submitted. It will be permanently deleted along with all attachments, and its serial number will be available for reuse. Continue?",
@@ -103,7 +107,6 @@ export default function WIRPage() {
         data={documents}
         searchKey="title"
         searchPlaceholder="Search by title..."
-        onRowClick={(row) => router.push(`/qaqc/wir/${row.id}`)}
       />
     </div>
   );

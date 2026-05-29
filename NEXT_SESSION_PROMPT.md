@@ -312,6 +312,13 @@ Applied the same dynamic action label + confirmation message pattern from WIR to
 - Record Response dialog modal width fixed (`sm:max-w-5xl`)
 - `tagColors` refactored to single source in `lib/constants.ts`
 
+### ✅ Full Form Locking on Superseded/Terminal Documents (All Forms)
+- WIR, MIR, CIR, FAT: all fields disabled when document status is `approved`, `approved_with_comments`, `rejected`, or `superseded`
+- `formLocked` disables General Info + Inspectors + Attachments + Actions
+- `fullyLocked` additionally disables Commissioning Linkage + Assets cards
+- MIR was missing `fullyLocked` on Commissioning Linkage + Assets — fixed
+- FAT had no locking at all — added both `formLocked` and `fullyLocked` with same pattern
+
 ### Migration Required for This Session
 
 Run on first pull:
@@ -324,15 +331,14 @@ Adds: `documents.remarks_1/2`, `documents.inspector_date_1/time_1/date_2/time_2`
 
 1. **End-to-end test of the new attachment + bundle flow** — create WIR → add attachments → submit to approver → record response → upload extra round attachments → download merged round bundle. Verify page order.
 2. **End-to-end test of approval workflow** — drive through WIR submit → Approver 1 response → resubmit → Approver 2 → approved.
-3. **Apply form locking + inspector fields to MIR/CIR/FAT forms** — same pattern as WIR.
-4. **Tesseract install instructions** — add to README and Docker setup.
-5. **FAT attachments** — FAT form has no attachments section yet; integrate the `DocumentAttachments` component.
-6. **Document list pages — server-side pagination** for WIR/MIR/CIR/FAT.
-7. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type.
-8. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
-9. **CSV import for assets** — Bulk import assets from CSV with validation.
-10. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates.
-11. **Audit log expansion** — Add audit logging to commissioning operations.
+3. **Tesseract install instructions** — add to README and Docker setup.
+4. **FAT attachments** — FAT form has no attachments section yet; integrate the `DocumentAttachments` component.
+5. **Document list pages — server-side pagination** for WIR/MIR/CIR/FAT.
+6. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type.
+7. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
+8. **CSV import for assets** — Bulk import assets from CSV with validation.
+9. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates.
+10. **Audit log expansion** — Add audit logging to commissioning operations.
 
 ## Previously Completed (Earlier Sessions)
 

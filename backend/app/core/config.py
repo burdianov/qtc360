@@ -19,8 +19,11 @@ class Settings(BaseSettings):
     postgres_user: str = "qtc360"
     postgres_password: str = "qtc360_dev"
 
-    # LibreOffice
+    # LibreOffice (fallback, not needed if Gotenberg is running)
     libreoffice_path: str = "soffice"
+
+    # Gotenberg (DOCX→PDF conversion service)
+    gotenberg_url: str = "http://localhost:3100"
 
     # File storage
     upload_dir: str = "./uploads"
