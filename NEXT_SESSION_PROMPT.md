@@ -41,6 +41,7 @@ Document → DocumentRequirementLink → AssetRequirement/WorkItem
 AssetTagTarget (calculated tag achievement)
 GateOverrideAcknowledgement (audit trail)
 Designation (master lookup for user job titles)
+AppSetting (key-value store for app configuration)
 ```
 
 ### Key Rules
@@ -57,13 +58,17 @@ Designation (master lookup for user job titles)
 10. RBAC permissions are enforced on write endpoints (`require_permission`).
 11. **Project isolation**: documents, approvals, assets, requirements, tag targets, work items are strictly per-project. Only common masters (disciplines, services, contractors, users, approver companies, designations) are shared across projects. Frontend queries MUST pass `project_id` to project-scoped endpoints.
 12. **Returned approval PDFs are NOT split**. Saved as a single file. Additional attachments are uploaded separately with `insert_after_page` to control their position in the merged bundle.
+13. **Never use generic HTML date/time pickers** — always use the app's styled `DatePicker` component for dates and the styled `TimePicker` component for time.
+14. **Date format is admin-configurable** via `app_settings` table (key: `date_format`). Default: `DD.MM.YYYY`. Frontend reads it on mount; backend reads it for PDF generation.
+15. **Signatures in PDFs are vector** — rendered as font glyphs via reportlab directly onto the PDF (not raster images). The `render_signature()` function is only used for browser preview (72px).
+16. **Admin pages** (`/admin/*`) are restricted to admin/super_admin roles only — both via frontend layout guard and sidebar visibility.
 
 ### Backend Structure
 
 ```
 backend/app/
 ├── api/v1/          # Routers: auth, master, admin, documents, commissioning, reports, notifications, ref_config
-├── models/          # ORM: commissioning.py, document.py, gate_override.py, designation.py, audit_log.py, + core entities
+├── models/          # ORM: commissioning.py, document.py, gate_override.py, designation.py, audit_log.py, app_setting.py, + core entities
 ├── schemas/         # Pydantic: commissioning.py (with Literal types), document.py (with state machine), master.py, auth.py, admin.py
 ├── services/        # commissioning.py (status calculation engine), signature.py, audit.py, pdf.py (OCR), pdf_merge.py, approval.py
 ├── core/            # config, database, deps (require_permission), security
@@ -79,18 +84,18 @@ frontend/src/
 │   ├── master-data/     # projects, disciplines, services, assets, approvers, requirement-templates, designations, etc.
 │   ├── qaqc/            # wir (form + list), mir, cir, fat
 │   ├── documents/       # templates
-│   ├── admin/           # users, roles, permissions, settings
+│   ├── admin/           # users, roles, permissions, settings (layout-guarded to admin only)
 │   └── dashboard/
 ├── components/
 │   ├── commissioning-linkage.tsx     # Reusable panel for WIR/CIR/MIR/FAT requirement linking + work breakdown + gate override dialog
-│   ├── document-attachments.tsx      # Reusable attachment manager with drag-reorder, page-position editing, bundle download
-│   ├── approval/                     # action panel, submit dialog, record-response dialog, rounds list, region picker
-│   ├── data-table/                   # Reusable DataTable system (RowAction now supports per-row dynamic label/confirm)
-│   ├── layout/                       # Sidebar, navbar, project switcher
-│   └── ui/                           # shadcn components + progress, switch
+│   ├── document-attachments.tsx      # Reusable attachment manager with drag-reorder, delete confirmation, bundle download
+│   ├── approval/                     # action panel, submit dialog, record-response dialog (with OCR capture), rounds list, region picker
+│   ├── data-table/                   # Reusable DataTable system (RowAction supports per-row dynamic label/confirm)
+│   ├── layout/                       # Sidebar (admin-filtered), navbar, project switcher
+│   └── ui/                           # shadcn components + progress, switch, date-picker, time-picker (AM/PM with scrollable columns)
 ├── hooks/             # use-auth, use-project
 ├── config/            # navigation.ts
-└── lib/               # api.ts, utils.ts, csv.ts, format-date.ts
+└── lib/               # api.ts (FormData-aware Content-Type), utils.ts, csv.ts, format-date.ts (configurable format)
 ```
 
 ### API Endpoints (key ones)
@@ -104,19 +109,19 @@ POST        /api/v1/documents/{id}/sign
 GET         /api/v1/documents/{id}/approval-rounds
 POST        /api/v1/documents/{id}/submit-to-approver
 POST        /api/v1/documents/{id}/approval-rounds  (multipart: returned PDF + decision + signatory; PDF saved as single file)
+PUT         /api/v1/documents/{id}/approval-rounds/{round_id}/file  (replace returned PDF + overwrite all metadata)
 POST        /api/v1/documents/{id}/approval-rounds/{round_id}/extract  (region OCR)
-POST        /api/v1/documents/{id}/approval-rounds/{round_id}/remarks  (optional Approver-2 remarks PDF)
 POST        /api/v1/documents/{id}/approval-rounds/{round_id}/attachments?insert_after_page=N
 GET         /api/v1/documents/{id}/approval-rounds/{round_id}/bundle  (merged PDF download)
 POST        /api/v1/documents/{id}/extract-preview  (stateless region OCR pre-save)
 POST        /api/v1/documents/{id}/start-new-revision
 
-# Document attachments (with page-position support)
+# Document attachments
 GET         /api/v1/documents/{id}/attachments
 POST        /api/v1/documents/{id}/attachments?insert_after_page=N (optional)
 DELETE      /api/v1/documents/{id}/attachments/{att_id}
 PATCH       /api/v1/documents/{id}/attachments/reorder
-GET         /api/v1/documents/{id}/bundle      (generated PDF + attachments merged at page positions)
+GET         /api/v1/documents/{id}/bundle      (generated PDF + all attachments merged)
 
 GET/POST    /api/v1/commissioning/requirement-templates
 GET/POST    /api/v1/commissioning/asset-requirements
@@ -130,11 +135,12 @@ GET         /api/v1/commissioning/gate-check
 POST/GET    /api/v1/commissioning/gate-overrides
 
 GET/POST/PATCH/DELETE /api/v1/designations
+GET/PUT     /api/v1/admin/settings/{key}  (app settings: date_format, etc.)
 GET         /api/v1/admin/audit-logs  (filterable by action, entity_type)
 GET         /api/v1/reports/pdf-engine/health
-POST        /api/v1/reports/generate/{doc_type}  → PDF generation
+POST        /api/v1/reports/generate/{doc_type}  → PDF generation (vector signatures)
 GET         /api/v1/auth/users  (basic user info for all authenticated users)
-GET/POST/PATCH/DELETE /api/v1/project-approvers  (scoped per doc_type + order)
+GET/POST/PATCH/DELETE /api/v1/project-approvers  (hard-delete, scoped per doc_type + order)
 ```
 
 ### Security Model
@@ -143,12 +149,14 @@ GET/POST/PATCH/DELETE /api/v1/project-approvers  (scoped per doc_type + order)
 - `require_permission("commissioning.manage")` — template/requirement CRUD
 - `require_permission("documents.submit")` — document creation, work items
 - `require_permission("documents.delete")` — document deletion (further gated to creator or admin/super_admin in the endpoint itself)
-- `require_project_access()` — validates user has access to the requested project_id (documents, commissioning endpoints)
+- `require_permission("reports.templates")` — template upload/delete (admin only; frontend hides UI for non-admins)
+- `require_project_access()` — validates user has access to the requested project_id
 - Role assignment: admin can assign all roles except super_admin; super_admin/is_superuser can assign all
 - Approval order enforced (can't skip queue)
 - Sign endpoint validates user has appropriate role (site_engineer/qaqc_engineer)
 - Document status state machine prevents invalid transitions
 - `is_superuser` flag hidden from UI — only for dev account, bypasses all checks
+- Admin pages layout-guarded + sidebar hidden for non-admin users
 
 ### WIR Form Flow
 
@@ -159,79 +167,117 @@ GET/POST/PATCH/DELETE /api/v1/project-approvers  (scoped per doc_type + order)
    - Partial: shows existing work items (approved=disabled, pending=checkable/deletable), add new items
    - Only checked items get linked to this document
    - Gate override: confirmation dialog with notes field, stored in audit trail
-3. Assets (disabled until linkage is on):
+3. Assets (collapsible, disabled until linkage is on):
    - Filtered by discipline (via AssetType → Service → Discipline chain)
    - Filtered by selected requirement template (only assets with that requirement assigned)
    - Filterable by asset type dropdown
    - Searchable by name/tag number
    - Multi-select checkboxes with scrollable list
    - Selected shown as removable badges
-   - Disabling linkage with assets selected shows styled confirmation dialog
-4. Inspectors & signatures (DocuSign-style)
-5. Attachments — uses reusable `DocumentAttachments` component (drag-reorder, edit page-position, Download Bundle button)
-6. Both "Save as Draft" and "Save & Notify" process commissioning linkage
+4. Inspectors & signatures (DocuSign-style):
+   - Two columns (inspector 1 & 2) with grid alignment
+   - Each: user select → signature box → "Change signature style" link (fixed-height container)
+   - Date (DatePicker) + Time (TimePicker) — only editable by the assigned inspector
+   - Remarks textarea — only editable by the assigned inspector
+5. Attachments — uses reusable `DocumentAttachments` component (drag-reorder, delete confirmation, no page-position for initial submission, no download bundle)
+6. Actions: Save as Draft, Save & Notify, Preview PDF (disabled when dirty), Download Document (enabled only when both signed)
+7. **Form locking**: after approver 1 returns, General Info + Inspectors + Attachments + Actions are disabled. Only Commissioning Linkage + Assets remain editable.
+8. External Approval panel (shown after internal signing):
+   - Approval chain preview
+   - Rounds list with: file name link + Replace button (opens Record Response dialog) + Download Bundle + Add Attachment
+   - Action buttons below rounds (Submit to Approver N, Record Response, Start New Revision)
+   - Replace button disabled after terminal status
 
-## Completed This Session — Attachment System Overhaul + Project Isolation + Supersede/Delete
+### Record Response Dialog
 
-### ✅ PDF Attachment System — No-split + Insert-at-Position + Merged Bundles
+- Upload PDF → preview with scrollable region picker
+- OCR capture: signatory name, response date, response time, comments (all optional except decision status)
+- Decision status radio buttons (A/B/C/D)
+- Uses DatePicker for date field
+- When replacing (roundId provided): uses PUT endpoint, overwrites all metadata
+- When new: uses POST endpoint
 
-The Aconex returned-PDF splitting is gone. PDFs stay intact. Attachments declare where they should be inserted, and the bundle download produces the merged result.
+## Completed This Session
 
-- **Schema**: migration `7031919285ed_add_insert_after_page_to_attachments.py` adds nullable `insert_after_page` (integer, 0-indexed) to `document_attachments`.
-- **Service**: `app/services/pdf_merge.py` with `merge_pdf_bundle(main_pdf_bytes, attachments)`. Sorts attachments by `insert_after_page`, walks the main PDF page-by-page, inserts each attachment's pages after its target page, appends remaining attachments at the end.
-- **Approval workflow** (`record_response_endpoint`): saves the returned PDF as a single `kind="returned_pdf"` attachment instead of splitting into cover + per-page pieces. The legacy `split_returned_pdf()` is no longer called (still in `pdf.py` for reference).
-- **Round attachments endpoint**: `POST /documents/{id}/approval-rounds/{round_id}/attachments?insert_after_page=N` (multipart PDF). Stored as `kind="user_attachment"`.
-- **Round bundle endpoint**: `GET /documents/{id}/approval-rounds/{round_id}/bundle` — merges returned PDF with all `user_attachment` rows for that round.
-- **Document attachment upload**: `POST /documents/{id}/attachments` now accepts optional `insert_after_page` query param.
-- **Document bundle endpoint**: `GET /documents/{id}/bundle` — generates the document PDF (via existing reports flow) then merges any `kind="user"` attachments that have `insert_after_page` set. PDFs without a position are not included in the bundle (they remain as standalone attachments).
-- **Frontend**:
-  - `RecordResponseDialog` footer message updated (no longer mentions splitting).
-  - `ApprovalRoundsList` rounds now have **Download Bundle** + **Add Attachment** buttons; new `UploadAttachmentDialog` collects file + page position.
-  - New reusable `DocumentAttachments` component handles add/remove/drag-reorder/edit-page-position/download-bundle for any document form.
-  - Integrated into WIR, MIR, CIR forms (FAT does not yet have an attachments section). Removed the inline attachment UI and `addAttachment`/`removeAttachment` helpers from those three forms.
-- **Attachment kinds**:
-  - `returned_pdf` — full approver return, single file
-  - `user_attachment` — uploaded to an approval round with a page position
-  - `user` — regular document attachment (page position optional)
-  - `cover` / `response_attachment` — DEPRECATED (legacy split rows; left in place for old data)
+### ✅ Supersede/Delete on MIR/CIR/FAT Lists
+Applied the same dynamic action label + confirmation message pattern from WIR to all three list pages.
 
-### ✅ Project Isolation — Strict Per-project Data Scoping
+### ✅ Inspector Remarks + Date/Time Fields
+- Added `remarks_1`, `remarks_2`, `inspector_date_1`, `inspector_time_1`, `inspector_date_2`, `inspector_time_2` to Document model + migration `a8b9c0d1e2f3`
+- WIR form renders these per-inspector, only editable by the assigned inspector (fieldset disabled)
+- PDF generation reads actual values for template placeholders `{{ remarks_1 }}`, `{{ date_1 }}`, `{{ time_1 }}`, etc.
 
-Audit + fix sweep. Frontend was fetching across all projects on several pages, which is wrong. Backend CRUD endpoints already supported `project_id` filtering — the frontend just wasn't passing it.
+### ✅ Styled TimePicker Component
+- `components/ui/time-picker.tsx` — 12-hour AM/PM format with scrollable hour/minute columns
+- Popover-based (same as DatePicker), theme-aware scrollbars, column headers (Hour/Min)
+- Typeable inputs + scrollable lists, Tab between fields, Enter to close, Escape to revert
+- Stores value as HH:mm (24h) internally
 
-Pattern applied (`useQuery` with `project?.id` in the queryKey, `params: { project_id }` on the request, `enabled: !!project?.id`) to:
-- `dashboard/page.tsx` — `LevelProgress` and `TagSummary` were globally fetching `/commissioning/asset-requirements`
-- `commissioning/tag-targets/page.tsx` — assets and tag-targets queries
-- `commissioning/tracking/page.tsx` — assets query
-- `commissioning/requirements/page.tsx` — assets query
-- `master-data/assets/page.tsx` — assets query
-- `qaqc/wir/new/page.tsx`, `mir/new/page.tsx`, `cir/new/page.tsx`, `fat/new/page.tsx` — assets queries
+### ✅ Vector Signatures in PDF
+- Signatures are now drawn as vector font glyphs directly onto the PDF using reportlab
+- `_stamp_vector_signatures()` in reports.py: finds `SIGMARK1`/`SIGMARK2` markers via PyMuPDF, redacts them, overlays vector text with the correct signature font
+- `render_signature()` (font_size=72) is now only used for browser preview
+- Infinitely crisp at any zoom level
 
-`PROJECT_ISOLATION_AUDIT.md` documents the issue, the pattern, and the common-master vs project-specific split.
+### ✅ Download Document Button
+- Added to WIR form, enabled only when both inspectors signed + form saved
+- Calls `GET /documents/{id}/bundle` which generates PDF + merges ALL attachments (PDFs appended, images converted to PDF pages)
+- Filename = reference number
 
-### ✅ Document Supersede vs Hard-delete
+### ✅ Project Approvers Fixes
+- Fixed unique index conflict: recreated as partial index (`WHERE is_deleted = false`)
+- CRUD router now supports `hard_delete=True` (used for project-approvers)
+- CRUD router supports pre-built loader options (chained selectinload for nested relationships)
+- Delete confirmation dialog added
+- `response_time` column added to `document_approval_rounds` (migration `c0d1e2f3a4b5`)
 
-`DELETE /documents/{id}` rewritten with branching logic:
-- **Authorization**: only the document creator OR a user with `admin`/`super_admin` role (or `is_superuser`) can call it. Returns 403 otherwise.
-- **If submitted to any approver** (any `DocumentApprovalRound` exists OR status ∈ {`with_approver_1`, `with_approver_2`, `approver_1_returned`, `approved`, `approved_with_comments`, `rejected`}) → **SUPERSEDE**: status = `superseded`, soft-delete (`is_deleted = True`). Serial number is preserved.
-- **If not submitted** → **HARD DELETE**: removes attachment files from disk (paths validated to stay inside `upload_root`), hard-deletes `document_attachments`, `document_assets`, and the `documents` row itself, then **decrements `next_serial`** on the matching `reference_number_configs` row so the same serial can be reused on the next document. Floor-clamped at `serial_start`.
-- Audit log entry distinguishes the two paths (`action="supersede"` vs `action="delete"`).
+### ✅ Admin Access Control
+- Created `admin/layout.tsx` — redirects non-admin users to dashboard
+- Sidebar hides "Administration" group for non-admin users
+- Template upload/delete UI hidden for non-admin users (backend already enforced)
 
-Frontend (WIR list page only — same treatment NOT yet applied to MIR/CIR/FAT lists):
-- `DataTableRowActions` extended: `RowAction.label` and `RowAction.confirm` now accept either a string or a `(row) => string` function. Dialog title and primary button label both follow the resolved label.
-- WIR list action shows **Supersede** vs **Delete** dynamically per-row, with a confirmation message that explains the serial-number consequence.
+### ✅ App Settings — Configurable Date Format
+- `app_settings` table (key-value store) + migration `b9c0d1e2f3a4`
+- `GET/PUT /admin/settings/{key}` endpoints
+- Default `date_format` = `DD.MM.YYYY`
+- Frontend `formatDate()` utility reads configured format; dashboard layout fetches on mount
+- Backend PDF generation uses configured format
+- Admin Settings page has Date Format card with dropdown
 
-### ✅ DB Cleanup — Clean Slate for WIR Testing
+### ✅ Attachment System Improvements
+- Delete confirmation dialog on all attachment removals
+- `showPagePosition=false` and `showDownloadBundle=false` on WIR/MIR/CIR forms (page position only for approval rounds)
+- Drag-and-drop fix: `stopPropagation` + container drop prevention
+- Accepted format labels on all file upload points (PDF, DOCX, CSV, PNG/JPG)
 
-Deleted all WIR data + orphaned upload directories so the next WIR test starts from `WIR-0001`.
-- 1 WIR document + 6 attachments + 1 approval round + 51 requirement-links + 12 orphaned work items + 3 asset links removed.
-- 4 upload directories under `uploads/attachments/` deleted (1 belonging to the WIR, 3 orphaned from prior sessions).
-- `reference_number_configs.next_serial` for WIR reset to `1`.
+### ✅ Approval Workflow Improvements
+- Record Response dialog: all fields optional except decision status + file
+- Replace Document flow: opens Record Response dialog (with OCR capture) instead of direct file upload
+- Replace endpoint (`PUT /approval-rounds/{round_id}/file`): accepts Form fields, always overwrites all metadata
+- Removed "Add remarks for Approver 2" button (consolidated into "Add Attachment" on the round)
+- Action buttons moved below rounds list
+- Replace button disabled after terminal status
+- PDF file name link uses authenticated download (no more 404)
+- Round bundle download uses authenticated request
+- `response_time` field added to capture form and rounds display
 
-### ✅ Sidebar UX Polish
+### ✅ PDF Region Picker Fix
+- Worker loaded from local node_modules (not CDN) — fixes "Failed to load PDF" error
+- Overlay positioned relative to PDF page content (not scroll container) — fixes coordinate mismatch
+- `originalWidth`/`originalHeight` used for coordinate conversion — fixes wrong region extraction
+- Error handling: validation error arrays properly stringified for toast
 
-- Added `ChevronsUpDown` icon to the user profile button at the bottom of the sidebar to indicate the dropdown.
-- Dropdown popup width matches the trigger button width via `w-[var(--radix-dropdown-menu-trigger-width)]` + `align="start"`.
+### ✅ Form Locking After Approver Response
+- After approver 1 returns: General Info, Inspectors, Attachments, Actions sections disabled
+- Commissioning Linkage + Assets remain editable
+
+### ✅ Misc Fixes
+- Nested button hydration error fixed (sidebar footer `DropdownMenuTrigger` uses `render={<div />}` + `nativeButton={false}`)
+- Preview PDF disabled when form is dirty or unsaved
+- Template selector change marks form as dirty
+- `master-data/assets/page.tsx` — added missing `useSelectedProject` import
+- `api.ts` — removes `Content-Type` header for FormData requests (fixes multipart uploads)
+- Assets section collapsible (collapsed by default, ChevronDown icon)
 
 ### Migration Required for This Session
 
@@ -239,92 +285,46 @@ Run on first pull:
 ```bash
 cd backend && uv run alembic upgrade head
 ```
-Adds `document_attachments.insert_after_page`.
+Adds: `documents.remarks_1/2`, `documents.inspector_date_1/time_1/date_2/time_2`, `app_settings` table, `document_approval_rounds.response_time`.
 
 ## Next Priorities
 
-1. **Apply supersede/delete logic to MIR/CIR/FAT list pages** — same dynamic action label + confirmation message pattern as WIR. Right now only WIR uses it.
-2. **End-to-end test of the new attachment + bundle flow** — create WIR → add attachments with page positions → submit to approver → record response (single returned PDF) → upload extra round attachments at positions → download merged round bundle. Verify page order in the output PDF.
-3. **End-to-end test of approval workflow** — drive through WIR submit → AESG response (try OCR region capture on a real Aconex transmittal) → resubmit → Core Emirates → approved. Still untested in browser.
-4. **Tesseract install instructions** — add to README and Docker setup. Currently the OCR fallback silently disables itself if the binary isn't present.
-5. **Round file download endpoint** — the rounds list links to `/approval-rounds/{round_id}/file` but no such endpoint exists yet. Stub it or rewire to attachment download URLs.
-6. **FAT attachments** — FAT form has no attachments section yet; integrate the `DocumentAttachments` component when needed.
-7. **Document list pages — server-side pagination** for WIR/MIR/CIR/FAT.
-8. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type.
-9. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
-10. **CSV import for assets** — Bulk import assets from CSV with validation.
-11. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates.
-12. **Audit log expansion** — Add audit logging to commissioning operations (requirement changes, tag target updates).
+1. **End-to-end test of the new attachment + bundle flow** — create WIR → add attachments → submit to approver → record response → upload extra round attachments → download merged round bundle. Verify page order.
+2. **End-to-end test of approval workflow** — drive through WIR submit → Approver 1 response → resubmit → Approver 2 → approved.
+3. **Apply form locking + inspector fields to MIR/CIR/FAT forms** — same pattern as WIR.
+4. **Tesseract install instructions** — add to README and Docker setup.
+5. **FAT attachments** — FAT form has no attachments section yet; integrate the `DocumentAttachments` component.
+6. **Document list pages — server-side pagination** for WIR/MIR/CIR/FAT.
+7. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type.
+8. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
+9. **CSV import for assets** — Bulk import assets from CSV with validation.
+10. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates.
+11. **Audit log expansion** — Add audit logging to commissioning operations.
 
 ## Previously Completed (Earlier Sessions)
 
 ### External Approval Workflow
-
-- ✅ Schema migrations: `e1f2a3b4c5d6_external_approval_workflow.py` (project_approvers per doc_type, document_approval_rounds, status enum) and `f1a2b3c4d5e6_document_template_lock.py` (document.template_id + cover_page_count snapshot).
-- ✅ Services: `app/services/pdf.py` (count_pages_in_docx, extract_region_text with PyMuPDF native-text-first + Tesseract fallback + image-overlap detection + force-OCR), `app/services/approval.py` state machine.
-- ✅ All 6 approval endpoints + Admin Settings ProjectApproversCard with doc-type segmented selector.
-- ✅ Document form ApprovalActionPanel + SubmitToApproverDialog + RecordResponseDialog (PDF preview + region-OCR) + AddRemarksDialog + ApprovalRoundsList wired into WIR/MIR/CIR/FAT.
-- ✅ Seed: WIR/MIR → AESG → Core Emirates; CIR → RED Engineering → Sudlows.
-- ✅ MIR/CIR feature parity with WIR (template selector, attachments, Preview PDF, isDirty, linkage-first flow, etc.).
+- ✅ Schema migrations, services, all 6 approval endpoints + Admin Settings ProjectApproversCard
+- ✅ Document form ApprovalActionPanel + SubmitToApproverDialog + RecordResponseDialog + ApprovalRoundsList
+- ✅ MIR/CIR feature parity with WIR
 
 ### RBAC + Roles
-
-- ✅ 13 permissions across 5 categories, permission matrix UI on Roles page, `require_permission` enforced.
-- ✅ Viewer role (read-only).
-- ✅ Signing logic simplified — any non-viewer can sign either inspector slot in any order.
-- ✅ Template upload restricted to `reports.templates` permission.
-- ✅ Signature preview public (so `<img>` tags work).
-- ✅ Work items restored on form reload (all four QA/QC forms).
+- ✅ 13 permissions across 5 categories, permission matrix UI, `require_permission` enforced
+- ✅ Viewer role, signing logic, template upload restricted, signature preview public
+- ✅ Work items restored on form reload
 
 ### Commissioning Engine + Forms (foundation)
-
-- ✅ Full commissioning engine refactor (backend + frontend).
-- ✅ Domain spec + architecture decisions docs.
-- ✅ Fresh schema with clean migrations.
-- ✅ Realistic data center MEP seed data (36 assets, 26 requirement templates, 455 assignments).
-- ✅ Requirement Templates / Tracking / Asset Requirements / Tag Targets pages.
-- ✅ WIR/CIR/MIR/FAT full forms with commissioning linkage + work breakdown.
-- ✅ Reference number auto-generation (serial per project+discipline+doc_type, FOR UPDATE locked).
-- ✅ Document revision system (resubmit rejected docs).
-- ✅ Gate check API + gate override confirmation dialog with notes.
-- ✅ Notifications page + dashboard with commissioning progress charts.
-- ✅ Document approval → work items approved → requirement recalculated → tag achieved.
-- ✅ Work item rollback on document rejection.
-- ✅ Designation master table.
-- ✅ Column order persistence (per-user, DB-backed).
-- ✅ Asset type filter on commissioning tracking (cascading Discipline → Service → Asset Type).
-- ✅ Audit log system (`audit_logs` table + `record_audit` service + `/admin/audit-logs` endpoint + frontend page).
-- ✅ Document PDF generation (docxtpl → LibreOffice → PDF).
-- ✅ Server-side pagination on CRUD/documents endpoints.
-- ✅ FAT form full flow tested.
-- ✅ Profile page designation display.
-- ✅ Signature contrast fix (theme-aware) + signature fit-to-cell in PDF.
-- ✅ PDF attachments rendered as PDF pages (reportlab).
-- ✅ Notifications project-scoped.
-- ✅ Public users endpoint (`GET /auth/users`).
-- ✅ `require_project_access()` dependency on documents/commissioning endpoints.
-- ✅ Commissioning linkage + selected assets restored on form reload.
-
-### Bug Fixes (earlier)
-
-- C1: Work items rolled back on document rejection.
-- C2+C3: Race condition in ref number generation fixed (FOR UPDATE + unique constraint).
-- C4: Document status state machine.
-- H1+H2: `require_permission` wired to commissioning + document write endpoints.
-- H3: Approval order validation.
-- H4: Sign endpoint validates RBAC role.
-- H5+H6: Literal type constraints on enum fields.
-- H7: Document delete triggers requirement recalculation.
-- H8: bulk-by-type POST uses Pydantic body.
-- H9: N+1 query eliminated in `recalculate_requirements_for_document`.
-- M1: Server-side ref number generation on document create.
-- M2: Signed fields removed from DocumentUpdate.
-- M5: Discipline fallback raises 400 instead of silently counting all.
-- M6: Unique approver_order per document.
-- M7+M8: Gate override immutability + type annotation fixed.
-- Gate override level_code uses template's actual level (not hardcoded L2B).
-- Commissioning tracking page filters by project_id.
-- updated_at added to DocumentResponse.
+- ✅ Full commissioning engine, domain spec + architecture decisions docs
+- ✅ Fresh schema with clean migrations, realistic seed data
+- ✅ All tracking/requirements/tag-targets pages
+- ✅ WIR/CIR/MIR/FAT full forms with commissioning linkage + work breakdown
+- ✅ Reference number auto-generation, document revision system
+- ✅ Gate check API + gate override, notifications, dashboard
+- ✅ Document approval → work items → requirement recalculated → tag achieved
+- ✅ Work item rollback on rejection, designation master, column order persistence
+- ✅ Audit log system, document PDF generation, server-side pagination
+- ✅ Profile page, signature contrast fix, PDF attachments as pages
+- ✅ Notifications project-scoped, public users endpoint, `require_project_access()`
 
 ## Login Credentials
 
@@ -333,4 +333,5 @@ dev@jlwme.com / Dev12345 (super_admin)
 admin@jlwme.com / Admin123 (admin)
 site@jlwme.com / Site1234 (site_engineer)
 qaqc@jlwme.com / Qaqc1234 (qaqc_engineer)
+jerry@jlwme.com / Jerry123 (qaqc_manager)
 ```
