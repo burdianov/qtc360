@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -50,6 +51,10 @@ type FormValues = z.infer<typeof schema>;
 export default function TagTargetsPage() {
   const project = useSelectedProject();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const tagFilter = searchParams.get("tag");
+  const weekFilter = searchParams.get("week");
+  const statusFilter = searchParams.get("status");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TagTarget | null>(null);
 
@@ -66,6 +71,28 @@ export default function TagTargetsPage() {
   });
 
   const assetMap = Object.fromEntries(assets.map((a) => [a.id, a]));
+
+  const filteredTargets = useMemo(() => {
+    let result = targets;
+    if (tagFilter) result = result.filter((t) => t.tag_code === tagFilter);
+    if (statusFilter) result = result.filter((t) => t.status === statusFilter);
+    if (weekFilter) {
+      // Parse "30 May - 05 Jun" into date range
+      const parts = weekFilter.split(" - ");
+      if (parts.length === 2) {
+        const parseWeekDate = (s: string) => {
+          const d = new Date(s + " 2026");
+          return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : null;
+        };
+        const start = parseWeekDate(parts[0]);
+        const end = parseWeekDate(parts[1]);
+        if (start && end) {
+          result = result.filter((t) => t.target_date >= start && t.target_date <= end);
+        }
+      }
+    }
+    return result;
+  }, [targets, tagFilter, weekFilter, statusFilter]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -95,7 +122,7 @@ export default function TagTargetsPage() {
     { accessorKey: "target_date", header: ({ column }) => <DataTableColumnHeader column={column} title="Target Date" />, cell: ({ row }) => formatDate(row.original.target_date) },
     { accessorKey: "actual_achieved_date", header: "Achieved", cell: ({ row }) => formatDate(row.original.actual_achieved_date) },
     { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <Badge className={statusColors[row.original.status] || ""}>{row.original.status.replace(/_/g, " ")}</Badge> },
-    { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
+    { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
   return (
@@ -107,7 +134,7 @@ export default function TagTargetsPage() {
         </div>
         <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Target</Button>
       </div>
-      <DataTable columns={columns} data={targets} searchKey="asset_id" searchPlaceholder="Search..." />
+      <DataTable columns={columns} data={filteredTargets} searchKey="asset_id" searchPlaceholder="Search..." />
 
       {/* Bulk Assign */}
       <BulkTagTargets assets={assets} onDone={() => queryClient.invalidateQueries({ queryKey: ["tag-targets"] })} />

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { Download } from "lucide-react";
 import api from "@/lib/api";
@@ -62,7 +63,9 @@ interface AssetTypeItem { id: string; name: string; service_id: string; }
 
 export default function CommissioningTrackingPage() {
   const project = useSelectedProject();
-  const [filterTag, setFilterTag] = useState<string>("");
+  const searchParams = useSearchParams();
+  const [filterTag, setFilterTag] = useState<string>(searchParams.get("tag") || "");
+  const [filterPod, setFilterPod] = useState<string>(searchParams.get("pod") || "");
   const [filterDiscipline, setFilterDiscipline] = useState<string>("");
   const [filterService, setFilterService] = useState<string>("");
   const [filterAssetType, setFilterAssetType] = useState<string>("");
@@ -108,6 +111,7 @@ export default function CommissioningTrackingPage() {
   const filteredAssetIds = new Set(
     assets
       .filter((a) => {
+        if (filterPod && !a.tag_number.includes(`:${filterPod}:`)) return false;
         if (filterAssetType) return a.asset_type_id === filterAssetType;
         if (filterService) return assetTypes.some((t) => t.id === a.asset_type_id && t.service_id === filterService);
         if (filterDiscipline) return assetTypes.some((t) => t.id === a.asset_type_id && filteredServices.some((s) => s.id === t.service_id));
@@ -201,6 +205,16 @@ export default function CommissioningTrackingPage() {
           <SelectContent>
             <SelectItem value="__all__">All Asset Types</SelectItem>
             {filteredAssetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={filterPod || "__all__"} onValueChange={(v: any) => setFilterPod(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-32"><SelectValue>{filterPod || "All PODs"}</SelectValue></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All PODs</SelectItem>
+            <SelectItem value="P1">P1</SelectItem>
+            <SelectItem value="P2">P2</SelectItem>
+            <SelectItem value="P3">P3</SelectItem>
           </SelectContent>
         </Select>
 

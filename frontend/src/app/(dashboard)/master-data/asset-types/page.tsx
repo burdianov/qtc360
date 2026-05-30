@@ -23,7 +23,7 @@ const schema = z.object({
   code: z.string().min(1, "Code is required"),
   service_id: z.string().min(1, "Service is required"),
   parent_type_id: z.string(),
-  sort_order: z.coerce.number().int().min(0),
+  sort_order: z.number().int().min(0),
 });
 
 type FormValues = z.infer<typeof schema>;

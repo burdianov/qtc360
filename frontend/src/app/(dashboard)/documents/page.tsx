@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
@@ -32,14 +32,17 @@ const typeColors: Record<string, string> = {
 
 export default function DocumentsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const project = useSelectedProject();
-  const [filterType, setFilterType] = useState("");
+  const [filterType, setFilterType] = useState(searchParams.get("type") || "");
+  const [filterStatus, setFilterStatus] = useState(searchParams.get("status") || "");
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
-    queryKey: ["documents", "all", project?.id, filterType],
+    queryKey: ["documents", "all", project?.id, filterType, filterStatus],
     queryFn: async () => {
       const params: any = { project_id: project!.id };
       if (filterType) params.document_type = filterType;
+      if (filterStatus) params.status = filterStatus;
       return (await api.get("/documents", { params })).data;
     },
     enabled: !!project,
@@ -61,7 +64,7 @@ export default function DocumentsPage() {
       const label = status === "submitted" && current_approver_order ? `Pending Approver ${current_approver_order}` : status.replace(/_/g, " ");
       return <Badge className={statusColors[status] || ""}>{label}</Badge>;
     }},
-    { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
+    { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
     { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="text-xs text-muted-foreground">{formatDate(row.original.created_at)}</span> },
   ];
 
@@ -74,16 +77,32 @@ export default function DocumentsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">All Documents</h1>
           <p className="text-sm text-muted-foreground">View all QA/QC and commissioning documents</p>
         </div>
-        <Select value={filterType} onValueChange={(v: any) => setFilterType(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-32"><SelectValue placeholder="All Types">{filterType || "All Types"}</SelectValue></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All Types</SelectItem>
-            <SelectItem value="WIR">WIR</SelectItem>
-            <SelectItem value="CIR">CIR</SelectItem>
-            <SelectItem value="MIR">MIR</SelectItem>
-            <SelectItem value="FAT">FAT</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={filterStatus || "__all__"} onValueChange={(v: any) => setFilterStatus(v === "__all__" ? "" : v)}>
+            <SelectTrigger className="w-44"><SelectValue>{filterStatus ? filterStatus.replace(/_/g, " ") : "All Statuses"}</SelectValue></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Statuses</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="internally_signed">Internally Signed</SelectItem>
+              <SelectItem value="with_approver_1">With Approver 1</SelectItem>
+              <SelectItem value="approver_1_returned">Approver 1 Returned</SelectItem>
+              <SelectItem value="with_approver_2">With Approver 2</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="approved_with_comments">Approved (B)</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterType || "__all__"} onValueChange={(v: any) => setFilterType(v === "__all__" ? "" : v)}>
+            <SelectTrigger className="w-32"><SelectValue placeholder="All Types">{filterType || "All Types"}</SelectValue></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Types</SelectItem>
+              <SelectItem value="WIR">WIR</SelectItem>
+              <SelectItem value="CIR">CIR</SelectItem>
+              <SelectItem value="MIR">MIR</SelectItem>
+              <SelectItem value="FAT">FAT</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <DataTable
         columns={columns}

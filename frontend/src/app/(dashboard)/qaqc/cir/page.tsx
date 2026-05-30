@@ -76,7 +76,7 @@ export default function CIRPage() {
       const label = status === "submitted" && current_approver_order ? `Pending Approver ${current_approver_order}` : status.replace(/_/g, " ");
       return <Badge className={statusColors[status] || ""}>{label}</Badge>;
     }},
-    { id: "actions", header: "", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
+    { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
   if (isLoading) return <div className="p-6">Loading...</div>;
