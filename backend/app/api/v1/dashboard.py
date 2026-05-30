@@ -209,15 +209,35 @@ async def get_dashboard_analytics(
                 "target_date": r[3].isoformat(), "status": r[4]}
                for r in delayed_items]
 
+    # --- Scatter: tag target vs actual achievement (days early/late) per asset ---
+    scatter_data = (await db.execute(text("""
+        SELECT a.tag_number, tt.tag_code, tt.target_date, tt.actual_achieved_date, tt.status,
+               CASE WHEN tt.actual_achieved_date IS NOT NULL
+                    THEN (tt.actual_achieved_date - tt.target_date)
+                    WHEN tt.status = 'delayed'
+                    THEN (CURRENT_DATE - tt.target_date)
+                    ELSE NULL END as days_variance
+        FROM asset_tag_targets tt
+        JOIN assets a ON tt.asset_id = a.id
+        WHERE a.project_id = :pid AND tt.is_deleted = false
+          AND (tt.status IN ('achieved', 'delayed', 'in_progress'))
+        ORDER BY tt.tag_code, tt.target_date
+    """), {"pid": project_id})).fetchall()
+    approval_scatter = [
+        {"asset": r[0], "tag": r[1], "target_date": r[2].isoformat(), "status": r[4],
+         "days_variance": int(r[5]) if r[5] is not None else 0}
+        for r in scatter_data if r[5] is not None
+    ]
+
     # --- Documents by discipline ---
     by_discipline = (await db.execute(text("""
-        SELECT d2.name, d2.code, COUNT(*) as count
+        SELECT d2.id, d2.name, d2.code, COUNT(*) as count
         FROM documents d
         JOIN disciplines d2 ON d.discipline_id = d2.id
         WHERE d.project_id = :pid AND d.is_deleted = false
-        GROUP BY d2.name, d2.code ORDER BY count DESC
+        GROUP BY d2.id, d2.name, d2.code ORDER BY count DESC
     """), {"pid": project_id})).fetchall()
-    docs_by_discipline = [{"name": r[0], "code": r[1], "count": r[2]} for r in by_discipline]
+    docs_by_discipline = [{"id": str(r[0]), "name": r[1], "code": r[2], "count": r[3]} for r in by_discipline]
 
     return {
         "kpi": {
@@ -236,6 +256,7 @@ async def get_dashboard_analytics(
         "approval_turnaround": approval_turnaround,
         "delayed_items": delayed,
         "docs_by_discipline": docs_by_discipline,
+        "approval_scatter": approval_scatter,
     }
 
 

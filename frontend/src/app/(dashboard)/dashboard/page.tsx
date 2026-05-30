@@ -13,7 +13,7 @@ import {
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
-  ComposedChart, Area,
+  ComposedChart, Area, Treemap, ScatterChart, Scatter, ReferenceLine,
 } from "recharts";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
@@ -35,7 +35,8 @@ interface Analytics {
   tag_achievement: { tag: string; achieved?: number; in_progress?: number; delayed?: number; not_started?: number }[];
   approval_turnaround: { doc_type: string; avg_days: number; max_days: number; rounds: number }[];
   delayed_items: { tag_number: string; asset_name: string; tag_code: string; target_date: string; status: string }[];
-  docs_by_discipline: { name: string; code: string; count: number }[];
+  docs_by_discipline: { id: string; name: string; code: string; count: number }[];
+  approval_scatter: { asset: string; tag: string; target_date: string; status: string; days_variance: number }[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -150,7 +151,21 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Row 5: Export Reports */}
+          {/* Row 5: Treemap + Scatter */}
+          <div className="grid gap-4 lg:grid-cols-1">
+            <div className="rounded-xl border bg-card p-5">
+              <h3 className="text-sm font-medium mb-1">Documents by Discipline</h3>
+              <p className="text-xs text-muted-foreground mb-4">Distribution of documents across disciplines</p>
+              <DisciplineTreemap data={data.docs_by_discipline} />
+            </div>
+            <div className="rounded-xl border bg-card p-5">
+              <h3 className="text-sm font-medium mb-1">Tag Achievement Timing</h3>
+              <p className="text-xs text-muted-foreground mb-4">Days early (negative) or late (positive) per asset tag - color by tag level</p>
+              <ApprovalScatter data={data.approval_scatter} />
+            </div>
+          </div>
+
+          {/* Row 6: Export Reports */}
           <TrackerExport />
         </>
       ) : null}
@@ -530,5 +545,92 @@ function TrackerExport() {
         </button>
       </div>
     </div>
+  );
+}
+
+const TREEMAP_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
+
+function DisciplineTreemap({ data }: { data: Analytics["docs_by_discipline"] }) {
+  const router = useRouter();
+  const treeData = data.map((d, i) => ({
+    name: d.name,
+    size: d.count,
+    fill: TREEMAP_COLORS[i % TREEMAP_COLORS.length],
+  }));
+
+  const CustomContent = (props: any) => {
+    const { x, y, width, height, name, size, fill } = props;
+    if (width < 40 || height < 40) return null;
+    return (
+      <g>
+        <rect x={x} y={y} width={width} height={height} fill={fill} rx={6} ry={6} stroke="var(--card)" strokeWidth={3} className="cursor-pointer hover:opacity-80 transition-opacity" />
+        <text x={x + width / 2} y={y + height / 2 - 8} textAnchor="middle" fill="#fff" fontSize={width > 100 ? 14 : 11} fontWeight={600}>
+          {name}
+        </text>
+        <text x={x + width / 2} y={y + height / 2 + 12} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={width > 100 ? 13 : 10}>
+          {size} docs
+        </text>
+      </g>
+    );
+  };
+
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <Treemap
+        data={treeData}
+        dataKey="size"
+        aspectRatio={4 / 3}
+        content={<CustomContent />}
+        onClick={(node: any) => {
+          if (node?.name) {
+            const disc = data.find((d) => d.name === node.name);
+            if (disc) router.push(`/documents?discipline=${disc.id}`);
+          }
+        }}
+      />
+    </ResponsiveContainer>
+  );
+}
+
+const SCATTER_COLORS: Record<string, string> = { WIR: "#3b82f6", MIR: "#f59e0b", CIR: "#8b5cf6", FAT: "#10b981" };
+
+function ApprovalScatter({ data }: { data: Analytics["approval_scatter"] }) {
+  const byTag: Record<string, typeof data> = {};
+  data.forEach((d) => { (byTag[d.tag] ||= []).push(d); });
+
+  // Assign index for X axis positioning
+  const indexed = data.map((d, i) => ({ ...d, idx: i }));
+  const byTagIndexed: Record<string, typeof indexed> = {};
+  indexed.forEach((d) => { (byTagIndexed[d.tag] ||= []).push(d); });
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+        <XAxis type="number" dataKey="idx" tick={false} stroke="var(--muted-foreground)" name="Asset" hide />
+        <YAxis type="number" dataKey="days_variance" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" label={{ value: "Days (- early, + late)", angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted-foreground)" }} />
+        <ReferenceLine y={0} stroke="#10b981" strokeWidth={2} strokeDasharray="4 2" label={{ value: "On time", position: "right", fontSize: 10, fill: "#10b981" }} />
+        <Tooltip
+          content={({ active, payload }) => {
+            if (!active || !payload?.length) return null;
+            const d = payload[0].payload;
+            const color = TAG_COLORS[d.tag] || "#6b7280";
+            const label = d.days_variance > 0 ? `${d.days_variance} days late` : d.days_variance < 0 ? `${Math.abs(d.days_variance)} days early` : "On time";
+            return (
+              <div style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+                <p style={{ color, fontWeight: 600 }}>{d.asset}</p>
+                <p style={{ color: "var(--foreground)" }}>{d.tag.charAt(0).toUpperCase() + d.tag.slice(1)} Tag - {d.status}</p>
+                <p style={{ color: d.days_variance > 0 ? "#ef4444" : "#10b981", fontWeight: 500 }}>{label}</p>
+                <p style={{ color: "var(--muted-foreground)", fontSize: 10 }}>Target: {d.target_date}</p>
+              </div>
+            );
+          }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+        {Object.entries(byTagIndexed).map(([tag, points]) => (
+          <Scatter key={tag} name={`${tag.charAt(0).toUpperCase() + tag.slice(1)} Tag`} data={points} fill={TAG_COLORS[tag] || "#6b7280"} opacity={0.85} r={7} />
+        ))}
+      </ScatterChart>
+    </ResponsiveContainer>
   );
 }

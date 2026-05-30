@@ -211,6 +211,7 @@ async def list_documents(
     project_id: UUID = Query(...),
     document_type: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
+    discipline_id: UUID | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     paginated: bool = Query(False),
@@ -222,6 +223,8 @@ async def list_documents(
         stmt = stmt.where(Document.document_type == document_type)
     if status_filter:
         stmt = stmt.where(Document.status == status_filter)
+    if discipline_id:
+        stmt = stmt.where(Document.discipline_id == discipline_id)
     # Tie-break by id so paging is stable across rows with equal created_at.
     stmt = stmt.order_by(Document.created_at.desc(), Document.id.desc())
     if paginated:

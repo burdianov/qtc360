@@ -36,13 +36,15 @@ export default function DocumentsPage() {
   const project = useSelectedProject();
   const [filterType, setFilterType] = useState(searchParams.get("type") || "");
   const [filterStatus, setFilterStatus] = useState(searchParams.get("status") || "");
+  const [filterDiscipline, setFilterDiscipline] = useState(searchParams.get("discipline") || "");
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
-    queryKey: ["documents", "all", project?.id, filterType, filterStatus],
+    queryKey: ["documents", "all", project?.id, filterType, filterStatus, filterDiscipline],
     queryFn: async () => {
       const params: any = { project_id: project!.id };
       if (filterType) params.document_type = filterType;
       if (filterStatus) params.status = filterStatus;
+      if (filterDiscipline) params.discipline_id = filterDiscipline;
       return (await api.get("/documents", { params })).data;
     },
     enabled: !!project,
