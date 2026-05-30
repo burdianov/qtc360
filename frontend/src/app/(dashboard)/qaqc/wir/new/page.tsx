@@ -739,7 +739,7 @@ function NewWIRPageContent() {
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Signatory 1</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && existingDoc?.status !== "draft" && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
                         {users.map((u) => (
@@ -757,7 +757,7 @@ function NewWIRPageContent() {
                 <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Signatory 2</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && existingDoc?.status !== "draft" && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
                         {users.map((u) => (

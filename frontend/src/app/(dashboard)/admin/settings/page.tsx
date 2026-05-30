@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { toast } from "sonner";
@@ -158,6 +158,11 @@ export default function SettingsPage() {
           id: "general",
           label: "General",
           content: <><DateFormatCard /><div className="mt-4"><RevisionSuffixCard /></div><div className="mt-4"><AssetCustomFieldsCard /></div></>,
+        },
+        {
+          id: "signatures",
+          label: "Signatures",
+          content: <SignatureConfigCard />,
         },
       ]} />
     </div>
@@ -320,6 +325,111 @@ function AssetCustomFieldsCard() {
             {saveMutation.isPending ? "Saving..." : "Save"}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignatureConfigCard() {
+  const qc = useQueryClient();
+  const [docType, setDocType] = useState("WIR");
+  const [config, setConfig] = useState<Record<string, { font_size: number; cell_width: number; x_offset: number; color: string }>>({});
+  const [loaded, setLoaded] = useState(false);
+
+  const defaultCfg = { font_size: 36, cell_width: 75, x_offset: -0.3, color: "#1a237e" };
+
+  const { data } = useQuery<{ key: string; value: string }>({
+    queryKey: ["app-setting", "signature_config"],
+    queryFn: async () => (await api.get("/admin/settings/signature_config")).data,
+  });
+
+  useEffect(() => {
+    if (data && !loaded) {
+      try { setConfig(JSON.parse(data.value)); } catch {}
+      setLoaded(true);
+    }
+  }, [data, loaded]);
+
+  // Ensure current doc type has config (handles new doc types automatically)
+  const current = config[docType] || defaultCfg;
+
+  const updateField = (field: string, value: number | string) => {
+    setConfig((prev) => ({ ...prev, [docType]: { ...current, [field]: value } }));
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      // Ensure all doc types have entries before saving
+      const toSave = { ...config };
+      if (!toSave[docType]) toSave[docType] = current;
+      await api.put("/admin/settings/signature_config", { value: JSON.stringify(toSave) });
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["app-setting", "signature_config"] }); toast.success("Saved"); },
+  });
+
+  const docTypes = Object.keys(config).length > 0
+    ? [...new Set(["WIR", "MIR", "CIR", "FAT", ...Object.keys(config)])]
+    : ["WIR", "MIR", "CIR", "FAT"];
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">PDF Signature Settings</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">Configure signature rendering per document type in generated PDFs. These settings only affect PDF output (always white background).</p>
+
+        <div>
+          <label className="text-xs text-muted-foreground mb-1.5 block">Document Type</label>
+          <Select value={docType} onValueChange={(v) => setDocType(v as string)}>
+            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {docTypes.map((dt) => <SelectItem key={dt} value={dt}>{dt}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Font Size (pt)</label>
+            <Input type="number" value={current.font_size} onChange={(e) => updateField("font_size", Number(e.target.value))} />
+            <p className="text-[10px] text-muted-foreground mt-1">Starting font size before scaling to fit cell</p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Cell Width (pt)</label>
+            <Input type="number" value={current.cell_width} onChange={(e) => updateField("cell_width", Number(e.target.value))} />
+            <p className="text-[10px] text-muted-foreground mt-1">Max width the signature can occupy (1 inch = 72pt)</p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">X Offset (multiplier)</label>
+            <Input type="number" step="0.1" value={current.x_offset} onChange={(e) => updateField("x_offset", Number(e.target.value))} />
+            <p className="text-[10px] text-muted-foreground mt-1">Horizontal shift relative to marker width (negative = left)</p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Signature Color</label>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <input
+                  type="color"
+                  value={current.color}
+                  onChange={(e) => updateField("color", e.target.value)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <div className="h-9 w-9 rounded-md border" style={{ backgroundColor: current.color }} />
+              </div>
+              <Input
+                type="text"
+                value={current.color}
+                onChange={(e) => updateField("color", e.target.value)}
+                className="flex-1 font-mono text-xs"
+                placeholder="#1a237e"
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">Color on PDF (white background) - click swatch to pick</p>
+          </div>
+        </div>
+
+        <Button onClick={() => save.mutate()} disabled={save.isPending} size="sm">
+          {save.isPending ? "Saving..." : "Save"}
+        </Button>
       </CardContent>
     </Card>
   );

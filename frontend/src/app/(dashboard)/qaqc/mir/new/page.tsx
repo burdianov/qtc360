@@ -342,7 +342,7 @@ function NewMIRPageContent() {
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
                   <FormItem><FormLabel>Name</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && existingDoc?.status !== "draft" && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? users.find((u) => u.id === inspector1Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "-"}</span></span></SelectItem>))}</SelectContent>
                     </Select>

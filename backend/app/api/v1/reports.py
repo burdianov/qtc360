@@ -318,8 +318,20 @@ async def generate_report(
     # Convert to PDF
     pdf_bytes = await _convert_to_pdf(docx_bytes)
 
-    # Stamp vector signatures onto the PDF (resolution-independent)
-    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document)
+    # Load signature config from app_settings
+    import json as _json
+    from app.models.app_setting import AppSetting
+    _sig_default = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
+    _sig_setting = (await db.execute(select(AppSetting).where(AppSetting.key == "signature_config"))).scalar_one_or_none()
+    _sig_cfg = _sig_default
+    if _sig_setting:
+        try:
+            _sig_cfg = _json.loads(_sig_setting.value).get(document.document_type, _sig_default)
+        except Exception:
+            pass
+
+    # Stamp vector signatures onto the PDF
+    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document, _sig_cfg)
 
     # Append attachments as additional pages
     from app.models.document_attachment import DocumentAttachment
@@ -456,8 +468,7 @@ def _build_context(document: Document) -> dict:
 
 def _fill_template(template_bytes: bytes, context: dict, document: Document) -> bytes:
     """Fill a DOCX template with context data, using a sandboxed Jinja env.
-    Signatures are NOT embedded as images here — they are stamped as vector text
-    onto the final PDF by _stamp_vector_signatures().
+    Signatures use SIGMARK markers that are later replaced with vector text on the PDF.
     """
     doc = DocxTemplate(io.BytesIO(template_bytes))
 
@@ -482,10 +493,13 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     return buf.getvalue()
 
 
-def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
+def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict | None = None) -> bytes:
     """Overlay vector text signatures onto the PDF using reportlab.
     Finds the signature marker text and draws the signature font text at that location.
+    Reads sizing/positioning from sig_cfg dict.
     """
+    if not sig_cfg:
+        sig_cfg = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfbase import pdfmetrics
@@ -571,17 +585,16 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
                 font_id = sig["font_id"]
                 name = sig["name"]
                 # PyMuPDF coords: origin top-left; reportlab: origin bottom-left
-                x = sig["x"]
+                x = sig["x"] - sig["width"] * sig_cfg["x_offset"]
                 y = page_height - sig["y"] - sig["height"]
-                # Draw signature text — fit within both cell height and width
-                font_size = sig["height"] * 0.8
+                # Scale signature to fill the cell
+                cell_width = sig_cfg["cell_width"]
+                font_size = sig_cfg["font_size"]
                 try:
                     c.setFont(font_id, font_size)
                 except Exception:
                     c.setFont("Helvetica", font_size)
-                # Scale down if text is wider than available cell width
-                cell_width = page_width * 0.3  # typical signature cell is ~30% of page width
-                # Measure text width at current font size
+                # Scale down to fit within cell_width
                 from reportlab.pdfbase.pdfmetrics import stringWidth
                 text_width = stringWidth(name, font_id, font_size)
                 if text_width > cell_width and text_width > 0:
@@ -591,7 +604,7 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
                     except Exception:
                         c.setFont("Helvetica", font_size)
                 # Parse color
-                color_hex = "#1a237e"
+                color_hex = sig_cfg["color"]
                 r = int(color_hex[1:3], 16) / 255
                 g = int(color_hex[3:5], 16) / 255
                 b = int(color_hex[5:7], 16) / 255
@@ -694,17 +707,16 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
             "--outdir", tmp_dir, str(docx_path),
         ]
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            import subprocess
+            proc = await asyncio.to_thread(
+                subprocess.run, cmd, capture_output=True, timeout=LIBREOFFICE_TIMEOUT,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=LIBREOFFICE_TIMEOUT)
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="PDF engine not configured (Gotenberg down, LibreOffice not found)")
-        except asyncio.TimeoutError:
-            proc.kill()
+        except subprocess.TimeoutExpired:
             raise HTTPException(status_code=500, detail="PDF generation timed out")
         if proc.returncode != 0:
-            logger.error("LibreOffice exited %s; stderr=%r", proc.returncode, stderr[-500:] if stderr else b"")
+            logger.error("LibreOffice exited %s; stderr=%r", proc.returncode, proc.stderr[-500:] if proc.stderr else b"")
             raise HTTPException(status_code=500, detail="Report generation failed")
 
         pdf_path = Path(tmp_dir) / "document.pdf"

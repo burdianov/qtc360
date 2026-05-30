@@ -1801,7 +1801,19 @@ async def download_document_bundle(
     context = _build_context(doc)
     docx_bytes = _fill_template(template.file, context, doc)
     main_pdf_bytes = await _convert_to_pdf(docx_bytes)
-    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc)
+
+    # Load signature config
+    import json as _json
+    from app.models.app_setting import AppSetting
+    _sig_default = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
+    _sig_setting = (await db.execute(select(AppSetting).where(AppSetting.key == "signature_config"))).scalar_one_or_none()
+    _sig_cfg = _sig_default
+    if _sig_setting:
+        try:
+            _sig_cfg = _json.loads(_sig_setting.value).get(doc.document_type, _sig_default)
+        except Exception:
+            pass
+    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc, _sig_cfg)
 
     # Get all user attachments for this document
     attachments_result = await db.execute(
