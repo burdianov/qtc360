@@ -67,6 +67,11 @@ AppSetting (key-value store for app configuration)
 19. **Inline table editing** — all DataTable instances support per-cell inline editing via `editableColumns` + `onRowUpdate` props. Click a cell to edit, Enter to save, Escape to cancel. Modal editing remains via row actions.
 20. **Column visibility persisted** per user via `user_preferences` table (key: `col_vis{path}`).
 21. **Aconex date tracking** — every approval submission records `aconex_submitted_date`, every response records `aconex_received_date` on the `document_approval_rounds` table.
+22. **MIR has single signatory** — only `site_engineer` signs. Backend transitions to `internally_signed` after one signature.
+23. **FAT has no approval workflow** — status is always `"approved"` on create. No signing, no state machine. Always editable. Just a record.
+24. **All dates use configured format** — admin-configurable via `app_settings` key `date_format`. Applies to PDF generation and frontend display. No hardcoded formats.
+25. **Centralized constants** — `backend/app/core/types.py` is the single source of truth for shared types, enums, and magic numbers. Frontend uses `lib/constants.ts`.
+26. **No em-dashes in UI** — use hyphens (-) everywhere in user-facing text.
 
 ### Backend Structure
 
@@ -245,21 +250,79 @@ All master data tables support per-cell inline editing:
 - Approval Rounds list displays both dates in expanded card
 
 ### ✅ Notify Signatories Button Rework
-- Renamed from "Save & Notify Signatories" to "Notify Signatories"
-- No longer saves — only calls notify endpoint
-- Enabled when: document is saved AND at least one signatory is a different user than current user
-- Applied to WIR, MIR, CIR
+- WIR/CIR: Renamed to "Notify Signatories", only notifies (no save), disabled when both signed or no other signatory
+- MIR: "Notify Signatory" (single), disabled when current user IS the signatory or already signed
 
 ### ✅ UI Label Updates
-- "Inspected By" → "Signatories" (card title)
-- "Inspected by 1/2" → "Signatory 1/2" (form labels)
+- "Inspected By" → "Signatories" (card title, WIR/CIR) / "Signatory" (MIR)
+- "Inspected by 1/2" → "Signatory 1/2" (WIR/CIR) / "Name" (MIR)
 - "Inspector remarks..." → "Remarks..." (placeholder)
-- Applied to WIR, MIR, CIR, FAT
+- All em-dashes (—) replaced with hyphens (-) across entire UI
+
+### ✅ MIR Single Signatory
+- Removed inspector 2 dropdown, signature box, date/time, remarks
+- Backend: MIR transitions to `internally_signed` after single signature
+- Download Document enabled after single signature
+- Approval workflow works with 2 approvers (configured in admin)
+
+### ✅ FAT Form Rewrite
+- Reference number: simple editable input (optional, no auto-generation)
+- Description: optional textarea
+- Discipline: required dropdown
+- Commissioning Linkage: same as WIR (toggle, template, full/partial scope, work items)
+- Assets: same as WIR (collapsible, searchable, filterable by discipline + asset type)
+- No signatories, no signing, no approval workflow
+- Always editable, status auto-set to "approved" on create
+- Two buttons only: Cancel + Save
+- Status transition validation skipped for FAT
+
+### ✅ Form Locking After Submission
+- All forms (WIR/MIR/CIR/FAT) fully locked after submission to approver
+- Preview PDF + Download Document remain enabled (outside fieldset)
+- Save/Notify/Cancel hidden when locked
+- Assets section auto-expands when locked
+
+### ✅ Code Audit Fixes (P0-P3)
+- Created `backend/app/core/types.py`: TAG_LEVEL_MAP, PermissionCode enum, DocStatus, ReqStatus, signature/attachment/pagination constants
+- All backend files import from `core/types.py` instead of inline definitions
+- Frontend `lib/constants.ts` expanded: DOC_STATUS, statusColors, reqStatusColors, STORAGE_KEYS, PAGE_SIZE_OPTIONS
+- STORAGE_KEYS used in api.ts, use-auth.ts, use-project.ts, auth-guard.tsx
+- Signature rendering: named constants for padding/offset magic numbers
+- OCR_ZOOM, MAX_APPROVERS, DEFAULT_SERIAL_START, GOTENBERG_TIMEOUT centralized
+
+### ✅ Bug Fixes
+- Attachment reorder: reload attachments after save so `isExisting` is set correctly
+- Commissioning linkage: `useRef` for dirty flag (avoids stale closure), loads on refresh
+- `saveCommissioningLinkage` only runs when linkage actually changed (performance fix)
+- Document delete: removes `document_requirement_links` before hard-delete
+- PDF merge: handles image attachments (converts to PDF via Pillow)
+- Signature size normalization across fonts
+- `/me` endpoint returns roles + permissions (fixes admin guard)
+- Template auto-select handles deleted templates
+- `_format_date` handles string dates
+- Template syntax errors: caught on upload + shown to user on generate
+- `recalculate_requirement_status`: fixed `requirement_id` → `asset_requirement_id` typo
+- Approval round response schema: `aconex_*_date` fields use `date` type not `str`
+- Round attachments accept images (PNG/JPG) in addition to PDF
+- Generate report: filters attachments by `kind == "user"`
+- Profile page invalidates `["users"]` query on signature save
+
+### ✅ PDF Template Improvements
+- Discipline checkboxes: ☒/☐ + word (e.g. "☒ Electrical")
+- Matching by discipline code (AR, CS, MC, EL, PL, FF, OT) AND name
+- MIR `{{ inspected_by }}` outputs "Name - Designation" format
+- `{{ date_1 }}` formatted using configured date format
+- Template validation on upload (Jinja2 syntax check)
+- Better error messages on PDF generation failure (shows actual detail)
 
 ### ✅ Dropdown Overflow Fix
 - Asset edit modal: `max-h-[85vh] overflow-y-auto` on DialogContent
 - Asset Type dropdown: `max-h-[320px]` on SelectContent
 - Asset Type field moved to first position in form
+
+### ✅ Asset Type Dropdown Filtered by Discipline
+- All forms (WIR, MIR, CIR, FAT) filter asset type dropdown options by selected discipline
+- Uses AssetType → Service → Discipline chain
 
 ### Migration Required for This Session
 
@@ -271,17 +334,17 @@ Adds: `assets.custom_fields` (JSONB), `asset_types.sort_order`, `document_approv
 
 ## Next Priorities
 
-1. **End-to-end test of the new attachment + bundle flow** — create WIR → add attachments → submit to approver → record response → upload extra round attachments → download merged round bundle.
-2. **End-to-end test of approval workflow** — drive through WIR submit → Approver 1 response → resubmit → Approver 2 → approved.
-3. **Tesseract install instructions** — add to README and Docker setup.
-4. **FAT attachments** — FAT form has no attachments section yet; integrate the `DocumentAttachments` component.
-5. **Document list pages — server-side pagination** for WIR/MIR/CIR/FAT.
-6. **Report templates** — Upload MIR/CIR/FAT DOCX templates, test PDF generation for each type.
-7. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
-8. **CSV import for assets** — Bulk import assets from CSV with validation.
-9. **Bulk operations on commissioning tracking** — Bulk assign/remove requirements, bulk update target dates.
-10. **Audit log expansion** — Add audit logging to commissioning operations.
-11. **Aconex date reports** — Generate reports showing submission/response timelines per document.
+1. **End-to-end test of approval workflow** — WIR: submit → Approver 1 response → resubmit → Approver 2 → approved. Verify commissioning requirement achievement.
+2. **MIR end-to-end** — create → sign → submit to approver → record response → approved.
+3. **CIR end-to-end** — same flow as WIR with both signatories.
+4. **FAT end-to-end** — create → save → verify requirement achievement via commissioning linkage.
+5. **Tesseract install instructions** — add to README and Docker setup.
+6. **Document list pages - server-side pagination** for WIR/MIR/CIR/FAT.
+7. **Report templates** — Upload CIR/FAT DOCX templates, test PDF generation for each type.
+8. **Commissioning dashboard enhancements** — Breakdown by discipline, delayed items, at-risk targets.
+9. **CSV import for assets** — Bulk import assets from CSV with validation.
+10. **Aconex date reports** — Generate reports showing submission/response timelines per document.
+11. **Audit log expansion** — Add audit logging to commissioning operations.
 
 ## Previously Completed (Earlier Sessions)
 
