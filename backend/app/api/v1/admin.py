@@ -258,7 +258,7 @@ async def get_setting(
     item = result.scalar_one_or_none()
     if not item:
         # Return defaults
-        defaults = {"date_format": "DD.MM.YYYY"}
+        defaults = {"date_format": "DD.MM.YYYY", "asset_custom_fields": '[{"id":"field_1","label":"POD"}]'}
         return {"key": key, "value": defaults.get(key, "")}
     return {"key": item.key, "value": item.value}
 

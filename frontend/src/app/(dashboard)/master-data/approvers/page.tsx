@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
 interface ApproverTitle { id: string; code: string; title: string; }
@@ -60,6 +60,17 @@ export default function ApproversPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["approvers"] }),
   });
 
+  const inlineUpdate = async (row: Approver, updates: Record<string, any>) => {
+    await api.patch(`/approvers/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["approvers"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = {
+    name: { type: "text" },
+    code: { type: "text" },
+    title_id: { type: "select", options: titles.map((t) => ({ label: t.title, value: t.id })) },
+  };
+
   const openCreate = () => { setEditing(null); form.reset({ name: "", code: "", title_id: "" }); setDialogOpen(true); };
   const openEdit = (item: Approver) => { setEditing(item); form.reset({ name: item.name, code: item.code, title_id: item.title?.id || "" }); setDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
@@ -72,7 +83,7 @@ export default function ApproversPage() {
   const columns: ColumnDef<Approver, unknown>[] = [
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { id: "title", accessorFn: (row) => row.title?.title ?? "—", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" /> },
+    { id: "title_id", accessorFn: (row) => row.title?.id ?? "", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />, meta: { title: "Title" }, cell: ({ row }) => row.original.title?.title ?? "—" },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
@@ -92,6 +103,8 @@ export default function ApproversPage() {
         data={approvers}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "approvers", [
           { key: "code", label: "code" },
           { key: "name", label: "name" },

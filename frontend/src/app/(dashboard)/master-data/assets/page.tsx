@@ -14,21 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
 interface AssetType { id: string; name: string; code: string; }
-interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; location: string | null; status: string; created_at: string; }
-
-const schema = z.object({
-  name: z.string().min(1, "Name is required"),
-  tag_number: z.string().min(1, "Tag number is required"),
-  asset_type_id: z.string().min(1, "Asset type is required"),
-  location: z.string(),
-  status: z.string(),
-});
-
-type FormValues = z.infer<typeof schema>;
+interface CustomFieldDef { id: string; label: string; }
+interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; custom_fields: Record<string, string>; created_at: string; }
 
 export default function AssetsPage() {
   const queryClient = useQueryClient();
@@ -36,6 +27,7 @@ export default function AssetsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
   const [filterTypeId, setFilterTypeId] = useState<string>("");
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
   const { data: assets = [], isLoading } = useQuery<Asset[]>({
     queryKey: ["assets", project?.id],
@@ -48,14 +40,30 @@ export default function AssetsPage() {
     queryFn: async () => (await api.get("/asset-types")).data,
   });
 
+  const { data: fieldDefs = [] } = useQuery<CustomFieldDef[]>({
+    queryKey: ["app-setting", "asset_custom_fields"],
+    queryFn: async () => {
+      const res = await api.get("/admin/settings/asset_custom_fields");
+      try { return JSON.parse(res.data.value); } catch { return []; }
+    },
+  });
+
+  const schema = z.object({
+    name: z.string().min(1, "Name is required"),
+    tag_number: z.string().min(1, "Tag number is required"),
+    asset_type_id: z.string().min(1, "Asset type is required"),
+  });
+
+  type FormValues = z.infer<typeof schema>;
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", tag_number: "", asset_type_id: "", location: "", status: "pending" },
+    defaultValues: { name: "", tag_number: "", asset_type_id: "" },
   });
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const payload = { ...values, location: values.location || null };
+      const payload = { ...values, custom_fields: customFieldValues, project_id: project?.id };
       if (editing) return api.patch(`/assets/${editing.id}`, payload);
       return api.post("/assets", payload);
     },
@@ -67,8 +75,29 @@ export default function AssetsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["assets"] }),
   });
 
-  const openCreate = () => { setEditing(null); form.reset({ name: "", tag_number: "", asset_type_id: "", location: "", status: "pending" }); setDialogOpen(true); };
-  const openEdit = (item: Asset) => { setEditing(item); form.reset({ name: item.name, tag_number: item.tag_number, asset_type_id: item.asset_type_id, location: item.location || "", status: item.status }); setDialogOpen(true); };
+  const inlineUpdate = async (row: Asset, updates: Record<string, any>) => {
+    await api.patch(`/assets/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["assets"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = {
+    name: { type: "text" },
+    tag_number: { type: "text" },
+    asset_type_id: { type: "select", options: assetTypes.map((t) => ({ label: t.name, value: t.id })) },
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    form.reset({ name: "", tag_number: "", asset_type_id: "" });
+    setCustomFieldValues({});
+    setDialogOpen(true);
+  };
+  const openEdit = (item: Asset) => {
+    setEditing(item);
+    form.reset({ name: item.name, tag_number: item.tag_number, asset_type_id: item.asset_type_id });
+    setCustomFieldValues(item.custom_fields || {});
+    setDialogOpen(true);
+  };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
 
   const rowActions: RowAction<Asset>[] = [
@@ -79,9 +108,14 @@ export default function AssetsPage() {
   const columns: ColumnDef<Asset, unknown>[] = [
     { accessorKey: "tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, meta: { title: "Tag" } },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { id: "type", accessorFn: (row) => assetTypes.find((t) => t.id === row.asset_type_id)?.name ?? "—", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" /> },
-    { accessorKey: "status", header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />, cell: ({ row }) => <span className="capitalize">{row.getValue("status")}</span> },
-    { accessorKey: "location", header: ({ column }) => <DataTableColumnHeader column={column} title="Location" />, cell: ({ row }) => row.getValue("location") || "—" },
+    { accessorKey: "asset_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />, meta: { title: "Type" }, cell: ({ row }) => assetTypes.find((t) => t.id === row.original.asset_type_id)?.name ?? "—" },
+    ...fieldDefs.map((fd) => ({
+      id: `cf_${fd.id}`,
+      accessorFn: (row: Asset) => row.custom_fields?.[fd.id] || "—",
+      header: ({ column }: any) => <DataTableColumnHeader column={column} title={fd.label} />,
+      meta: { title: fd.label },
+      cell: ({ row }: any) => row.original.custom_fields?.[fd.id] || "—",
+    } as ColumnDef<Asset, unknown>)),
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
@@ -111,46 +145,45 @@ export default function AssetsPage() {
         data={filterTypeId ? assets.filter((a) => a.asset_type_id === filterTypeId) : assets}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "assets")}
         onImport={async (file) => {
           const rows = await parseCsv(file);
           await Promise.allSettled(rows.map((row) => api.post("/assets", row)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
         }}
-        onDownloadTemplate={() => downloadTemplate(["name", "tag_number", "asset_type_id", "location", "status"], "assets")}
+        onDownloadTemplate={() => downloadTemplate(["name", "tag_number", "asset_type_id", ...fieldDefs.map(f => f.label)], "assets")}
         onBulkDelete={async (rows) => {
           await Promise.allSettled(rows.map((row) => api.delete(`/assets/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
         }}
       />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editing ? "Edit Asset" : "Add Asset"}</DialogTitle></DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} noValidate className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="tag_number" render={({ field }) => (<FormItem><FormLabel>Tag Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="asset_type_id" render={({ field }) => (
                 <FormItem><FormLabel>Asset Type</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select type">{field.value ? assetTypes.find((t) => t.id === field.value)?.name : ""}</SelectValue></SelectTrigger></FormControl>
-                    <SelectContent>{assetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                    <SelectContent className="max-h-[320px]">{assetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="location" render={({ field }) => (<FormItem><FormLabel>Location</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem><FormLabel>Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="installed">Installed</SelectItem>
-                      <SelectItem value="commissioned">Commissioned</SelectItem>
-                    </SelectContent>
-                  </Select><FormMessage />
-                </FormItem>
-              )} />
+              <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="tag_number" render={({ field }) => (<FormItem><FormLabel>Tag Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              {fieldDefs.map((fd) => (
+                <div key={fd.id}>
+                  <label className="text-sm font-medium">{fd.label}</label>
+                  <Input
+                    className="mt-1.5"
+                    value={customFieldValues[fd.id] || ""}
+                    onChange={(e) => setCustomFieldValues((prev) => ({ ...prev, [fd.id]: e.target.value }))}
+                  />
+                </div>
+              ))}
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
                 <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>

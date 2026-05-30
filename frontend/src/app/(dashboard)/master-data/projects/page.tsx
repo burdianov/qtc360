@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
 interface Client {
@@ -107,6 +107,17 @@ export default function ProjectsPage() {
     mutationFn: (id: string) => api.delete(`/projects/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
+
+  const inlineUpdate = async (row: Project, updates: Record<string, any>) => {
+    await api.patch(`/projects/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["projects"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = {
+    name: { type: "text" },
+    code: { type: "text" },
+    status: { type: "select", options: [{ label: "Active", value: "active" }, { label: "Completed", value: "completed" }, { label: "On Hold", value: "on_hold" }] },
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -197,6 +208,8 @@ export default function ProjectsPage() {
         data={projects}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "projects", [
           { key: "code", label: "code" },
           { key: "name", label: "name" },

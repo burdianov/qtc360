@@ -163,12 +163,14 @@ class AssetTypeCreate(BaseModel):
     code: str
     service_id: uuid.UUID
     parent_type_id: uuid.UUID | None = None
+    sort_order: int = 0
 
 class AssetTypeUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     service_id: uuid.UUID | None = None
     parent_type_id: uuid.UUID | None = None
+    sort_order: int | None = None
 
 class AssetTypeResponse(BaseModel):
     id: uuid.UUID
@@ -176,6 +178,7 @@ class AssetTypeResponse(BaseModel):
     code: str
     service_id: uuid.UUID
     parent_type_id: uuid.UUID | None
+    sort_order: int
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -188,6 +191,7 @@ class AssetCreate(BaseModel):
     asset_type_id: uuid.UUID
     location: str | None = None
     status: str = "pending"
+    custom_fields: dict = {}
 
 class AssetUpdate(BaseModel):
     name: str | None = None
@@ -196,6 +200,7 @@ class AssetUpdate(BaseModel):
     asset_type_id: uuid.UUID | None = None
     location: str | None = None
     status: str | None = None
+    custom_fields: dict | None = None
 
 class AssetResponse(BaseModel):
     id: uuid.UUID
@@ -205,6 +210,7 @@ class AssetResponse(BaseModel):
     asset_type_id: uuid.UUID
     location: str | None
     status: str
+    custom_fields: dict = {}
     created_at: datetime
     model_config = {"from_attributes": True}
 

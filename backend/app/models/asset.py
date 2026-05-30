@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -20,6 +20,7 @@ class Asset(BaseModel):
     asset_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("asset_types.id"))
     location: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(30), default="pending")  # pending, installed, commissioned
+    custom_fields: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
 
     asset_type: Mapped["AssetType"] = relationship(back_populates="assets")  # noqa: F821
     project: Mapped["Project | None"] = relationship()  # noqa: F821

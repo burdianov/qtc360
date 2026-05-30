@@ -29,15 +29,20 @@ export function SubmitToApproverDialog({
 }: Props) {
   const today = new Date().toISOString().slice(0, 10);
   const [submittedDate, setSubmittedDate] = useState(today);
+  const [aconexDate, setAconexDate] = useState(today);
 
   useEffect(() => {
-    if (open) setSubmittedDate(new Date().toISOString().slice(0, 10));
+    if (open) {
+      setSubmittedDate(new Date().toISOString().slice(0, 10));
+      setAconexDate(new Date().toISOString().slice(0, 10));
+    }
   }, [open]);
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/documents/${documentId}/submit-to-approver`, {
       approver_order: approverOrder,
       submitted_at: new Date(submittedDate).toISOString(),
+      aconex_submitted_date: aconexDate || null,
     }),
     onSuccess: () => {
       toast.success(`Submitted to Approver ${approverOrder}`);
@@ -63,8 +68,12 @@ export function SubmitToApproverDialog({
             This records the submission in QTC360 — no file upload here.
           </p>
           <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Submission date</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Submission date (QTC360)</label>
             <DatePicker value={submittedDate} onChange={setSubmittedDate} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">Aconex upload date</label>
+            <DatePicker value={aconexDate} onChange={setAconexDate} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

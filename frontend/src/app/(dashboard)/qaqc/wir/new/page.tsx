@@ -472,40 +472,11 @@ function NewWIRPageContent() {
   });
 
   const notifyMutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      let docId = editId;
-      if (!docId) {
-        const res = await api.post("/documents", buildPayload(values));
-        docId = res.data.id;
-      } else {
-        const { project_id, document_type, reference_no, ...updatePayload } = buildPayload(values);
-        await api.patch(`/documents/${docId}`, updatePayload);
-      }
-      await saveCommissioningLinkage(docId);
-      // Upload attachments before notifying
-      const newAtts2 = attachments.filter((a) => !a.isExisting && a.file);
-      if (newAtts2.length > 0 && docId) {
-        for (const att of newAtts2) {
-          const formData = new FormData();
-          formData.append("file", att.file!);
-          const params = att.insert_after_page !== undefined && att.insert_after_page !== null
-            ? `?insert_after_page=${att.insert_after_page}`
-            : "";
-          await api.post(`/documents/${docId}/attachments${params}`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
-        }
-      }
-      const existingIds2 = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
-      if (existingIds2.length > 0 && docId) {
-        await api.patch(`/documents/${docId}/attachments/reorder`, existingIds2);
-      }
-      await api.post(`/documents/${docId}/notify-signatories`);
+    mutationFn: async () => {
+      await api.post(`/documents/${editId}/notify-signatories`);
     },
     onSuccess: () => {
-      toast.success("WIR saved and signatories notified");
-      queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
-      router.push("/qaqc/wir");
+      toast.success("Signatories notified");
     },
   });
 
@@ -752,13 +723,13 @@ function NewWIRPageContent() {
           {/* Inspectors & Signatures */}
           <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Signatories</CardTitle></CardHeader>
             <CardContent>
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 {/* Row 1: Inspector select */}
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Inspected by 1</FormLabel>
+                    <FormLabel>Signatory 1</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
@@ -776,7 +747,7 @@ function NewWIRPageContent() {
                 )} />
                 <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Inspected by 2</FormLabel>
+                    <FormLabel>Signatory 2</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
@@ -880,7 +851,7 @@ function NewWIRPageContent() {
                   <FormField control={form.control} name="remarks_1" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Remarks</FormLabel>
-                      <FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl>
+                      <FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl>
                     </FormItem>
                   )} />
                 </fieldset>
@@ -888,7 +859,7 @@ function NewWIRPageContent() {
                   <FormField control={form.control} name="remarks_2" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Remarks</FormLabel>
-                      <FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl>
+                      <FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl>
                     </FormItem>
                   )} />
                 </fieldset>
@@ -948,8 +919,8 @@ function NewWIRPageContent() {
             <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
               {mutation.isPending ? "Saving..." : "Save as Draft"}
             </Button>
-            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2) || (!!editId && (currentUser?.id !== existingDoc?.created_by)) || (!!editId && inspector1Id === savedSignatories.inspector1 && inspector2Id === savedSignatories.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
-              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
+            <Button type="button" disabled={!editId || notifyMutation.isPending || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
+              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
             </Button>
           </div>
           </fieldset>

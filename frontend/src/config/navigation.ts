@@ -7,6 +7,7 @@ import {
   Wrench,
   ListChecks,
   Box,
+  Boxes,
   Network,
   Building2,
   UserCheck,
@@ -29,6 +30,7 @@ export type NavItem = {
   url: string;
   icon: LucideIcon;
   badge?: string;
+  adminOnly?: boolean;
 };
 
 export type NavGroup = {
@@ -51,6 +53,7 @@ export const navigation: NavGroup[] = [
       { title: "Disciplines", url: "/master-data/disciplines", icon: Compass },
       { title: "Services", url: "/master-data/services", icon: Wrench },
       { title: "Requirement Templates", url: "/master-data/requirement-templates", icon: ListChecks },
+      { title: "Asset Types", url: "/master-data/asset-types", icon: Boxes },
       { title: "Assets", url: "/master-data/assets", icon: Box },
       { title: "Systems", url: "/master-data/systems", icon: Network },
       { title: "Contractors", url: "/master-data/contractors", icon: Building2 },
@@ -80,7 +83,7 @@ export const navigation: NavGroup[] = [
     label: "Documents",
     items: [
       { title: "Documents", url: "/documents", icon: FileText },
-      { title: "Templates", url: "/documents/templates", icon: FileUp },
+      { title: "Templates", url: "/documents/templates", icon: FileUp, adminOnly: true },
     ],
   },
   {

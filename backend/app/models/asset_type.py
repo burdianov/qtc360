@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,7 @@ class AssetType(BaseModel):
     code: Mapped[str] = mapped_column(String(50), index=True)
     service_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("services.id"))
     parent_type_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("asset_types.id"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     service: Mapped["Service"] = relationship(back_populates="asset_types")  # noqa: F821
     parent_type: Mapped["AssetType | None"] = relationship(remote_side="AssetType.id")

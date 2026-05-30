@@ -62,6 +62,7 @@ export function RecordResponseDialog({
   const [responseDate, setResponseDate] = useState(new Date().toISOString().slice(0, 10));
   const [responseTime, setResponseTime] = useState("");
   const [comments, setComments] = useState("");
+  const [aconexReceivedDate, setAconexReceivedDate] = useState("");
   const [armedField, setArmedField] = useState<Field | null>(null);
   const [lastRegion, setLastRegion] = useState<Partial<Record<Field, CapturedRegion>>>({});
   const [extracting, setExtracting] = useState(false);
@@ -76,6 +77,7 @@ export function RecordResponseDialog({
       setResponseDate("");
       setResponseTime("");
       setComments("");
+      setAconexReceivedDate("");
       setArmedField(null);
       setLastRegion({});
     }
@@ -201,6 +203,7 @@ export function RecordResponseDialog({
       });
       if (responseTime) params.set("response_time", responseTime);
       if (comments) params.set("comments", comments);
+      if (aconexReceivedDate) params.set("aconex_received_date", aconexReceivedDate);
       return api.post(
         `/documents/${documentId}/approval-rounds?${params.toString()}`,
         fd,
@@ -245,6 +248,8 @@ export function RecordResponseDialog({
             setResponseDate={setResponseDate}
             responseTime={responseTime}
             setResponseTime={setResponseTime}
+            aconexReceivedDate={aconexReceivedDate}
+            setAconexReceivedDate={setAconexReceivedDate}
             comments={comments}
             setComments={setComments}
             armedField={armedField}
@@ -300,6 +305,8 @@ interface FormSideProps {
   setResponseDate: (v: string) => void;
   responseTime: string;
   setResponseTime: (v: string) => void;
+  aconexReceivedDate: string;
+  setAconexReceivedDate: (v: string) => void;
   comments: string;
   setComments: (v: string) => void;
   armedField: Field | null;
@@ -315,6 +322,7 @@ function FormSide(props: FormSideProps) {
     signatoryName, setSignatoryName,
     responseDate, setResponseDate,
     responseTime, setResponseTime,
+    aconexReceivedDate, setAconexReceivedDate,
     comments, setComments,
     armedField, armField, disableArm, retryAsOcr, captured,
   } = props;
@@ -380,6 +388,10 @@ function FormSide(props: FormSideProps) {
         retryAsOcr={retryAsOcr}
         captured={captured.response_time}
       />
+      <div>
+        <label className="text-xs text-muted-foreground mb-1.5 block">Aconex received date</label>
+        <DatePicker value={aconexReceivedDate} onChange={setAconexReceivedDate} placeholder="Select date" />
+      </div>
       <CaptureRow
         label="Comments"
         field="comments"

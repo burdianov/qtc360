@@ -350,7 +350,7 @@ function NewFATPageContent() {
           {/* Inspectors & Signatures */}
           <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Signatories</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-3">

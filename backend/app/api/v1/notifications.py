@@ -69,6 +69,37 @@ async def mark_all_read(
     return {"status": "ok"}
 
 
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Soft-delete a single notification."""
+    await db.execute(
+        update(Notification)
+        .where(Notification.id == notification_id, Notification.user_id == user.id)
+        .values(is_deleted=True)
+    )
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("")
+async def clear_all_notifications(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Soft-delete all notifications for the current user."""
+    await db.execute(
+        update(Notification)
+        .where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
+        .values(is_deleted=True)
+    )
+    await db.commit()
+    return {"status": "ok"}
+
+
 @router.get("/unread-count")
 async def unread_count(
     project_id: UUID | None = None,

@@ -43,7 +43,9 @@ export function AppSidebar() {
   const initials = user?.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "?";
 
   const isAdmin = user?.is_superuser || user?.roles?.some((r) => r.name === "admin" || r.name === "super_admin");
-  const visibleNavigation = navigation.filter((g) => g.label !== "Administration" || isAdmin);
+  const visibleNavigation = navigation
+    .filter((g) => g.label !== "Administration" || isAdmin)
+    .map((g) => isAdmin ? g : { ...g, items: g.items.filter((item) => !item.adminOnly) });
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(visibleNavigation.map((g) => [g.label, true]))

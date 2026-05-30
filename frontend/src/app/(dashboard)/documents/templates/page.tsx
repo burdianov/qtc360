@@ -1,30 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Upload, FileText, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs } from "@/components/ui/tabs";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
 
+const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT"] as const;
+
 export default function TemplatesPage() {
+  const router = useRouter();
   const qc = useQueryClient();
   const project = useSelectedProject();
-  const { data: currentUser } = useCurrentUser();
-  const canManageTemplates = currentUser?.permissions?.includes("reports.templates") || currentUser?.is_superuser;
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const isAdmin = currentUser?.is_superuser || currentUser?.roles?.some((r: any) => r.name === "admin" || r.name === "super_admin");
   const projectId = project?.id;
-  const [docType, setDocType] = useState("WIR");
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
+
+  useEffect(() => {
+    if (!userLoading && currentUser && !isAdmin) router.replace("/dashboard");
+  }, [userLoading, currentUser, isAdmin, router]);
 
   const { data: templates = [] } = useQuery({
     queryKey: ["doc-templates", projectId],
@@ -32,7 +39,7 @@ export default function TemplatesPage() {
     enabled: !!projectId,
   });
 
-  const handleUpload = async () => {
+  const handleUpload = async (docType: string) => {
     if (!projectId) { toast.error("Select a project first"); return; }
     if (!name) { toast.error("Enter a template name"); return; }
     if (!file) { toast.error("Select a DOCX file"); return; }
@@ -40,18 +47,86 @@ export default function TemplatesPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await api.post(`/reports/templates/upload?project_id=${projectId}&doc_type=${docType}&name=${encodeURIComponent(name)}`, form, {
-        headers: { "Content-Type": undefined },
-      });
+      await api.post(`/reports/templates/upload?project_id=${projectId}&doc_type=${docType}&name=${encodeURIComponent(name)}`, form);
       toast.success("Template uploaded");
-      setFile(null);
-      setName("");
+      setFile(null); setName("");
       qc.invalidateQueries({ queryKey: ["doc-templates", projectId] });
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "Upload failed");
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
+  };
+
+  if (userLoading) return <div className="p-6">Loading...</div>;
+  if (!isAdmin) return null;
+
+  const renderTab = (docType: string) => {
+    const filtered = templates.filter((t: any) => t.doc_type === docType);
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Upload {docType} Template</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex gap-4 flex-wrap items-start">
+              <div className="flex-1 min-w-48">
+                <label className="text-xs text-muted-foreground mb-1.5 block">Template Name</label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={`e.g. ${docType} Template v1`} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1.5 block">DOCX File</label>
+                <input type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
+              </div>
+              <div className="pt-5">
+                <Button onClick={() => handleUpload(docType)} disabled={uploading || !file || !name}>
+                  <Upload className="h-4 w-4 mr-2" />{uploading ? "Uploading..." : "Upload"}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Accepted format: DOCX</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">{docType} Templates</CardTitle></CardHeader>
+          <CardContent>
+            {filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No {docType} templates uploaded yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {filtered.map((t: any) => (
+                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-md border">
+                    <FileText className="h-5 w-5 text-blue-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate">{t.name}</span>
+                        <Badge variant="outline" className="text-xs">v{t.version}</Badge>
+                        {t.is_active && <Badge className="text-xs bg-green-600">Active</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t.filename}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={async () => {
+                      try {
+                        const res = await api.get(`/reports/templates/${t.id}/download`, { responseType: 'blob' });
+                        const url = URL.createObjectURL(res.data);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = t.filename || `${t.name}.docx`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch { toast.error("Download failed"); }
+                    }}>
+                      Download
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(t)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
   };
 
   return (
@@ -61,81 +136,11 @@ export default function TemplatesPage() {
         <p className="text-sm text-muted-foreground">Upload and manage Word DOCX templates for report generation</p>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Upload Template</CardTitle></CardHeader>
-        <CardContent>
-          {canManageTemplates ? (
-          <div className="flex gap-4 flex-wrap items-end">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Doc Type</label>
-              <Select value={docType} onValueChange={setDocType}>
-                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="WIR">WIR</SelectItem>
-                  <SelectItem value="MIR">MIR</SelectItem>
-                  <SelectItem value="CIR">CIR</SelectItem>
-                  <SelectItem value="FAT">FAT</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-1 min-w-48">
-              <label className="text-xs text-muted-foreground mb-1.5 block">Template Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. WIR Template v1" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">DOCX File</label>
-              <input type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
-              <p className="text-xs text-muted-foreground mt-1">Accepted format: DOCX</p>
-            </div>
-            <Button onClick={handleUpload} disabled={uploading || !file || !name}>
-              <Upload className="h-4 w-4 mr-2" />{uploading ? "Uploading..." : "Upload"}
-            </Button>
-          </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Only administrators can upload templates.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Templates</CardTitle></CardHeader>
-        <CardContent>
-          {templates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No templates uploaded yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {templates.map((t: any) => (
-                <div key={t.id} className="flex items-center gap-3 p-3 rounded-md border">
-                  <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{t.name}</span>
-                      <Badge variant="outline" className="text-xs">{t.doc_type}</Badge>
-                      <Badge variant="outline" className="text-xs">v{t.version}</Badge>
-                      {t.is_active && <Badge className="text-xs bg-green-600">Active</Badge>}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t.filename}</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => window.open(`${api.defaults.baseURL}/reports/templates/${t.id}/download`)}>
-                    Download
-                  </Button>
-                  {canManageTemplates && (
-                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteTarget(t)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Tabs tabs={DOC_TYPES.map(dt => ({ id: dt, label: dt, content: renderTab(dt) }))} />
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Confirm Deletion</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">Are you sure you want to delete this template? This action cannot be undone.</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>

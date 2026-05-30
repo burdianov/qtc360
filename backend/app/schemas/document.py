@@ -162,6 +162,8 @@ class DocumentApprovalRoundResponse(BaseModel):
     response_time: str | None
     returned_file_name: str | None
     remarks_file_name: str | None
+    aconex_submitted_date: str | None = None
+    aconex_received_date: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -170,6 +172,7 @@ class DocumentApprovalRoundResponse(BaseModel):
 class SubmitToApproverRequest(BaseModel):
     approver_order: int
     submitted_at: datetime | None = None  # defaults to now() server-side
+    aconex_submitted_date: str | None = None  # ISO date yyyy-MM-dd
     notes: str | None = None
 
 

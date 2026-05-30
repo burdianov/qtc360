@@ -43,6 +43,13 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["user-preferences"] }),
   });
 
+  const saveVisibility = useMutation({
+    mutationFn: async (vis: Record<string, boolean>) => {
+      await api.put(`/auth/me/preferences/col_vis${prefKey}`, vis);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["user-preferences"] }),
+  });
+
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
 
   // Get current order from table state (synced with header drag)
@@ -62,6 +69,11 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
     if (fromIdx === -1 || toIdx === -1) return;
     currentOrder.splice(fromIdx, 1);
     currentOrder.splice(toIdx, 0, draggedItem);
+    const actionsIdx = currentOrder.indexOf("actions");
+    if (actionsIdx !== -1 && actionsIdx !== currentOrder.length - 1) {
+      currentOrder.splice(actionsIdx, 1);
+      currentOrder.push("actions");
+    }
     table.setColumnOrder(currentOrder);
   };
 
@@ -95,7 +107,16 @@ export function DataTableViewOptions<TData>({ table }: DataTableViewOptionsProps
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <Checkbox
                 checked={col.getIsVisible()}
-                onCheckedChange={() => col.toggleVisibility(!col.getIsVisible())}
+                onCheckedChange={() => {
+                  col.toggleVisibility(!col.getIsVisible());
+                  // Save visibility state after toggle
+                  const updated: Record<string, boolean> = {};
+                  columns.forEach((c) => {
+                    const visible = c.id === col.id ? !col.getIsVisible() : c.getIsVisible();
+                    if (!visible) updated[c.id] = false;
+                  });
+                  saveVisibility.mutate(updated);
+                }}
               />
               <span className="truncate">{getColumnLabel(col)}</span>
             </div>

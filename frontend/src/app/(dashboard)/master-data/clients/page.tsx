@@ -12,7 +12,7 @@ import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 
 interface Client {
@@ -57,6 +57,13 @@ export default function ClientsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
   });
 
+  const inlineUpdate = async (row: Client, updates: Record<string, any>) => {
+    await api.patch(`/clients/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["clients"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = { name: { type: "text" }, code: { type: "text" } };
+
   const openCreate = () => { setEditing(null); form.reset({ name: "", code: "" }); setDialogOpen(true); };
   const openEdit = (item: Client) => { setEditing(item); form.reset({ name: item.name, code: item.code }); setDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
@@ -88,6 +95,8 @@ export default function ClientsPage() {
         data={clients}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "clients")}
         onImport={async (file) => {
           const rows = await parseCsv(file);

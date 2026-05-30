@@ -833,6 +833,14 @@ async def submit_to_approver_endpoint(
 
     round_ = await submit_to_approver(db, doc, body.approver_order, body.submitted_at)
 
+    # Save Aconex submission date if provided
+    if body.aconex_submitted_date:
+        from datetime import date as date_cls
+        try:
+            round_.aconex_submitted_date = date_cls.fromisoformat(body.aconex_submitted_date)
+        except ValueError:
+            pass
+
     await record_audit(
         db, user_id=user.id, action="submit", entity_type="document", entity_id=doc.id,
         summary=(
@@ -862,6 +870,7 @@ async def record_response_endpoint(
     response_date: str = Query("", description="ISO date yyyy-MM-dd"),
     response_time: str | None = Query(None, max_length=10),
     comments: str | None = Query(None, max_length=4000),
+    aconex_received_date: str = Query("", description="ISO date yyyy-MM-dd"),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
@@ -920,6 +929,14 @@ async def record_response_endpoint(
     round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
     round_.returned_file_name = file.filename or "returned.pdf"
     round_.response_time = response_time
+
+    # Save Aconex received date
+    if aconex_received_date:
+        from datetime import date as date_cls2
+        try:
+            round_.aconex_received_date = date_cls2.fromisoformat(aconex_received_date)
+        except ValueError:
+            pass
 
     # Save the returned PDF as a single attachment
     db.add(DocumentAttachment(

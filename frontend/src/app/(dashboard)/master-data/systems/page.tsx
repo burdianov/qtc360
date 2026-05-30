@@ -12,7 +12,7 @@ import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { useSelectedProject } from "@/hooks/use-project";
 
@@ -58,6 +58,13 @@ export default function SystemsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["systems"] }),
   });
 
+  const inlineUpdate = async (row: System, updates: Record<string, any>) => {
+    await api.patch(`/systems/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["systems"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = { name: { type: "text" }, code: { type: "text" }, description: { type: "text" } };
+
   const openCreate = () => { setEditing(null); form.reset({ name: "", code: "", description: "" }); setDialogOpen(true); };
   const openEdit = (item: System) => { setEditing(item); form.reset({ name: item.name, code: item.code, description: item.description || "" }); setDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
@@ -90,6 +97,8 @@ export default function SystemsPage() {
         data={systems}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "systems")}
         onImport={async (file) => {
           const rows = await parseCsv(file);

@@ -157,7 +157,7 @@ export default function SettingsPage() {
         {
           id: "general",
           label: "General",
-          content: <><DateFormatCard /><div className="mt-4"><RevisionSuffixCard /></div></>,
+          content: <><DateFormatCard /><div className="mt-4"><RevisionSuffixCard /></div><div className="mt-4"><AssetCustomFieldsCard /></div></>,
         },
       ]} />
     </div>
@@ -255,6 +255,71 @@ function RevisionSuffixCard() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">Example: <span className="font-mono">MERC-JMJV-EL-WIR-0031-REV-1.pdf</span></p>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+function AssetCustomFieldsCard() {
+  const qc = useQueryClient();
+  const [fields, setFields] = useState<{ id: string; label: string }[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const { data } = useQuery<{ key: string; value: string }>({
+    queryKey: ["app-setting", "asset_custom_fields"],
+    queryFn: async () => (await api.get("/admin/settings/asset_custom_fields")).data,
+  });
+
+  if (data && !loaded) {
+    try { setFields(JSON.parse(data.value)); } catch { setFields([]); }
+    setLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.put("/admin/settings/asset_custom_fields", { value: JSON.stringify(fields) }),
+    onSuccess: () => {
+      toast.success("Custom fields saved");
+      qc.invalidateQueries({ queryKey: ["app-setting", "asset_custom_fields"] });
+    },
+  });
+
+  const addField = () => {
+    const nextId = `field_${Date.now()}`;
+    setFields([...fields, { id: nextId, label: "" }]);
+  };
+
+  const removeField = (id: string) => setFields(fields.filter((f) => f.id !== id));
+  const updateLabel = (id: string, label: string) => setFields(fields.map((f) => f.id === id ? { ...f, label } : f));
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Asset Custom Fields</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Define custom fields that appear on every asset. You can add, rename, or remove fields.
+        </p>
+        <div className="space-y-2">
+          {fields.map((f) => (
+            <div key={f.id} className="flex items-center gap-2">
+              <Input
+                value={f.label}
+                onChange={(e) => updateLabel(f.id, e.target.value)}
+                placeholder="Field label"
+                className="flex-1"
+              />
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => removeField(f.id)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={addField}>Add Field</Button>
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || fields.some((f) => !f.label.trim())}>
+            {saveMutation.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

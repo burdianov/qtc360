@@ -37,6 +37,8 @@ export interface ApprovalRound {
   response_time: string | null;
   returned_file_name: string | null;
   remarks_file_name: string | null;
+  aconex_submitted_date: string | null;
+  aconex_received_date: string | null;
 }
 
 export interface ProjectApprover {

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
+import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { useSelectedProject } from "@/hooks/use-project";
 
@@ -68,6 +68,17 @@ export default function ServicesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["services"] }),
   });
 
+  const inlineUpdate = async (row: Service, updates: Record<string, any>) => {
+    await api.patch(`/services/${row.id}`, updates);
+    queryClient.invalidateQueries({ queryKey: ["services"] });
+  };
+
+  const editableCols: Record<string, EditableColumn> = {
+    name: { type: "text" },
+    code: { type: "text" },
+    discipline_id: { type: "select", options: projectDisciplines.map((d) => ({ label: d.name, value: d.id })) },
+  };
+
   const openCreate = () => { setEditing(null); form.reset({ name: "", code: "", discipline_id: "" }); setDialogOpen(true); };
   const openEdit = (item: Service) => { setEditing(item); form.reset({ name: item.name, code: item.code, discipline_id: item.discipline_id }); setDialogOpen(true); };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
@@ -81,9 +92,10 @@ export default function ServicesPage() {
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     {
-      id: "discipline",
-      accessorFn: (row) => projectDisciplines.find((d) => d.id === row.discipline_id)?.name ?? "—",
+      accessorKey: "discipline_id",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Discipline" />,
+      meta: { title: "Discipline" },
+      cell: ({ row }) => projectDisciplines.find((d) => d.id === row.original.discipline_id)?.name ?? "—",
     },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
@@ -104,6 +116,8 @@ export default function ServicesPage() {
         data={services}
         searchKey="name"
         searchPlaceholder="Search by name..."
+        editableColumns={editableCols}
+        onRowUpdate={inlineUpdate}
         onExport={(rows) => exportToCsv(rows, "services")}
         onImport={async (file) => {
           const rows = await parseCsv(file);

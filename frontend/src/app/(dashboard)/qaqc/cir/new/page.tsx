@@ -289,18 +289,10 @@ function NewCIRPageContent() {
   });
 
   const notifyMutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      let docId = editId;
-      if (!docId) { const res = await api.post("/documents", buildPayload(values)); docId = res.data.id; }
-      else { const { project_id, document_type, reference_no, ...p } = buildPayload(values); await api.patch(`/documents/${docId}`, p); }
-      await saveCommissioningLinkage(docId);
-      const newAtts = attachments.filter((a) => !a.isExisting && a.file);
-      if (newAtts.length > 0 && docId) { for (const att of newAtts) { const fd = new FormData(); fd.append("file", att.file!); const params = att.insert_after_page != null ? `?insert_after_page=${att.insert_after_page}` : ""; await api.post(`/documents/${docId}/attachments${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); } }
-      const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
-      if (existingIds.length > 0 && docId) { await api.patch(`/documents/${docId}/attachments/reorder`, existingIds); }
-      await api.post(`/documents/${docId}/notify-signatories`);
+    mutationFn: async () => {
+      await api.post(`/documents/${editId}/notify-signatories`);
     },
-    onSuccess: () => { toast.success("CIR saved and signatories notified"); queryClient.invalidateQueries({ queryKey: ["documents", "CIR"] }); router.push("/qaqc/cir"); },
+    onSuccess: () => { toast.success("Signatories notified"); },
   });
 
   const handleBack = () => { if (form.formState.isDirty) { if (confirm("You have unsaved changes. Save as draft before leaving?")) { form.handleSubmit((v) => mutation.mutate(v))(); return; } } router.push("/qaqc/cir"); };
@@ -426,11 +418,11 @@ function NewCIRPageContent() {
 
           <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Inspected By</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Signatories</CardTitle></CardHeader>
             <CardContent>
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
-                  <FormItem><FormLabel>Inspected by 1</FormLabel>
+                  <FormItem><FormLabel>Signatory 1</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? users.find((u) => u.id === inspector1Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
@@ -438,7 +430,7 @@ function NewCIRPageContent() {
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
-                  <FormItem><FormLabel>Inspected by 2</FormLabel>
+                  <FormItem><FormLabel>Signatory 2</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? users.find((u) => u.id === inspector2Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
@@ -472,10 +464,10 @@ function NewCIRPageContent() {
                   </div>
                 </fieldset>
                 <fieldset disabled={currentUser?.id !== inspector1Id} className="disabled:opacity-50 disabled:pointer-events-none">
-                  <FormField control={form.control} name="remarks_1" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
+                  <FormField control={form.control} name="remarks_1" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
                 </fieldset>
                 <fieldset disabled={currentUser?.id !== inspector2Id} className="disabled:opacity-50 disabled:pointer-events-none">
-                  <FormField control={form.control} name="remarks_2" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Inspector remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
+                  <FormField control={form.control} name="remarks_2" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
                 </fieldset>
               </div>
             </CardContent>
@@ -497,8 +489,8 @@ function NewCIRPageContent() {
             </>)}
             <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
             <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
-            <Button type="button" disabled={mutation.isPending || notifyMutation.isPending || !inspector1Id || !inspector2Id || (signed.inspector1 && signed.inspector2) || (!!editId && (currentUser?.id !== existingDoc?.created_by)) || (!!editId && inspector1Id === savedSignatories.inspector1 && inspector2Id === savedSignatories.inspector2)} onClick={form.handleSubmit((v) => notifyMutation.mutate(v))}>
-              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Save & Notify Signatories"}
+            <Button type="button" disabled={!editId || notifyMutation.isPending || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
+              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
             </Button>
           </div>
           </fieldset>

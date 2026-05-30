@@ -134,6 +134,18 @@ function RoundCard({
               <span>{round.signatory_name}</span>
             </div>
           )}
+          {round.aconex_submitted_date && (
+            <div>
+              <span className="text-xs text-muted-foreground">Aconex submitted: </span>
+              <span className="text-xs">{formatDate(round.aconex_submitted_date)}</span>
+            </div>
+          )}
+          {round.aconex_received_date && (
+            <div>
+              <span className="text-xs text-muted-foreground">Aconex received: </span>
+              <span className="text-xs">{formatDate(round.aconex_received_date)}</span>
+            </div>
+          )}
           {round.comments && (
             <div className="rounded-md bg-muted/50 px-2.5 py-2 text-xs whitespace-pre-wrap">
               {round.comments}
