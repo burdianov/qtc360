@@ -90,7 +90,6 @@ export default function DocumentsPage() {
         data={documents}
         searchKey="title"
         searchPlaceholder="Search documents..."
-        onRowClick={(row) => router.push(formUrl(row))}
       />
     </div>
   );
