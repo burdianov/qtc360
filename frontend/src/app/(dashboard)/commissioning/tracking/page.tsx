@@ -160,7 +160,7 @@ export default function CommissioningTrackingPage() {
         {row.original.green_tag && <Badge className={tagColors.green}>Green</Badge>}
         {row.original.blue_tag && <Badge className={tagColors.blue}>Blue</Badge>}
         {!row.original.red_tag && !row.original.yellow_tag && !row.original.green_tag && !row.original.blue_tag && (
-          <span className="text-xs text-muted-foreground">—</span>
+          <span className="text-xs text-muted-foreground">-</span>
         )}
       </div>
     )},

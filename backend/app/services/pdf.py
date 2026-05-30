@@ -23,6 +23,7 @@ import fitz  # PyMuPDF
 from pypdf import PdfReader, PdfWriter
 
 from app.core.config import settings
+from app.core.types import LIBREOFFICE_TIMEOUT, OCR_ZOOM
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def count_pages_in_docx(docx_bytes: bytes) -> int:
             str(docx_path),
         ]
         try:
-            proc = subprocess.run(cmd, capture_output=True, timeout=60)
+            proc = subprocess.run(cmd, capture_output=True, timeout=LIBREOFFICE_TIMEOUT)
         except (FileNotFoundError, subprocess.TimeoutExpired):
             logger.exception("LibreOffice unavailable; defaulting cover_page_count to 1")
             return 1
@@ -208,7 +209,7 @@ def extract_region_text(
             logger.warning("pytesseract/PIL not installed; OCR fallback unavailable")
             return "", "native"
 
-        zoom = 3.0
+        zoom = OCR_ZOOM
         matrix = fitz.Matrix(zoom, zoom)
         pix = pdf_page.get_pixmap(matrix=matrix, clip=rect, alpha=False)
         png = _preprocess_for_ocr(pix.tobytes("png"))

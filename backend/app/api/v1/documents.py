@@ -36,15 +36,11 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
-ALLOWED_ATTACHMENT_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg"}
-ALLOWED_ATTACHMENT_MIMES = {
-    "application/pdf",
-    "image/png",
-    "image/jpeg",
-    "image/jpg",
-}
-MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
-MAX_ATTACHMENTS_PER_DOC = 200
+from app.core.types import (
+    ALLOWED_ATTACHMENT_SUFFIXES, ALLOWED_ATTACHMENT_MIMES,
+    MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_DOC,
+    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, MAX_APPROVERS,
+)
 
 # Default revision suffix format. Configurable via app_settings key "revision_suffix_format".
 _DEFAULT_REVISION_SUFFIX = "{ref}-REV-{rev}"
@@ -216,7 +212,7 @@ async def list_documents(
     document_type: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     paginated: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_project_access()),
@@ -318,6 +314,10 @@ async def create_document(
             )
 
     doc = Document(**data, created_by=user.id)
+
+    # FAT documents are records — no approval workflow, always "approved"
+    if doc.document_type == "FAT":
+        doc.status = "approved"
     db.add(doc)
     try:
         await db.flush()
@@ -361,7 +361,7 @@ async def update_document(
     updates = body.model_dump(exclude_unset=True, exclude={"asset_ids"})
 
     # Validate status transition if status is being changed
-    if "status" in updates and updates["status"] and updates["status"] != old_status:
+    if "status" in updates and updates["status"] and updates["status"] != old_status and doc.document_type != "FAT":
         from app.schemas.document import VALID_STATUS_TRANSITIONS
         allowed = VALID_STATUS_TRANSITIONS.get(old_status, set())
         if updates["status"] not in allowed:
@@ -584,6 +584,12 @@ async def delete_document(
         )
 
         # Hard delete the document itself
+        from app.models.commissioning import DocumentRequirementLink
+        await db.execute(
+            sa_delete(DocumentRequirementLink).where(
+                DocumentRequirementLink.document_id == doc.id,
+            )
+        )
         await db.execute(
             sa_delete(Document).where(Document.id == doc.id)
         )
@@ -708,11 +714,16 @@ async def sign_document(
         doc.qaqc_engineer_id = user.id
         doc.qaqc_engineer_signed = True
 
-    # Auto-transition to internally_signed when both internal sigs collected.
-    # External-approval submission is a separate explicit user action (Phase 2).
-    if doc.site_engineer_signed and doc.qaqc_engineer_signed:
-        doc.status = "internally_signed"
-        doc.submitted_date = datetime.now(timezone.utc)
+    # Auto-transition to internally_signed when all required sigs collected.
+    # MIR has single signatory (site_engineer only), others need both.
+    if doc.document_type == "MIR":
+        if doc.site_engineer_signed:
+            doc.status = "internally_signed"
+            doc.submitted_date = datetime.now(timezone.utc)
+    else:
+        if doc.site_engineer_signed and doc.qaqc_engineer_signed:
+            doc.status = "internally_signed"
+            doc.submitted_date = datetime.now(timezone.utc)
 
     await record_audit(db, user_id=user.id, action="sign", entity_type="document", entity_id=doc.id, summary=f"Signed {doc.document_type} '{doc.reference_no}' as {role}")
     try:
@@ -864,7 +875,7 @@ async def submit_to_approver_endpoint(
 )
 async def record_response_endpoint(
     doc_id: UUID,
-    approver_order: int = Query(..., ge=1, le=10),
+    approver_order: int = Query(..., ge=1, le=MAX_APPROVERS),
     decision_status_id: UUID = Query(...),
     signatory_name: str = Query("", max_length=255),
     response_date: str = Query("", description="ISO date yyyy-MM-dd"),
@@ -1257,10 +1268,11 @@ async def upload_round_attachment(
     from app.models.document_attachment import DocumentAttachment
 
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix != ".pdf":
-        raise HTTPException(status_code=400, detail="Attachment must be a PDF")
+    if suffix not in (".pdf", ".png", ".jpg", ".jpeg"):
+        raise HTTPException(status_code=400, detail="Attachment must be a PDF or image (PNG, JPG)")
+    allowed_mimes = {"application/pdf", "image/png", "image/jpeg"}
     declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
-    if declared_mime and declared_mime != "application/pdf":
+    if declared_mime and declared_mime not in allowed_mimes:
         raise HTTPException(status_code=400, detail=f"Unsupported MIME type {declared_mime!r}")
 
     data = await file.read()
@@ -1611,7 +1623,7 @@ async def list_attachments(
     await _load_doc_for_attachment(db, doc_id, user)
     result = await db.execute(
         select(DocumentAttachment)
-        .where(DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False)  # noqa: E712
+        .where(DocumentAttachment.document_id == doc_id, DocumentAttachment.kind == "user", DocumentAttachment.is_deleted == False)  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     return [{"id": str(a.id), "filename": a.filename, "size": a.size, "sort_order": a.sort_order, "content_type": a.content_type} for a in result.scalars().all()]

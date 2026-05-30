@@ -53,6 +53,7 @@ export default function ProfilePage() {
       setInitialFont(selectedFont);
       setInitialText(signatureText);
       qc.invalidateQueries({ queryKey: ["auth", "me"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
     },
   });
 

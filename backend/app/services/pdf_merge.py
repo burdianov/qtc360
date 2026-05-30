@@ -11,6 +11,22 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 
 
+def _bytes_to_pdf_reader(data: bytes) -> PdfReader:
+    """Convert bytes to a PdfReader. If the bytes are an image, convert to PDF first."""
+    # Check if it's a PDF by looking at the magic bytes
+    if data[:4] == b"%PDF":
+        return PdfReader(io.BytesIO(data))
+    # Assume it's an image — convert to PDF via Pillow
+    from PIL import Image
+    img = Image.open(io.BytesIO(data))
+    if img.mode == "RGBA":
+        img = img.convert("RGB")
+    pdf_buf = io.BytesIO()
+    img.save(pdf_buf, format="PDF")
+    pdf_buf.seek(0)
+    return PdfReader(pdf_buf)
+
+
 def merge_pdf_bundle(
     returned_pdf_bytes: bytes,
     attachments: list[tuple[bytes, int]],
@@ -19,8 +35,9 @@ def merge_pdf_bundle(
 
     Args:
         returned_pdf_bytes: The main returned PDF from the approver
-        attachments: List of (pdf_bytes, insert_after_page) tuples.
+        attachments: List of (file_bytes, insert_after_page) tuples.
                     insert_after_page is 0-indexed (0 = insert after first page)
+                    Files can be PDFs or images (PNG, JPG).
 
     Returns:
         Merged PDF as bytes
@@ -32,7 +49,6 @@ def merge_pdf_bundle(
     sorted_attachments = sorted(attachments, key=lambda x: x[1])
 
     # Track how many pages we've inserted so positions shift correctly
-    offset = 0
     attachment_idx = 0
 
     # Add pages from main PDF, inserting attachments at specified positions
@@ -43,7 +59,7 @@ def merge_pdf_bundle(
         while (attachment_idx < len(sorted_attachments) and
                sorted_attachments[attachment_idx][1] == page_num):
             att_bytes, _ = sorted_attachments[attachment_idx]
-            att_reader = PdfReader(io.BytesIO(att_bytes))
+            att_reader = _bytes_to_pdf_reader(att_bytes)
             for att_page in att_reader.pages:
                 writer.add_page(att_page)
             attachment_idx += 1
@@ -51,7 +67,7 @@ def merge_pdf_bundle(
     # Add any remaining attachments that should go after the last page
     while attachment_idx < len(sorted_attachments):
         att_bytes, _ = sorted_attachments[attachment_idx]
-        att_reader = PdfReader(io.BytesIO(att_bytes))
+        att_reader = _bytes_to_pdf_reader(att_bytes)
         for att_page in att_reader.pages:
             writer.add_page(att_page)
         attachment_idx += 1

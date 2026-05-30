@@ -43,7 +43,7 @@ export function ApprovalRoundsList({
             round={round}
             locked={locked}
             party={
-              projectApprovers.find((pa) => pa.approver_order === round.approver_order)?.approver.name || "—"
+              projectApprovers.find((pa) => pa.approver_order === round.approver_order)?.approver.name || "-"
             }
             decision={
               round.decision_status_id
@@ -102,7 +102,7 @@ function RoundCard({
       {expanded ? <ChevronDown className="h-4 w-4 transition-transform" /> : <ChevronRight className="h-4 w-4 transition-transform" />}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
-            Approver {round.approver_order} — {party}
+            Approver {round.approver_order} - {party}
           </div>
           <div className="text-xs text-muted-foreground">
             {round.submitted_at ? `Submitted ${formatDate(round.submitted_at)}` : "Not submitted"}
@@ -115,7 +115,7 @@ function RoundCard({
               tone === "danger" ? "bg-red-500/15 text-red-500" : "bg-emerald-500/15 text-emerald-500"
             }
           >
-            {decision.letter} — {decision.name}
+            {decision.letter} - {decision.name}
           </Badge>
         ) : (
           <Badge variant="outline">Awaiting response</Badge>
@@ -267,11 +267,11 @@ function UploadAttachmentDialog({
             <label className="text-xs text-muted-foreground mb-1.5 block">PDF File</label>
             <input
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/png,image/jpeg"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
             />
-            <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted formats: PDF, PNG, JPG"}</p>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-4 border-t">

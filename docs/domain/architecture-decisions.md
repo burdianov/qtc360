@@ -2,6 +2,13 @@
 
 > This document records important implementation decisions made during the commissioning engine refactoring.
 
+## Date Format
+
+**All dates displayed in the application and generated PDFs MUST use the admin-configured date format** (stored in `app_settings` key `date_format`, default: `DD.MM.YYYY`). This applies to:
+- PDF report generation (inspection date, signatory dates, response dates)
+- Frontend date display in tables and forms (via `formatDate()` utility)
+- No hardcoded date formats anywhere in the codebase
+
 ---
 
 ## ADR-001: Unified Document Engine

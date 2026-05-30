@@ -163,13 +163,13 @@ export default function ProjectsPage() {
     },
     {
       id: "client",
-      accessorFn: (row) => row.client?.name ?? "—",
+      accessorFn: (row) => row.client?.name ?? "-",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Client" />,
     },
     {
       accessorKey: "description",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Description" />,
-      cell: ({ row }) => row.getValue("description") || "—",
+      cell: ({ row }) => row.getValue("description") || "-",
     },
     {
       accessorKey: "start_date",

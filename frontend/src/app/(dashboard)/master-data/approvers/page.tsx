@@ -83,7 +83,7 @@ export default function ApproversPage() {
   const columns: ColumnDef<Approver, unknown>[] = [
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { id: "title_id", accessorFn: (row) => row.title?.id ?? "", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />, meta: { title: "Title" }, cell: ({ row }) => row.original.title?.title ?? "—" },
+    { id: "title_id", accessorFn: (row) => row.title?.id ?? "", header: ({ column }) => <DataTableColumnHeader column={column} title="Title" />, meta: { title: "Title" }, cell: ({ row }) => row.original.title?.title ?? "-" },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

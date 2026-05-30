@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -76,6 +76,7 @@ function NewMIRPageContent() {
   const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean; insert_after_page?: number | null }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
+  const linkageDirtyRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -92,7 +93,7 @@ function NewMIRPageContent() {
   const { data: assetTypes = [] } = useQuery<AssetType[]>({ queryKey: ["asset-types"], queryFn: async () => (await api.get("/asset-types")).data });
   const { data: docTemplates = [] } = useQuery<{ id: string; name: string; version: number; is_active: boolean }[]>({ queryKey: ["doc-templates", project?.id, "MIR"], queryFn: async () => (await api.get("/reports/templates", { params: { project_id: project!.id, doc_type: "MIR" } })).data, enabled: !!project?.id });
 
-  useEffect(() => { if (docTemplates.length > 0 && !selectedTemplateId) { const active = docTemplates.find((t) => t.is_active); if (active) setSelectedTemplateId(active.id); } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (docTemplates.length > 0) { const current = docTemplates.find((t) => t.id === selectedTemplateId); if (!current) { const active = docTemplates.find((t) => t.is_active); setSelectedTemplateId(active?.id || docTemplates[0].id); } } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({ queryKey: ["asset-requirements-all", project?.id], queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data, enabled: !!project?.id });
 
@@ -108,8 +109,10 @@ function NewMIRPageContent() {
   });
 
   const { data: existingDoc } = useQuery({ queryKey: ["document", editId], queryFn: async () => (await api.get(`/documents/${editId}`)).data, enabled: !!editId });
-  const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
-  const fullyLocked = !!existingDoc && ["approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const formLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const fullyLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+
+  useEffect(() => { if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(true); }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (existingDoc) {
@@ -157,7 +160,7 @@ function NewMIRPageContent() {
         if (doc.asset_ids?.length && assets.length > 0) { setSelectedAssets(assets.filter((a: Asset) => new Set(doc.asset_ids).has(a.id))); }
         const linksRes = await api.get("/commissioning/document-links", { params: { document_id: revisionOfId } });
         const links = linksRes.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
-        if (links.length > 0) { const ar = allAssetRequirements.find((r) => r.id === links[0].asset_requirement_id); if (ar) setCommissioningLinkage({ requirementTemplateId: ar.requirement_template_id, isPartialScope: links.some((l) => l.requirement_work_item_id != null), checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!), deleteExistingIds: [], newItems: [] }); }
+        if (links.length > 0) { const ar = allAssetRequirements.find((r) => r.id === links[0].asset_requirement_id); if (ar) { setCommissioningLinkage({ requirementTemplateId: ar.requirement_template_id, isPartialScope: links.some((l) => l.requirement_work_item_id != null), checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!), deleteExistingIds: [], newItems: [] }); linkageDirtyRef.current = true; } }
         setIsDirty(true);
       } catch { toast.error("Failed to load rejected document data"); }
     })();
@@ -219,14 +222,14 @@ function NewMIRPageContent() {
       if (editId) { const { project_id, document_type, reference_no, ...p } = buildPayload(values); res = await api.patch(`/documents/${editId}`, p); }
       else { res = await api.post("/documents", buildPayload(values)); }
       const docId = res.data?.id || editId;
-      await saveCommissioningLinkage(docId);
+      if (linkageDirtyRef.current) { await saveCommissioningLinkage(docId); linkageDirtyRef.current = false; }
       const newAtts = attachments.filter((a) => !a.isExisting && a.file);
-      if (newAtts.length > 0 && docId) { for (const att of newAtts) { const fd = new FormData(); fd.append("file", att.file!); const params = att.insert_after_page != null ? `?insert_after_page=${att.insert_after_page}` : ""; await api.post(`/documents/${docId}/attachments${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); } }
+      if (newAtts.length > 0 && docId) { for (const att of newAtts) { const fd = new FormData(); fd.append("file", att.file!); const params = att.insert_after_page != null ? `?insert_after_page=${att.insert_after_page}` : ""; await api.post(`/documents/${docId}/attachments${params}`, fd); } }
       const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
       if (existingIds.length > 0 && docId) { await api.patch(`/documents/${docId}/attachments/reorder`, existingIds); }
       return res;
     },
-    onSuccess: (res) => { toast.success(editId ? "MIR updated" : "MIR saved as draft"); setAssetSearch(""); setIsDirty(false); setRevisionOfId(null); if (res?.data?.revision_no !== undefined) setRevisionNo(res.data.revision_no); form.reset(form.getValues()); queryClient.invalidateQueries({ queryKey: ["documents", "MIR"] }); if (!editId && res?.data?.id) router.replace(`/qaqc/mir/new?id=${res.data.id}`); },
+    onSuccess: (res) => { toast.success(editId ? "MIR updated" : "MIR saved as draft"); setAssetSearch(""); setIsDirty(false); setRevisionOfId(null); if (res?.data?.revision_no !== undefined) setRevisionNo(res.data.revision_no); form.reset(form.getValues()); queryClient.invalidateQueries({ queryKey: ["documents", "MIR"] }); const docId = res?.data?.id || editId; if (docId) api.get(`/documents/${docId}/attachments`).then((r) => { setAttachments(r.data.map((a: any) => ({ id: a.id, name: a.filename, size: a.size, isExisting: true }))); }).catch(() => {}); if (!editId && res?.data?.id) router.replace(`/qaqc/mir/new?id=${res.data.id}`); },
   });
 
   const notifyMutation = useMutation({
@@ -263,9 +266,9 @@ function NewMIRPageContent() {
               {submissionMode === "revision" && (
                 <div className="space-y-2"><FormLabel>Select Rejected Document</FormLabel>
                   <Select value={revisionOfId || ""} onValueChange={(v: string) => setRevisionOfId(v)}>
-                    <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) — ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) - ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(rejectedDocs).map(([disc, docs]) => (<div key={disc}><div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{disc}</div>{docs.map((doc) => (<SelectItem key={doc.id} value={doc.id}>{doc.reference_no} (Rev {doc.revision_no}) — {doc.title}</SelectItem>))}</div>))}
+                      {Object.entries(rejectedDocs).map(([disc, docs]) => (<div key={disc}><div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{disc}</div>{docs.map((doc) => (<SelectItem key={doc.id} value={doc.id}>{doc.reference_no} (Rev {doc.revision_no}) - {doc.title}</SelectItem>))}</div>))}
                       {Object.keys(rejectedDocs).length === 0 && <div className="px-2 py-3 text-sm text-muted-foreground text-center">No rejected documents available</div>}
                     </SelectContent>
                   </Select>
@@ -304,7 +307,7 @@ function NewMIRPageContent() {
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}><CardContent className="pt-6">
             <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} documentType="MIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
-              onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); setIsDirty(true); }} />
+              onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); linkageDirtyRef.current = true; setIsDirty(true); }} />
           </CardContent></Card>
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : !commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
@@ -325,7 +328,7 @@ function NewMIRPageContent() {
                   const dtIds = disciplineId ? new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id)) : null;
                   const filtered = assets.filter((a) => { if (applicableAssetIds && !applicableAssetIds.has(a.id)) return false; if (dtIds && !dtIds.has(a.asset_type_id)) return false; if (assetTypeFilter && a.asset_type_id !== assetTypeFilter) return false; if (assetSearch) { const q = assetSearch.toLowerCase(); if (!a.tag_number.toLowerCase().includes(q) && !a.name.toLowerCase().includes(q)) return false; } return true; });
                   if (filtered.length === 0) return <p className="p-3 text-sm text-muted-foreground">No assets match filters.</p>;
-                  return filtered.map((a) => { const sel = !!selectedAssets.find((s) => s.id === a.id); return (<label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"><input type="checkbox" checked={sel} onChange={() => sel ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" /><span className="text-sm">{a.tag_number} — {a.name}</span></label>); });
+                  return filtered.map((a) => { const sel = !!selectedAssets.find((s) => s.id === a.id); return (<label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"><input type="checkbox" checked={sel} onChange={() => sel ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" /><span className="text-sm">{a.tag_number} - {a.name}</span></label>); });
                 })()}
               </div>
               {selectedAssets.length > 0 && (<div className="flex flex-wrap gap-2">{selectedAssets.map((a) => (<Badge key={a.id} variant="secondary" className="gap-1 pr-1">{a.tag_number}<button type="button" onClick={() => removeAsset(a.id)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}</div>)}
@@ -334,22 +337,14 @@ function NewMIRPageContent() {
 
           <fieldset disabled={formLocked} className="disabled:opacity-60 disabled:pointer-events-none space-y-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">Signatories</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Signatory</CardTitle></CardHeader>
             <CardContent>
               <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
                 <FormField control={form.control} name="inspector_1_id" render={({ field }) => (
-                  <FormItem><FormLabel>Signatory 1</FormLabel>
+                  <FormItem><FormLabel>Name</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? users.find((u) => u.id === inspector1Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
-                    </Select>
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="inspector_2_id" render={({ field }) => (
-                  <FormItem><FormLabel>Signatory 2</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
-                      <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? users.find((u) => u.id === inspector2Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
+                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "-"}</span></span></SelectItem>))}</SelectContent>
                     </Select>
                   </FormItem>
                 )} />
@@ -359,29 +354,11 @@ function NewMIRPageContent() {
                   </div>
                   <div className="h-5 mt-1">{currentUser?.id === inspector1Id && <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>}</div>
                 </div>
-                <div>
-                  <div className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${signed.inspector2 ? "border-emerald-500/50 bg-emerald-500/5" : currentUser?.id === inspector2Id ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50 cursor-not-allowed"}`} onClick={() => { if (currentUser?.id === inspector2Id && !signed.inspector2) handleSign("qaqc_engineer"); }}>
-                    {signed.inspector2 ? <img src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent((() => { const u = users.find((u) => u.id === inspector2Id); return u?.signature_text || u?.full_name || ""; })())}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`} alt="Signature" className="h-10 object-contain" /> : <span className="text-sm text-muted-foreground">{currentUser?.id === inspector2Id ? "Click to sign" : "Awaiting signature"}</span>}
-                  </div>
-                  <div className="h-5 mt-1">{currentUser?.id === inspector2Id && <Link href="/profile" className="text-xs text-primary hover:underline inline-flex items-center gap-1"><PenLine className="h-3 w-3" />Change signature style</Link>}</div>
-                </div>
                 <fieldset disabled={currentUser?.id !== inspector1Id} className="disabled:opacity-50 disabled:pointer-events-none">
                   <div className="grid grid-cols-2 gap-2">
                     <FormField control={form.control} name="inspector_date_1" render={({ field }) => (<FormItem><FormLabel>Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" /></FormControl></FormItem>)} />
                     <FormField control={form.control} name="inspector_time_1" render={({ field }) => (<FormItem><FormLabel>Time</FormLabel><FormControl><TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" /></FormControl></FormItem>)} />
                   </div>
-                </fieldset>
-                <fieldset disabled={currentUser?.id !== inspector2Id} className="disabled:opacity-50 disabled:pointer-events-none">
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormField control={form.control} name="inspector_date_2" render={({ field }) => (<FormItem><FormLabel>Date</FormLabel><FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" /></FormControl></FormItem>)} />
-                    <FormField control={form.control} name="inspector_time_2" render={({ field }) => (<FormItem><FormLabel>Time</FormLabel><FormControl><TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" /></FormControl></FormItem>)} />
-                  </div>
-                </fieldset>
-                <fieldset disabled={currentUser?.id !== inspector1Id} className="disabled:opacity-50 disabled:pointer-events-none">
-                  <FormField control={form.control} name="remarks_1" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
-                </fieldset>
-                <fieldset disabled={currentUser?.id !== inspector2Id} className="disabled:opacity-50 disabled:pointer-events-none">
-                  <FormField control={form.control} name="remarks_2" render={({ field }) => (<FormItem><FormLabel>Remarks</FormLabel><FormControl><Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} /></FormControl></FormItem>)} />
                 </fieldset>
               </div>
             </CardContent>
@@ -392,23 +369,28 @@ function NewMIRPageContent() {
           </Card>
 
           <div className="flex justify-end gap-3">
-            {editId && (<>
-              <Button type="button" variant="outline" disabled={pdfLoading || !editId || isDirty || form.formState.isDirty} onClick={async () => { setPdfLoading(true); try { const payload: any = { document_id: editId, project_id: project!.id }; if (selectedTemplateId) payload.template_id = selectedTemplateId; const res = await api.post(`/reports/generate/MIR`, payload, { responseType: "blob" }); const url = URL.createObjectURL(res.data); window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("PDF generation failed"); } finally { setPdfLoading(false); } }}>
-                {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
-              </Button>
-              <Button type="button" variant="outline" disabled={!editId || !signed.inspector1 || !signed.inspector2 || isDirty || form.formState.isDirty} onClick={async () => { try { const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" }); const url = URL.createObjectURL(res.data); const a = document.createElement("a"); a.href = url; a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("Failed to download document"); } }}>
-                <Download className="h-4 w-4 mr-2" />Download Document
+            {!formLocked && (<>
+              <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
+              <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
+              <Button type="button" disabled={!editId || notifyMutation.isPending || signed.inspector1 || !inspector1Id || inspector1Id === currentUser?.id} onClick={() => notifyMutation.mutate()}>
+                <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatory"}
               </Button>
             </>)}
-            <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
-            <Button type="button" disabled={!editId || notifyMutation.isPending || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
-              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
-            </Button>
           </div>
           </fieldset>
         </form>
       </Form>
+
+      {editId && (
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => { setPdfLoading(true); try { const payload: any = { document_id: editId, project_id: project!.id }; if (selectedTemplateId) payload.template_id = selectedTemplateId; const res = await api.post(`/reports/generate/MIR`, payload, { responseType: "blob" }); const url = URL.createObjectURL(res.data); window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e: any) { let msg = "PDF generation failed"; try { const text = await e?.response?.data?.text?.(); const parsed = JSON.parse(text); msg = parsed.detail || msg; } catch {} toast.error(msg); } finally { setPdfLoading(false); } }}>
+          {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
+        </Button>
+        <Button type="button" variant="outline" disabled={!signed.inspector1} onClick={async () => { try { const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" }); const url = URL.createObjectURL(res.data); const a = document.createElement("a"); a.href = url; a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("Failed to download document"); } }}>
+          <Download className="h-4 w-4 mr-2" />Download Document
+        </Button>
+      </div>
+      )}
 
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card><CardContent className="pt-6"><ApprovalActionPanel documentId={editId} documentType="MIR" documentStatus={existingDoc.status} projectId={project?.id} /></CardContent></Card>

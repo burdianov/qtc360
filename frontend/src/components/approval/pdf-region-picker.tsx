@@ -87,7 +87,7 @@ export function PdfRegionPicker({ fileUrl, armed, onCapture, onCancelArm }: Prop
     }
     const overlayRect = overlayRef.current.getBoundingClientRect();
     if (dragging.w < 4 || dragging.h < 4) {
-      // Too small — treat as a click, cancel arm.
+      // Too small - treat as a click, cancel arm.
       setDragging(null);
       startRef.current = null;
       onCancelArm();
@@ -120,7 +120,7 @@ export function PdfRegionPicker({ fileUrl, armed, onCapture, onCancelArm }: Prop
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
         <span className="text-xs text-muted-foreground">
-          Page {pageNumber} / {numPages || "—"}
+          Page {pageNumber} / {numPages || "-"}
         </span>
         <Button
           type="button"

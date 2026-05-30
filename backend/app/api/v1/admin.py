@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin, require_superuser
 from app.core.security import hash_password, validate_password
+from app.core.types import DEFAULT_DATE_FORMAT
 from app.models.user import User
 from app.models.rbac import Role, Permission, user_roles, role_permissions
 from app.models.audit_log import AuditLog
@@ -258,7 +259,7 @@ async def get_setting(
     item = result.scalar_one_or_none()
     if not item:
         # Return defaults
-        defaults = {"date_format": "DD.MM.YYYY", "asset_custom_fields": '[{"id":"field_1","label":"POD"}]'}
+        defaults = {"date_format": DEFAULT_DATE_FORMAT, "asset_custom_fields": '[{"id":"field_1","label":"POD"}]'}
         return {"key": key, "value": defaults.get(key, "")}
     return {"key": item.key, "value": item.value}
 

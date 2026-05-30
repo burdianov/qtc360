@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.types import TAG_LEVEL_MAP
 from app.core.deps import (
     assert_user_in_project,
     get_current_user,
@@ -549,7 +550,7 @@ async def get_commissioning_progress(
             ))
 
         current_tags = []
-        for tag_code, levels in [("red", ["L1", "L2A"]), ("yellow", ["L2B"]), ("green", ["L3"]), ("blue", ["L4"])]:
+        for tag_code, levels in TAG_LEVEL_MAP.items():
             tag_reqs = [r for r in asset_reqs if templates.get(r.requirement_template_id) and templates[r.requirement_template_id].level_code in levels and not templates[r.requirement_template_id].is_optional]
             if tag_reqs and all(r.status == "achieved" for r in tag_reqs):
                 current_tags.append(tag_code)

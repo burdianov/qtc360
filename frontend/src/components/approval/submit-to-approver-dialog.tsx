@@ -65,7 +65,7 @@ export function SubmitToApproverDialog({
           <p className="text-sm text-muted-foreground">
             Confirm that you have uploaded this document to Aconex and transmitted it to{" "}
             <span className="font-medium text-foreground">{approverName || "the approver"}</span>.
-            This records the submission in QTC360 — no file upload here.
+            This records the submission in QTC360 - no file upload here.
           </p>
           <div>
             <label className="text-xs text-muted-foreground mb-1.5 block">Submission date (QTC360)</label>

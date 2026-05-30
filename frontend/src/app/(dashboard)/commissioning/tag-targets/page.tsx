@@ -89,8 +89,8 @@ export default function TagTargetsPage() {
   ];
 
   const columns: ColumnDef<TagTarget, unknown>[] = [
-    { accessorKey: "asset_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Asset" />, cell: ({ row }) => { const a = assetMap[row.original.asset_id]; return a ? <span className="font-mono text-xs">{a.tag_number}</span> : "—"; } },
-    { id: "asset_name", header: "Name", cell: ({ row }) => assetMap[row.original.asset_id]?.name || "—" },
+    { accessorKey: "asset_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Asset" />, cell: ({ row }) => { const a = assetMap[row.original.asset_id]; return a ? <span className="font-mono text-xs">{a.tag_number}</span> : "-"; } },
+    { id: "asset_name", header: "Name", cell: ({ row }) => assetMap[row.original.asset_id]?.name || "-" },
     { accessorKey: "tag_code", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, cell: ({ row }) => <Badge className={tagColors[row.original.tag_code] || ""}>{row.original.tag_code}</Badge> },
     { accessorKey: "target_date", header: ({ column }) => <DataTableColumnHeader column={column} title="Target Date" />, cell: ({ row }) => formatDate(row.original.target_date) },
     { accessorKey: "actual_achieved_date", header: "Achieved", cell: ({ row }) => formatDate(row.original.actual_achieved_date) },
@@ -121,8 +121,8 @@ export default function TagTargetsPage() {
                 <FormItem>
                   <FormLabel>Asset</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} disabled={!!editing}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select asset">{field.value ? `${assetMap[field.value]?.tag_number} — ${assetMap[field.value]?.name}` : ""}</SelectValue></SelectTrigger></FormControl>
-                    <SelectContent>{assets.map((a) => <SelectItem key={a.id} value={a.id}>{a.tag_number} — {a.name}</SelectItem>)}</SelectContent>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Select asset">{field.value ? `${assetMap[field.value]?.tag_number} - ${assetMap[field.value]?.name}` : ""}</SelectValue></SelectTrigger></FormControl>
+                    <SelectContent>{assets.map((a) => <SelectItem key={a.id} value={a.id}>{a.tag_number} - {a.name}</SelectItem>)}</SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>

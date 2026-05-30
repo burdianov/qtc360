@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.types import NOTIFICATION_LIMIT
 from app.models.notification import Notification
 from app.models.user import User
 
@@ -24,7 +25,7 @@ async def list_notifications(
     query = select(Notification).where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
     if project_id:
         query = query.where(Notification.project_id == project_id)
-    result = await db.execute(query.order_by(Notification.created_at.desc()).limit(50))
+    result = await db.execute(query.order_by(Notification.created_at.desc()).limit(NOTIFICATION_LIMIT))
     return [
         {
             "id": str(n.id),

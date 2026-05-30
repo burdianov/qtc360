@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useUserProjects, useSelectedProject, useSetProject } from "@/hooks/use-project";
 import { ProjectSelectModal } from "@/components/layout/project-select-modal";
+import { STORAGE_KEYS } from "@/lib/constants";
 import type { AxiosError } from "axios";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -22,7 +23,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!mounted || isLoading) return;
     if (!isError && user) return;
     const status = (error as AxiosError | undefined)?.response?.status;
-    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     // No token → straight to /login. Otherwise an explicit auth failure routes too.
     if (!hasToken || status === 401 || status === 403) {
       router.replace("/login");
@@ -43,7 +44,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!mounted || isLoading) return null;
   if (!user) {
     const status = (error as AxiosError | undefined)?.response?.status;
-    if (isError && status !== 401 && status !== 403 && typeof window !== "undefined" && localStorage.getItem("access_token")) {
+    if (isError && status !== 401 && status !== 403 && typeof window !== "undefined" && localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)) {
       return (
         <div className="flex min-h-screen items-center justify-center p-6">
           <div className="max-w-sm space-y-3 text-center">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -80,6 +80,7 @@ function NewCIRPageContent() {
   const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean; insert_after_page?: number | null }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
+  const linkageDirtyRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -101,7 +102,7 @@ function NewCIRPageContent() {
     enabled: !!project?.id,
   });
 
-  useEffect(() => { if (docTemplates.length > 0 && !selectedTemplateId) { const active = docTemplates.find((t) => t.is_active); if (active) setSelectedTemplateId(active.id); } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (docTemplates.length > 0) { const current = docTemplates.find((t) => t.id === selectedTemplateId); if (!current) { const active = docTemplates.find((t) => t.is_active); setSelectedTemplateId(active?.id || docTemplates[0].id); } } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
     queryKey: ["asset-requirements-all", project?.id],
@@ -122,8 +123,10 @@ function NewCIRPageContent() {
 
   const { data: existingDoc } = useQuery({ queryKey: ["document", editId], queryFn: async () => (await api.get(`/documents/${editId}`)).data, enabled: !!editId });
 
-  const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
-  const fullyLocked = !!existingDoc && ["approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const formLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const fullyLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+
+  useEffect(() => { if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(true); }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   useEffect(() => {
@@ -187,7 +190,7 @@ function NewCIRPageContent() {
         const links = linksRes.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
         if (links.length > 0) {
           const ar = allAssetRequirements.find((r) => r.id === links[0].asset_requirement_id);
-          if (ar) { setCommissioningLinkage({ requirementTemplateId: ar.requirement_template_id, isPartialScope: links.some((l) => l.requirement_work_item_id != null), checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!), deleteExistingIds: [], newItems: [] }); }
+          if (ar) { setCommissioningLinkage({ requirementTemplateId: ar.requirement_template_id, isPartialScope: links.some((l) => l.requirement_work_item_id != null), checkedExistingIds: links.filter((l) => l.requirement_work_item_id).map((l) => l.requirement_work_item_id!), deleteExistingIds: [], newItems: [] }); linkageDirtyRef.current = true; }
         }
         setIsDirty(true);
       } catch { toast.error("Failed to load rejected document data"); }
@@ -271,9 +274,9 @@ function NewCIRPageContent() {
       if (editId) { const { project_id, document_type, reference_no, ...p } = buildPayload(values); res = await api.patch(`/documents/${editId}`, p); }
       else { res = await api.post("/documents", buildPayload(values)); }
       const docId = res.data?.id || editId;
-      await saveCommissioningLinkage(docId);
+      if (linkageDirtyRef.current) { await saveCommissioningLinkage(docId); linkageDirtyRef.current = false; }
       const newAtts = attachments.filter((a) => !a.isExisting && a.file);
-      if (newAtts.length > 0 && docId) { for (const att of newAtts) { const fd = new FormData(); fd.append("file", att.file!); const params = att.insert_after_page != null ? `?insert_after_page=${att.insert_after_page}` : ""; await api.post(`/documents/${docId}/attachments${params}`, fd, { headers: { "Content-Type": "multipart/form-data" } }); } }
+      if (newAtts.length > 0 && docId) { for (const att of newAtts) { const fd = new FormData(); fd.append("file", att.file!); const params = att.insert_after_page != null ? `?insert_after_page=${att.insert_after_page}` : ""; await api.post(`/documents/${docId}/attachments${params}`, fd); } }
       const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
       if (existingIds.length > 0 && docId) { await api.patch(`/documents/${docId}/attachments/reorder`, existingIds); }
       return res;
@@ -284,6 +287,8 @@ function NewCIRPageContent() {
       if (res?.data?.revision_no !== undefined) setRevisionNo(res.data.revision_no);
       form.reset(form.getValues());
       queryClient.invalidateQueries({ queryKey: ["documents", "CIR"] });
+      const docId = res?.data?.id || editId;
+      if (docId) api.get(`/documents/${docId}/attachments`).then((r) => { setAttachments(r.data.map((a: any) => ({ id: a.id, name: a.filename, size: a.size, isExisting: true }))); }).catch(() => {});
       if (!editId && res?.data?.id) router.replace(`/qaqc/cir/new?id=${res.data.id}`);
     },
   });
@@ -324,9 +329,9 @@ function NewCIRPageContent() {
                   <div className="space-y-2">
                     <FormLabel>Select Rejected Document</FormLabel>
                     <Select value={revisionOfId || ""} onValueChange={(v: string) => setRevisionOfId(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) — ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) - ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
                       <SelectContent>
-                        {Object.entries(rejectedDocs).map(([discipline, docs]) => (<div key={discipline}><div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{discipline}</div>{docs.map((doc) => (<SelectItem key={doc.id} value={doc.id}>{doc.reference_no} (Rev {doc.revision_no}) — {doc.title}</SelectItem>))}</div>))}
+                        {Object.entries(rejectedDocs).map(([discipline, docs]) => (<div key={discipline}><div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{discipline}</div>{docs.map((doc) => (<SelectItem key={doc.id} value={doc.id}>{doc.reference_no} (Rev {doc.revision_no}) - {doc.title}</SelectItem>))}</div>))}
                         {Object.keys(rejectedDocs).length === 0 && <div className="px-2 py-3 text-sm text-muted-foreground text-center">No rejected documents available</div>}
                       </SelectContent>
                     </Select>
@@ -378,7 +383,7 @@ function NewCIRPageContent() {
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}><CardContent className="pt-6">
             <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} documentType="CIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
-              onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); setIsDirty(true); }} />
+              onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); linkageDirtyRef.current = true; setIsDirty(true); }} />
           </CardContent></Card>
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : !commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
@@ -407,7 +412,7 @@ function NewCIRPageContent() {
                   if (filtered.length === 0) return <p className="p-3 text-sm text-muted-foreground">No assets match filters.</p>;
                   return filtered.map((a) => {
                     const isSelected = !!selectedAssets.find((s) => s.id === a.id);
-                    return (<label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"><input type="checkbox" checked={isSelected} onChange={() => isSelected ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" /><span className="text-sm">{a.tag_number} — {a.name}</span></label>);
+                    return (<label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"><input type="checkbox" checked={isSelected} onChange={() => isSelected ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" /><span className="text-sm">{a.tag_number} - {a.name}</span></label>);
                   });
                 })()}
               </div>
@@ -425,7 +430,7 @@ function NewCIRPageContent() {
                   <FormItem><FormLabel>Signatory 1</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? users.find((u) => u.id === inspector1Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
+                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "-"}</span></span></SelectItem>))}</SelectContent>
                     </Select>
                   </FormItem>
                 )} />
@@ -433,7 +438,7 @@ function NewCIRPageContent() {
                   <FormItem><FormLabel>Signatory 2</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? users.find((u) => u.id === inspector2Id)?.full_name : ""}</SelectValue></SelectTrigger></FormControl>
-                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "—"}</span></span></SelectItem>))}</SelectContent>
+                      <SelectContent>{users.map((u) => (<SelectItem key={u.id} value={u.id}><span className="inline-flex items-baseline gap-2"><span>{u.full_name}:</span><span className="text-muted-foreground">{u.designation?.name || "-"}</span></span></SelectItem>))}</SelectContent>
                     </Select>
                   </FormItem>
                 )} />
@@ -478,24 +483,29 @@ function NewCIRPageContent() {
           </Card>
 
           <div className="flex justify-end gap-3">
-            {editId && (<>
-              <Button type="button" variant="outline" disabled={pdfLoading || !editId || isDirty || form.formState.isDirty} onClick={async () => {
-                setPdfLoading(true);
-                try { const payload: any = { document_id: editId, project_id: project!.id }; if (selectedTemplateId) payload.template_id = selectedTemplateId; const res = await api.post(`/reports/generate/CIR`, payload, { responseType: "blob" }); const url = URL.createObjectURL(res.data); window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("PDF generation failed"); } finally { setPdfLoading(false); }
-              }}>{pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}</Button>
-              <Button type="button" variant="outline" disabled={!editId || !signed.inspector1 || !signed.inspector2 || isDirty || form.formState.isDirty} onClick={async () => {
-                try { const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" }); const url = URL.createObjectURL(res.data); const a = document.createElement("a"); a.href = url; a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("Failed to download document"); }
-              }}><Download className="h-4 w-4 mr-2" />Download Document</Button>
+            {!formLocked && (<>
+              <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
+              <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
+              <Button type="button" disabled={!editId || notifyMutation.isPending || (signed.inspector1 && signed.inspector2) || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
+                <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
+              </Button>
             </>)}
-            <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>{mutation.isPending ? "Saving..." : "Save as Draft"}</Button>
-            <Button type="button" disabled={!editId || notifyMutation.isPending || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
-              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
-            </Button>
           </div>
           </fieldset>
         </form>
       </Form>
+
+      {editId && (
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => {
+          setPdfLoading(true);
+          try { const payload: any = { document_id: editId, project_id: project!.id }; if (selectedTemplateId) payload.template_id = selectedTemplateId; const res = await api.post(`/reports/generate/CIR`, payload, { responseType: "blob" }); const url = URL.createObjectURL(res.data); window.open(url, "_blank"); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch (e: any) { let msg = "PDF generation failed"; try { const text = await e?.response?.data?.text?.(); const parsed = JSON.parse(text); msg = parsed.detail || msg; } catch {} toast.error(msg); } finally { setPdfLoading(false); }
+        }}>{pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}</Button>
+        <Button type="button" variant="outline" disabled={!signed.inspector1 || !signed.inspector2} onClick={async () => {
+          try { const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" }); const url = URL.createObjectURL(res.data); const a = document.createElement("a"); a.href = url; a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000); } catch { toast.error("Failed to download document"); }
+        }}><Download className="h-4 w-4 mr-2" />Download Document</Button>
+      </div>
+      )}
 
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card><CardContent className="pt-6"><ApprovalActionPanel documentId={editId} documentType="CIR" documentStatus={existingDoc.status} projectId={project?.id} /></CardContent></Card>

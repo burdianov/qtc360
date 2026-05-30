@@ -207,10 +207,10 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
               <p className="text-xs text-amber-500/80">You may proceed, but the tag will not be achieved until all requirements are completed.</p>
               {!value?.gateWarningAcknowledged ? (
                 <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10" onClick={() => setGateDialogOpen(true)}>
-                  I acknowledge — proceed anyway
+                  I acknowledge - proceed anyway
                 </Button>
               ) : (
-                <p className="text-xs text-emerald-500">✓ Acknowledged{value.gateOverrideNotes ? ` — "${value.gateOverrideNotes}"` : ""}</p>
+                <p className="text-xs text-emerald-500">✓ Acknowledged{value.gateOverrideNotes ? ` - "${value.gateOverrideNotes}"` : ""}</p>
               )}
 
               <Dialog open={gateDialogOpen} onOpenChange={setGateDialogOpen}>

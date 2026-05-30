@@ -89,7 +89,7 @@ export default function RolesPage() {
                 {roles.map((role) => (
                   <th key={role.id} className="text-center py-2 px-3 font-medium min-w-[100px]">
                     <div>{role.name.replace(/_/g, " ")}</div>
-                    <div className="text-[10px] text-muted-foreground font-normal">{role.description?.split("—")[0]?.trim()}</div>
+                    <div className="text-[10px] text-muted-foreground font-normal">{role.description?.split("-")[0]?.trim()}</div>
                   </th>
                 ))}
               </tr>

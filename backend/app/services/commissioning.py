@@ -14,13 +14,7 @@ from app.models.commissioning import (
 )
 from app.models.document import Document
 
-# Tag rules: which levels contribute to which tag
-TAG_LEVEL_MAP = {
-    "red": ["L1", "L2A"],
-    "yellow": ["L2B"],
-    "green": ["L3"],
-    "blue": ["L4"],
-}
+from app.core.types import TAG_LEVEL_MAP
 
 
 async def recalculate_requirement_status(
@@ -93,7 +87,7 @@ async def recalculate_requirement_status(
         from app.models.commissioning import DocumentRequirementLink
         link_result = await db.execute(
             select(DocumentRequirementLink.document_id)
-            .where(DocumentRequirementLink.asset_requirement_id == requirement_id)
+            .where(DocumentRequirementLink.asset_requirement_id == asset_requirement_id)
         )
         doc_ids = [r[0] for r in link_result.all()]
         if doc_ids:

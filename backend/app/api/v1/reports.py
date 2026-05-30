@@ -12,6 +12,7 @@ from docx.shared import Mm
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from jinja2.sandbox import SandboxedEnvironment
+from jinja2 import TemplateSyntaxError, Undefined
 from pydantic import BaseModel as PydanticModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.types import DEFAULT_SIGNATURE_FONT, DEFAULT_SIGNATURE_COLOR, FONTS_DIR, LIBREOFFICE_TIMEOUT, GOTENBERG_TIMEOUT, DEFAULT_DATE_FORMAT
 from app.core.deps import (
     assert_user_in_project,
     get_current_user,
@@ -44,7 +46,7 @@ async def _load_date_format(db: AsyncSession) -> str:
         from app.models.app_setting import AppSetting
         result = await db.execute(select(AppSetting).where(AppSetting.key == "date_format"))
         item = result.scalar_one_or_none()
-        _date_format_cache = item.value if item else "DD.MM.YYYY"
+        _date_format_cache = item.value if item else DEFAULT_DATE_FORMAT
     return _date_format_cache
 
 
@@ -60,7 +62,13 @@ _FORMAT_MAP = {
 def _format_date(dt, fmt: str | None = None) -> str:
     if not dt:
         return ""
-    py_fmt = _FORMAT_MAP.get(fmt or _date_format_cache or "DD.MM.YYYY", "%d.%m.%Y")
+    from datetime import date as date_cls, datetime as dt_cls
+    if isinstance(dt, str):
+        try:
+            dt = dt_cls.fromisoformat(dt)
+        except ValueError:
+            return dt
+    py_fmt = _FORMAT_MAP.get(fmt or _date_format_cache or DEFAULT_DATE_FORMAT, "%d.%m.%Y")
     return dt.strftime(py_fmt)
 
 
@@ -93,6 +101,17 @@ async def upload_template(
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
+
+    # Validate template placeholders
+    try:
+        from docxtpl import DocxTemplate
+        tpl = DocxTemplate(io.BytesIO(data))
+        env = SandboxedEnvironment(undefined=Undefined)
+        env.parse(tpl.get_xml())
+    except TemplateSyntaxError as e:
+        raise HTTPException(status_code=400, detail=f"Template placeholder error: {e.message}. Use underscores in variable names (e.g. {{{{ delivery_notes }}}} not {{{{ delivery notes }}}}).")
+    except Exception:
+        pass  # Non-Jinja errors (e.g. corrupt DOCX) will be caught later
 
     # Deactivate previous active templates for this project+doc_type
     result = await db.execute(
@@ -218,8 +237,8 @@ async def list_signature_fonts(_: User = Depends(get_current_user)):
 @router.get("/signature-preview")
 async def preview_signature(
     name: str,
-    font_id: str = "dancing_script",
-    color: str = "#1a237e",
+    font_id: str = DEFAULT_SIGNATURE_FONT,
+    color: str = DEFAULT_SIGNATURE_COLOR,
 ):
     """Preview a signature rendering."""
     if len(name) > 200:
@@ -227,7 +246,7 @@ async def preview_signature(
     # Validate color is a #RRGGBB hex string.
     import re as _re
     if not _re.fullmatch(r"#[0-9A-Fa-f]{6}", color or ""):
-        color = "#1a237e"
+        color = DEFAULT_SIGNATURE_COLOR
     png = render_signature(name, font_id, color=color)
     return Response(content=png, media_type="image/png")
 
@@ -306,7 +325,7 @@ async def generate_report(
     from app.models.document_attachment import DocumentAttachment
     att_result = await db.execute(
         select(DocumentAttachment)
-        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.is_deleted == False)  # noqa: E712
+        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.kind == "user", DocumentAttachment.is_deleted == False)  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     attachments = att_result.scalars().all()
@@ -384,38 +403,34 @@ def _build_context(document: Document) -> dict:
     }
 
     doc_discipline = ""
+    disc_code = ""
     if document.discipline:
-        doc_discipline = (document.discipline.name or "").lower().replace(" ", "_").replace("/", "_")
+        doc_discipline = (document.discipline.name or "").lower()
+        disc_code = (document.discipline.code or "").upper()
 
     def cb(selected: bool) -> str:
-        return "[X]" if selected else "[  ]"
+        return "☒" if selected else "☐"
 
-    ctx["arch_cb"] = cb("architectural" in doc_discipline) + " Architectural"
-    ctx["civil_struct_cb"] = cb("civil" in doc_discipline or "structural" in doc_discipline) + " Civil/Structural"
-    ctx["mechanical_cb"] = cb("mechanical" in doc_discipline) + " Mechanical"
-    ctx["electrical_cb"] = cb("electrical" in doc_discipline) + " Electrical"
-    ctx["plumbing_cb"] = cb("plumbing" in doc_discipline) + " Plumbing"
-    ctx["firefighting_cb"] = cb("firefighting" in doc_discipline or "fire" in doc_discipline) + " Firefighting"
-    ctx["others_cb"] = cb("others" in doc_discipline or "other" in doc_discipline) + " Others"
-
-    ctx["arch"] = f"{ctx['arch_cb']} Architectural"
-    ctx["civil_struct"] = f"{ctx['civil_struct_cb']} Civil/Structural"
-    ctx["mechanical"] = f"{ctx['mechanical_cb']} Mechanical"
-    ctx["electrical"] = f"{ctx['electrical_cb']} Electrical"
-    ctx["plumbing"] = f"{ctx['plumbing_cb']} Plumbing"
-    ctx["firefighting"] = f"{ctx['firefighting_cb']} Firefighting"
-    ctx["others"] = f"{ctx['others_cb']} Others"
+    # Discipline checkboxes — match by code or name substring
+    ctx["arch_cb"] = cb(disc_code == "AR" or "architectural" in doc_discipline) + " Architectural"
+    ctx["civil_struct_cb"] = cb(disc_code == "CS" or "civil" in doc_discipline or "structural" in doc_discipline) + " Civil/Structural"
+    ctx["mechanical_cb"] = cb(disc_code == "MC" or "mechanical" in doc_discipline) + " Mechanical"
+    ctx["electrical_cb"] = cb(disc_code == "EL" or "electrical" in doc_discipline) + " Electrical"
+    ctx["plumbing_cb"] = cb(disc_code == "PL" or "plumbing" in doc_discipline) + " Plumbing"
+    ctx["firefighting_cb"] = cb(disc_code == "FF" or "fire" in doc_discipline) + " Fire Fighting"
+    ctx["others_cb"] = cb(disc_code == "OT" or "other" in doc_discipline) + " Others"
 
     for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
         if inspector:
-            ctx[f"inspected_by_{i}"] = inspector.full_name
-            ctx[f"designation_{i}"] = inspector.designation.name if inspector.designation else ""
+            name = inspector.full_name
+            desig = inspector.designation.name if inspector.designation else ""
+            ctx[f"inspected_by_{i}"] = f"{name} - {desig}" if desig else name
+            ctx[f"designation_{i}"] = desig
         else:
             ctx[f"inspected_by_{i}"] = ""
             ctx[f"designation_{i}"] = ""
-        ctx[f"date_{i}"] = getattr(document, f"inspector_date_{i}", "") or ""
+        ctx[f"date_{i}"] = _format_date(getattr(document, f"inspector_date_{i}", None))
         ctx[f"time_{i}"] = getattr(document, f"inspector_time_{i}", "") or ""
-        ctx[f"remarks_{i}"] = getattr(document, f"remarks_{i}", "") or ""
 
     if document.project:
         ctx["prj_no"] = document.project.code or ""
@@ -425,14 +440,16 @@ def _build_context(document: Document) -> dict:
     ctx["discipline"] = document.discipline.name if document.discipline else ""
 
     # MIR-specific placeholders
-    ctx["delivery notes"] = document.delivery_note or ""
+    ctx["delivery_notes"] = document.delivery_note or ""
+    ctx["delivery_note"] = document.delivery_note or ""
     ctx["material_submittals"] = document.material_submittals or ""
+    ctx["materials_description"] = document.description or ""
     ctx["qty"] = document.qty or ""
-    # MIR uses single inspector format
-    ctx["inspected by"] = ctx.get("inspected_by_1", "")
-    ctx["inspected_by_sign"] = ctx.get("insp_sign_1", "") if hasattr(document, "site_engineer_signed") and document.site_engineer_signed else ""
+    ctx["location"] = document.location or ""
+    ctx["inspected_by"] = ctx.get("inspected_by_1", "")
     ctx["ins_date"] = ctx.get("date_1", "")
     ctx["ins_time"] = ctx.get("time_1", "")
+    ctx["signatory_date"] = ctx.get("date_1", "")
 
     return ctx
 
@@ -455,8 +472,11 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     # MIR uses inspected_by_sign instead of insp_sign_1
     context["inspected_by_sign"] = context.get("insp_sign_1", "")
 
-    sandbox_env = SandboxedEnvironment()
-    doc.render(context, jinja_env=sandbox_env)
+    sandbox_env = SandboxedEnvironment(undefined=Undefined)
+    try:
+        doc.render(context, jinja_env=sandbox_env)
+    except TemplateSyntaxError as e:
+        raise HTTPException(status_code=400, detail=f"Template syntax error at line {e.lineno}: {e.message}. Check your DOCX template placeholders (use underscores, not spaces).")
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
@@ -481,7 +501,7 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
     for i, inspector in enumerate(inspectors, start=1):
         if inspector and signed_flags[i - 1]:
             sig_name = inspector.signature_text or inspector.full_name
-            font_id = inspector.signature_font or "dancing_script"
+            font_id = inspector.signature_font or DEFAULT_SIGNATURE_FONT
             marker = f"SIGMARK{i}"
             sigs_to_stamp.append({"marker": marker, "name": sig_name, "font_id": font_id})
 
@@ -489,7 +509,7 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document) -> bytes:
         return pdf_bytes
 
     # Register signature fonts with reportlab
-    fonts_dir = Path(__file__).parent.parent.parent / "fonts"
+    fonts_dir = FONTS_DIR
     from app.services.signature import SIGNATURE_FONTS
     registered_fonts: set[str] = set()
     for sig in sigs_to_stamp:
@@ -651,7 +671,7 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
     # Try Gotenberg first
     gotenberg_url = settings.gotenberg_url.rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=GOTENBERG_TIMEOUT) as client:
             resp = await client.post(
                 f"{gotenberg_url}/forms/libreoffice/convert",
                 files={"files": ("document.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
@@ -677,7 +697,7 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
             proc = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=LIBREOFFICE_TIMEOUT)
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="PDF engine not configured (Gotenberg down, LibreOffice not found)")
         except asyncio.TimeoutError:

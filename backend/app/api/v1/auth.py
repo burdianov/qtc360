@@ -112,7 +112,16 @@ async def change_password(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
-    return user
+    perms = set()
+    for role in user.roles:
+        for perm in role.permissions:
+            perms.add(perm.code)
+    return {
+        **{c.name: getattr(user, c.name) for c in user.__table__.columns},
+        "designation": user.designation,
+        "roles": user.roles,
+        "permissions": sorted(perms),
+    }
 
 
 @router.get("/users")

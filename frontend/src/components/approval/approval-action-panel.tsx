@@ -206,7 +206,7 @@ export function ApprovalActionPanel({
               <div className="truncate">{pa.approver.name}</div>
               {decision && (
                 <div className="text-[11px] text-muted-foreground">
-                  {decision.letter} — {decision.name}
+                  {decision.letter} - {decision.name}
                 </div>
               )}
             </div>

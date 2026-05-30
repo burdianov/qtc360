@@ -115,8 +115,8 @@ export default function RequirementTemplatesPage() {
     }},
     { accessorKey: "requirement_category", header: ({ column }) => <DataTableColumnHeader column={column} title="Category" />, cell: ({ row }) => row.original.requirement_category.replace(/_/g, " ") },
     { accessorKey: "evidence_document_type", header: ({ column }) => <DataTableColumnHeader column={column} title="Evidence Type" /> },
-    { accessorKey: "is_gate_requirement", header: ({ column }) => <DataTableColumnHeader column={column} title="Gate" />, cell: ({ row }) => row.original.is_gate_requirement ? "Yes" : "—" },
-    { accessorKey: "requires_work_breakdown", header: ({ column }) => <DataTableColumnHeader column={column} title="Work Breakdown" />, cell: ({ row }) => row.original.requires_work_breakdown ? "Yes" : "—" },
+    { accessorKey: "is_gate_requirement", header: ({ column }) => <DataTableColumnHeader column={column} title="Gate" />, cell: ({ row }) => row.original.is_gate_requirement ? "Yes" : "-" },
+    { accessorKey: "requires_work_breakdown", header: ({ column }) => <DataTableColumnHeader column={column} title="Work Breakdown" />, cell: ({ row }) => row.original.requires_work_breakdown ? "Yes" : "-" },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

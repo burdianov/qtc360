@@ -92,8 +92,8 @@ export default function AssetTypesPage() {
     { accessorKey: "sort_order", header: ({ column }) => <DataTableColumnHeader column={column} title="Sort Order" />, meta: { title: "Sort Order", width: "170px" } },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     { accessorKey: "code", header: ({ column }) => <DataTableColumnHeader column={column} title="Code" /> },
-    { accessorKey: "service_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />, meta: { title: "Service" }, cell: ({ row }) => services.find((s) => s.id === row.original.service_id)?.name ?? "—" },
-    { accessorKey: "parent_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Parent Type" />, meta: { title: "Parent Type" }, cell: ({ row }) => row.original.parent_type_id ? assetTypes.find((t) => t.id === row.original.parent_type_id)?.name ?? "—" : "—" },
+    { accessorKey: "service_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Service" />, meta: { title: "Service" }, cell: ({ row }) => services.find((s) => s.id === row.original.service_id)?.name ?? "-" },
+    { accessorKey: "parent_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Parent Type" />, meta: { title: "Parent Type" }, cell: ({ row }) => row.original.parent_type_id ? assetTypes.find((t) => t.id === row.original.parent_type_id)?.name ?? "-" : "-" },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 

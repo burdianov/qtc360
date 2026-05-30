@@ -95,7 +95,7 @@ export default function ServicesPage() {
       accessorKey: "discipline_id",
       header: ({ column }) => <DataTableColumnHeader column={column} title="Discipline" />,
       meta: { title: "Discipline" },
-      cell: ({ row }) => projectDisciplines.find((d) => d.id === row.original.discipline_id)?.name ?? "—",
+      cell: ({ row }) => projectDisciplines.find((d) => d.id === row.original.discipline_id)?.name ?? "-",
     },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];

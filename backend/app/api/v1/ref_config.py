@@ -14,6 +14,7 @@ from app.core.deps import (
     require_permission,
     require_project_access,
 )
+from app.core.types import DEFAULT_SERIAL_START
 from app.models.reference_number_config import ReferenceNumberConfig
 from app.models.user import User
 from app.services.audit import record_audit
@@ -52,7 +53,7 @@ class RefConfigCreate(PydanticModel):
     pattern: str = "{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}"
     project_code: str
     contractor_code: str = ""
-    serial_start: int = 1
+    serial_start: int = DEFAULT_SERIAL_START
 
 
 class RefConfigResponse(PydanticModel):

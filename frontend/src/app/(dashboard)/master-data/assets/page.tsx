@@ -108,13 +108,13 @@ export default function AssetsPage() {
   const columns: ColumnDef<Asset, unknown>[] = [
     { accessorKey: "tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, meta: { title: "Tag" } },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
-    { accessorKey: "asset_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />, meta: { title: "Type" }, cell: ({ row }) => assetTypes.find((t) => t.id === row.original.asset_type_id)?.name ?? "—" },
+    { accessorKey: "asset_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />, meta: { title: "Type" }, cell: ({ row }) => assetTypes.find((t) => t.id === row.original.asset_type_id)?.name ?? "-" },
     ...fieldDefs.map((fd) => ({
       id: `cf_${fd.id}`,
-      accessorFn: (row: Asset) => row.custom_fields?.[fd.id] || "—",
+      accessorFn: (row: Asset) => row.custom_fields?.[fd.id] || "-",
       header: ({ column }: any) => <DataTableColumnHeader column={column} title={fd.label} />,
       meta: { title: fd.label },
-      cell: ({ row }: any) => row.original.custom_fields?.[fd.id] || "—",
+      cell: ({ row }: any) => row.original.custom_fields?.[fd.id] || "-",
     } as ColumnDef<Asset, unknown>)),
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];

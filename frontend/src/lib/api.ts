@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
+import { STORAGE_KEYS } from "./constants";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
@@ -7,7 +8,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   // Let browser set Content-Type with boundary for FormData
@@ -26,8 +27,8 @@ function performRefresh(refresh: string) {
     .post(`${api.defaults.baseURL}/auth/refresh`, { refresh_token: refresh })
     .then((res) => {
       const data = res.data as { access_token: string; refresh_token: string };
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, data.access_token);
+      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, data.refresh_token);
       return data;
     })
     .finally(() => {
@@ -46,7 +47,7 @@ api.interceptors.response.use(
     if (!original) return Promise.reject(error);
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      const refresh = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+      const refresh = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN) : null;
       if (refresh) {
         try {
           const data = await performRefresh(refresh);
@@ -56,8 +57,8 @@ api.interceptors.response.use(
           return api(original);
         } catch {
           if (typeof window !== "undefined") {
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
+            localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+            localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
             window.location.href = "/login";
           }
         }

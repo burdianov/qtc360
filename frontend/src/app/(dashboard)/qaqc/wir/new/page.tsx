@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -80,6 +80,7 @@ function NewWIRPageContent() {
   const [attachments, setAttachments] = useState<{ id?: string; file?: File; name: string; size: number; isExisting?: boolean; insert_after_page?: number | null }[]>([]);
   const [signed, setSigned] = useState<{ inspector1: boolean; inspector2: boolean }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] = useState<CommissioningLinkage | null>(null);
+  const linkageDirtyRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -130,9 +131,12 @@ function NewWIRPageContent() {
 
   // Auto-select active template
   useEffect(() => {
-    if (docTemplates.length > 0 && !selectedTemplateId) {
-      const active = docTemplates.find((t) => t.is_active);
-      if (active) setSelectedTemplateId(active.id);
+    if (docTemplates.length > 0) {
+      const current = docTemplates.find((t) => t.id === selectedTemplateId);
+      if (!current) {
+        const active = docTemplates.find((t) => t.is_active);
+        setSelectedTemplateId(active?.id || docTemplates[0].id);
+      }
     }
   }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -172,8 +176,10 @@ function NewWIRPageContent() {
     enabled: !!editId,
   });
 
-  const formLocked = !!existingDoc && ["approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
-  const fullyLocked = !!existingDoc && ["approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const formLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+  const fullyLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
+
+  useEffect(() => { if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(true); }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (existingDoc) {
@@ -291,6 +297,7 @@ function NewWIRPageContent() {
               deleteExistingIds: [],
               newItems: [],
             });
+            linkageDirtyRef.current = true;
           }
         }
         setIsDirty(true);
@@ -435,9 +442,10 @@ function NewWIRPageContent() {
         res = await api.post("/documents", buildPayload(values));
       }
       const docId = res.data?.id || editId;
-      await saveCommissioningLinkage(docId);
+      if (linkageDirtyRef.current) { await saveCommissioningLinkage(docId); linkageDirtyRef.current = false; }
       // Upload new attachments to server
       const newAtts = attachments.filter((a) => !a.isExisting && a.file);
+      const uploadedIds: string[] = [];
       if (newAtts.length > 0 && docId) {
         for (const att of newAtts) {
           const formData = new FormData();
@@ -445,12 +453,10 @@ function NewWIRPageContent() {
           const params = att.insert_after_page !== undefined && att.insert_after_page !== null
             ? `?insert_after_page=${att.insert_after_page}`
             : "";
-          await api.post(`/documents/${docId}/attachments${params}`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
+          await api.post(`/documents/${docId}/attachments${params}`, formData);
         }
       }
-      // Persist reorder for existing attachments
+      // Persist reorder for all attachments (existing + newly uploaded) in current UI order
       const existingIds = attachments.filter((a) => a.isExisting && a.id).map((a) => a.id);
       if (existingIds.length > 0 && docId) {
         await api.patch(`/documents/${docId}/attachments/reorder`, existingIds);
@@ -465,6 +471,8 @@ function NewWIRPageContent() {
       if (res?.data?.revision_no !== undefined) setRevisionNo(res.data.revision_no);
       form.reset(form.getValues());
       queryClient.invalidateQueries({ queryKey: ["documents", "WIR"] });
+      const docId = res?.data?.id || editId;
+      if (docId) api.get(`/documents/${docId}/attachments`).then((r) => { setAttachments(r.data.map((a: any) => ({ id: a.id, name: a.filename, size: a.size, isExisting: true }))); }).catch(() => {});
       if (!editId && res?.data?.id) {
         router.replace(`/qaqc/wir/new?id=${res.data.id}`);
       }
@@ -537,14 +545,14 @@ function NewWIRPageContent() {
                   <div className="space-y-2">
                     <FormLabel>Select Rejected Document</FormLabel>
                     <Select value={revisionOfId || ""} onValueChange={(v: string) => setRevisionOfId(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) — ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Select a rejected document to revise">{(() => { for (const docs of Object.values(rejectedDocs)) { const d = docs.find((d) => d.id === revisionOfId); if (d) return `${d.reference_no} (Rev ${d.revision_no}) - ${d.title}`; } return ""; })()}</SelectValue></SelectTrigger>
                       <SelectContent>
                         {Object.entries(rejectedDocs).map(([discipline, docs]) => (
                           <div key={discipline}>
                             <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{discipline}</div>
                             {docs.map((doc) => (
                               <SelectItem key={doc.id} value={doc.id}>
-                                {doc.reference_no} (Rev {doc.revision_no}) — {doc.title}
+                                {doc.reference_no} (Rev {doc.revision_no}) - {doc.title}
                               </SelectItem>
                             ))}
                           </div>
@@ -642,6 +650,7 @@ function NewWIRPageContent() {
                     return;
                   }
                   setCommissioningLinkage(linkage);
+                  linkageDirtyRef.current = true;
                   setIsDirty(true);
                 }}
               />
@@ -698,7 +707,7 @@ function NewWIRPageContent() {
                     return (
                       <label key={a.id} className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0">
                         <input type="checkbox" checked={isSelected} onChange={() => isSelected ? removeAsset(a.id) : addAsset(a.id)} className="h-4 w-4 rounded border-input" />
-                        <span className="text-sm">{a.tag_number} — {a.name}</span>
+                        <span className="text-sm">{a.tag_number} - {a.name}</span>
                       </label>
                     );
                   });
@@ -737,7 +746,7 @@ function NewWIRPageContent() {
                           <SelectItem key={u.id} value={u.id}>
                             <span className="inline-flex items-baseline gap-2 w-full">
                               <span>{u.full_name}:</span>
-                              <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
+                              <span className="text-muted-foreground">{u.designation?.name || "-"}</span>
                             </span>
                           </SelectItem>
                         ))}
@@ -755,7 +764,7 @@ function NewWIRPageContent() {
                           <SelectItem key={u.id} value={u.id}>
                             <span className="inline-flex items-baseline gap-2 w-full">
                               <span>{u.full_name}:</span>
-                              <span className="text-muted-foreground">{u.designation?.name || "—"}</span>
+                              <span className="text-muted-foreground">{u.designation?.name || "-"}</span>
                             </span>
                           </SelectItem>
                         ))}
@@ -886,46 +895,51 @@ function NewWIRPageContent() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            {editId && (<>
-              <Button type="button" variant="outline" disabled={pdfLoading || !editId || isDirty || form.formState.isDirty} onClick={async () => {
-                setPdfLoading(true);
-                try {
-                  const payload: any = { document_id: editId, project_id: project!.id };
-                  if (selectedTemplateId) payload.template_id = selectedTemplateId;
-                  const res = await api.post(`/reports/generate/WIR`, payload, { responseType: "blob" });
-                  const url = URL.createObjectURL(res.data);
-                  window.open(url, "_blank");
-                  setTimeout(() => URL.revokeObjectURL(url), 60000);
-                } catch { toast.error("PDF generation failed"); }
-                finally { setPdfLoading(false); }
-              }}>
-                {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
+            {!formLocked && (<>
+              <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
+              <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
+                {mutation.isPending ? "Saving..." : "Save as Draft"}
               </Button>
-              <Button type="button" variant="outline" disabled={!editId || !signed.inspector1 || !signed.inspector2 || isDirty || form.formState.isDirty} onClick={async () => {
-                try {
-                  const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" });
-                  const url = URL.createObjectURL(res.data);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`;
-                  a.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 60000);
-                } catch { toast.error("Failed to download document"); }
-              }}>
-                <Download className="h-4 w-4 mr-2" />Download Document
+              <Button type="button" disabled={!editId || notifyMutation.isPending || (signed.inspector1 && signed.inspector2) || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
+                <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
               </Button>
             </>)}
-            <Button type="button" variant="outline" onClick={handleBack}>Cancel</Button>
-            <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
-              {mutation.isPending ? "Saving..." : "Save as Draft"}
-            </Button>
-            <Button type="button" disabled={!editId || notifyMutation.isPending || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
-              <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
-            </Button>
           </div>
           </fieldset>
         </form>
       </Form>
+
+      {editId && (
+      <div className="flex justify-end gap-3">
+        <Button type="button" variant="outline" disabled={pdfLoading} onClick={async () => {
+          setPdfLoading(true);
+          try {
+            const payload: any = { document_id: editId, project_id: project!.id };
+            if (selectedTemplateId) payload.template_id = selectedTemplateId;
+            const res = await api.post(`/reports/generate/WIR`, payload, { responseType: "blob" });
+            const url = URL.createObjectURL(res.data);
+            window.open(url, "_blank");
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } catch (e: any) { let msg = "PDF generation failed"; try { const text = await e?.response?.data?.text?.(); const parsed = JSON.parse(text); msg = parsed.detail || msg; } catch {} toast.error(msg); }
+          finally { setPdfLoading(false); }
+        }}>
+          {pdfLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating PDF...</> : "Preview PDF"}
+        </Button>
+        <Button type="button" variant="outline" disabled={!signed.inspector1 || !signed.inspector2} onClick={async () => {
+          try {
+            const res = await api.get(`/documents/${editId}/bundle`, { responseType: "blob" });
+            const url = URL.createObjectURL(res.data);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } catch { toast.error("Failed to download document"); }
+        }}>
+          <Download className="h-4 w-4 mr-2" />Download Document
+        </Button>
+      </div>
+      )}
 
       {/* External Approval Workflow (shown once internally signed) */}
       {editId && existingDoc && existingDoc.status !== "draft" && (

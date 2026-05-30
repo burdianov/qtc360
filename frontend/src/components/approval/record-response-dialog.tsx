@@ -115,7 +115,7 @@ export function RecordResponseDialog({
   const callExtract = async (region: PdfRegion, field: Field, force = false) => {
     if (!file) return null;
     // Server reads the persisted file by round_id, but we don't have a round
-    // yet — extraction happens against the locally-uploaded preview file via
+    // yet - extraction happens against the locally-uploaded preview file via
     // a stateless preview endpoint we add next, OR we round-trip the file in
     // the request. The simplest path: also POST the file as multipart to the
     // extract endpoint when no round_id is available. We use the existing
@@ -186,7 +186,7 @@ export function RecordResponseDialog({
       fd.append("file", file);
 
       if (roundId) {
-        // Replace mode — PUT with form fields
+        // Replace mode - PUT with form fields
         if (signatoryName) fd.append("signatory_name", signatoryName);
         if (responseDate) fd.append("response_date", responseDate);
         if (responseTime) fd.append("response_time", responseTime);
@@ -194,7 +194,7 @@ export function RecordResponseDialog({
         return api.put(`/documents/${documentId}/approval-rounds/${roundId}/file`, fd);
       }
 
-      // New recording — POST with query params
+      // New recording - POST with query params
       const params = new URLSearchParams({
         approver_order: String(approverOrder),
         decision_status_id: decisionStatusId,
@@ -225,7 +225,7 @@ export function RecordResponseDialog({
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Record Approver {approverOrder} response{approverName ? ` — ${approverName}` : ""}
+            Record Approver {approverOrder} response{approverName ? ` - ${approverName}` : ""}
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -347,7 +347,7 @@ function FormSide(props: FormSideProps) {
                 className="mt-0.5"
               />
               <div className="flex-1 min-w-0">
-                <div className="font-medium">{s.letter} — {s.name}</div>
+                <div className="font-medium">{s.letter} - {s.name}</div>
                 <div className="text-xs text-muted-foreground">{s.description || s.action}</div>
               </div>
             </label>

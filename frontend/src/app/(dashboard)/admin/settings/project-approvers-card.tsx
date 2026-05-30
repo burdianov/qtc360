@@ -179,7 +179,7 @@ export function ProjectApproversCard({ projectId }: { projectId: string | undefi
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add approver — {docType} order {nextOrder}</DialogTitle>
+              <DialogTitle>Add approver - {docType} order {nextOrder}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">

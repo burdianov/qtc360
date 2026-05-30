@@ -132,7 +132,7 @@ export default function UsersPage() {
   const columns: ColumnDef<UserItem, unknown>[] = [
     { accessorKey: "full_name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" />, meta: { title: "Name" } },
     { accessorKey: "email", header: ({ column }) => <DataTableColumnHeader column={column} title="Email" /> },
-    { accessorKey: "designation", header: ({ column }) => <DataTableColumnHeader column={column} title="Designation" />, accessorFn: (row) => row.designation?.name || "—", meta: { title: "Designation" } },
+    { accessorKey: "designation", header: ({ column }) => <DataTableColumnHeader column={column} title="Designation" />, accessorFn: (row) => row.designation?.name || "-", meta: { title: "Designation" } },
     { id: "roles", accessorFn: (row) => row.roles.map((r) => r.name).join(", "), header: ({ column }) => <DataTableColumnHeader column={column} title="Role" />, cell: ({ row }) => <div className="flex gap-1 flex-wrap">{row.original.roles.map((r) => <Badge key={r.id} variant="secondary">{r.name}</Badge>)}</div>, meta: { title: "Role" } },
     { accessorKey: "is_active", header: ({ column }) => <DataTableColumnHeader column={column} title="Active" />, cell: ({ row }) => row.getValue("is_active") ? "Yes" : "No", meta: { title: "Active" } },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },

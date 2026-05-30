@@ -179,7 +179,7 @@ REQUIREMENT_TEMPLATES = [
 ]
 
 # Tag mapping
-TAG_MAP = {"L1": "red", "L2A": "red", "L2B": "yellow", "L3": "green", "L4": "blue"}
+from app.core.types import LEVEL_TAG_MAP as TAG_MAP
 
 
 async def get_or_create(session, model, filter_field, filter_value, **kwargs):

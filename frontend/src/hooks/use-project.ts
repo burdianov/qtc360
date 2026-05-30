@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import api from "@/lib/api";
+import { STORAGE_KEYS } from "@/lib/constants";
 
 export interface Project {
   id: string;
@@ -11,7 +12,7 @@ export interface Project {
 }
 
 // Simple localStorage-backed store for selected project
-const STORAGE_KEY = "selected_project";
+const STORAGE_KEY = STORAGE_KEYS.SELECTED_PROJECT;
 
 let cachedProject: Project | null = null;
 let cachedRaw: string | null = null;
@@ -42,7 +43,7 @@ export function useSelectedProject() {
   const { data: projects } = useQuery<Project[]>({
     queryKey: ["auth", "projects"],
     queryFn: async () => (await api.get("/auth/me/projects")).data,
-    enabled: typeof window !== "undefined" && !!localStorage.getItem("access_token"),
+    enabled: typeof window !== "undefined" && !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
   });
 
   // Auto-fix stale project: if cached project ID doesn't match any user project, select first
@@ -84,6 +85,6 @@ export function useUserProjects() {
   return useQuery<Project[]>({
     queryKey: ["auth", "projects"],
     queryFn: async () => (await api.get("/auth/me/projects")).data,
-    enabled: typeof window !== "undefined" && !!localStorage.getItem("access_token"),
+    enabled: typeof window !== "undefined" && !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
   });
 }

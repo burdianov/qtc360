@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -162,8 +162,8 @@ class DocumentApprovalRoundResponse(BaseModel):
     response_time: str | None
     returned_file_name: str | None
     remarks_file_name: str | None
-    aconex_submitted_date: str | None = None
-    aconex_received_date: str | None = None
+    aconex_submitted_date: date | None = None
+    aconex_received_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

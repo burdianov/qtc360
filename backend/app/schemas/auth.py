@@ -41,6 +41,13 @@ class DesignationRef(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RoleRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    model_config = {"from_attributes": True}
+
+
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
@@ -51,6 +58,8 @@ class UserResponse(BaseModel):
     signature_text: str | None = None
     designation_id: uuid.UUID | None = None
     designation: DesignationRef | None = None
+    roles: list[RoleRef] = []
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}
 
