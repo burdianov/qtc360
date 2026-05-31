@@ -437,7 +437,7 @@ def _build_context(document: Document) -> dict:
         if inspector:
             name = inspector.full_name
             desig = inspector.designation.name if inspector.designation else ""
-            ctx[f"inspected_by_{i}"] = f"{name} - {desig}" if desig else name
+            ctx[f"inspected_by_{i}"] = name
             ctx[f"designation_{i}"] = desig
         else:
             ctx[f"inspected_by_{i}"] = ""
