@@ -900,7 +900,7 @@ function NewWIRPageContent() {
               <Button type="submit" variant="secondary" disabled={mutation.isPending || notifyMutation.isPending || (!isDirty && !form.formState.isDirty)}>
                 {mutation.isPending ? "Saving..." : "Save as Draft"}
               </Button>
-              <Button type="button" disabled={!editId || notifyMutation.isPending || (signed.inspector1 && signed.inspector2) || (inspector1Id !== currentUser?.id && inspector2Id !== currentUser?.id) || (!inspector1Id && !inspector2Id) || (inspector1Id === currentUser?.id && inspector2Id === currentUser?.id)} onClick={() => notifyMutation.mutate()}>
+              <Button type="button" disabled={!editId || notifyMutation.isPending || (signed.inspector1 && signed.inspector2) || (!inspector1Id || !inspector2Id)} onClick={() => notifyMutation.mutate()}>
                 <Send className="h-4 w-4 mr-2" />{notifyMutation.isPending ? "Sending..." : "Notify Signatories"}
               </Button>
             </>)}
