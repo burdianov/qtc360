@@ -239,6 +239,12 @@ async def create_work_items(
 async def seed_demo():
     async with async_session_factory() as db:
         async with db.begin():
+            # Skip if already seeded (check for existing documents)
+            doc_count = (await db.execute(text("SELECT count(*) FROM documents"))).scalar()
+            if doc_count and doc_count > 0:
+                print("[SKIP] Demo data already exists (%d documents). Skipping." % doc_count)
+                return
+
             # Resolve all IDs dynamically
             await _resolve_ids(db)
 
