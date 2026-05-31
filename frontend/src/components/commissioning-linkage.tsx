@@ -27,8 +27,15 @@ interface RequirementTemplate {
 interface ExistingWorkItem {
   id: string;
   name: string;
-  status: string; // not_started, submitted, approved
+  status: string;
   sequence_no: number;
+  asset_requirement_id: string;
+}
+
+interface AssetWorkItems {
+  assetId: string;
+  assetRequirementId: string;
+  items: ExistingWorkItem[];
 }
 
 export interface CommissioningLinkage {
@@ -46,19 +53,19 @@ export interface CommissioningLinkage {
 interface Props {
   projectId: string;
   selectedAssetIds: string[];
+  selectedAssetLabels?: Record<string, string>;
   documentType: string;
   applicableTemplateIds?: Set<string> | null;
   value: CommissioningLinkage | null;
   onChange: (linkage: CommissioningLinkage | null) => void;
 }
 
-export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documentType, applicableTemplateIds, value, onChange }: Props) {
+export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selectedAssetLabels, documentType, applicableTemplateIds, value, onChange }: Props) {
   const [enabled, setEnabled] = useState(!!value);
   const [newItemName, setNewItemName] = useState("");
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");
 
-  // Sync enabled state when value is restored from server
   useEffect(() => {
     if (value && !enabled) setEnabled(true);
   }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,22 +83,46 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
     ? templates.filter((t) => applicableTemplateIds.has(t.id))
     : templates;
 
-  // Fetch existing work items for first asset's requirement (representative)
-  const firstAssetId = selectedAssetIds.length > 0 ? selectedAssetIds[0] : "";
-  const { data: existingWorkItems = [] } = useQuery<ExistingWorkItem[]>({
-    queryKey: ["work-items", firstAssetId, value?.requirementTemplateId],
+  // Fetch work items for ALL selected assets
+  const { data: allAssetWorkItems = [] } = useQuery<AssetWorkItems[]>({
+    queryKey: ["work-items-all-assets", selectedAssetIds, value?.requirementTemplateId],
     queryFn: async () => {
-      const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: firstAssetId } });
-      const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === value?.requirementTemplateId);
-      if (!ar) return [];
-      return (await api.get("/commissioning/work-items", { params: { asset_requirement_id: ar.id } })).data;
+      const results: AssetWorkItems[] = [];
+      for (const assetId of selectedAssetIds) {
+        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+        const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === value?.requirementTemplateId);
+        if (!ar) continue;
+        const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: ar.id } });
+        results.push({ assetId, assetRequirementId: ar.id, items: wiRes.data });
+      }
+      return results;
     },
     enabled: !!value?.requirementTemplateId && !!value?.isPartialScope && selectedAssetIds.length > 0,
   });
 
-  const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
+  // Build grouped view: group by item name across all assets
+  const groupedItems = (() => {
+    if (allAssetWorkItems.length === 0) return [];
+    const nameMap = new Map<string, { name: string; perAsset: { assetId: string; itemId: string; status: string }[] }>();
+    for (const aw of allAssetWorkItems) {
+      for (const item of aw.items) {
+        if (!nameMap.has(item.name)) {
+          nameMap.set(item.name, { name: item.name, perAsset: [] });
+        }
+        nameMap.get(item.name)!.perAsset.push({ assetId: aw.assetId, itemId: item.id, status: item.status });
+      }
+    }
+    return Array.from(nameMap.values());
+  })();
 
-  // Gate check: if selected template is a gate requirement, check for incomplete prerequisites
+  // For single asset, use first asset's items directly (backward compatible)
+  const firstAssetItems = allAssetWorkItems.length > 0 ? allAssetWorkItems[0].items : [];
+  const multiAsset = selectedAssetIds.length > 1;
+
+  const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
+  const firstAssetId = selectedAssetIds.length > 0 ? selectedAssetIds[0] : "";
+
+  // Gate check
   const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { requirement_id: string; template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
     queryKey: ["gate-check", firstAssetId, selectedTemplate?.level_code],
     queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: firstAssetId, level_code: selectedTemplate!.level_code } })).data,
@@ -114,7 +145,6 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
     onChange({ ...value, isPartialScope: partial, checkedExistingIds: [], deleteExistingIds: [], newItems: [] });
   };
 
-  // Toggle check on an existing pending item
   const toggleExistingCheck = (id: string) => {
     if (!value) return;
     const checked = value.checkedExistingIds.includes(id)
@@ -123,7 +153,20 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
     onChange({ ...value, checkedExistingIds: checked });
   };
 
-  // Mark existing item for deletion
+  // Toggle by name (for multi-asset: checks all pending items with this name across assets)
+  const toggleByName = (name: string) => {
+    if (!value) return;
+    const group = groupedItems.find((g) => g.name === name);
+    if (!group) return;
+    const pendingIds = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
+    const allChecked = pendingIds.every((id) => value.checkedExistingIds.includes(id));
+    if (allChecked) {
+      onChange({ ...value, checkedExistingIds: value.checkedExistingIds.filter((id) => !pendingIds.includes(id)) });
+    } else {
+      onChange({ ...value, checkedExistingIds: [...new Set([...value.checkedExistingIds, ...pendingIds])] });
+    }
+  };
+
   const markForDelete = (id: string) => {
     if (!value) return;
     onChange({
@@ -133,28 +176,40 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
     });
   };
 
-  // Add new item (unchecked by default)
+  const markForDeleteByName = (name: string) => {
+    if (!value) return;
+    const group = groupedItems.find((g) => g.name === name);
+    if (!group) return;
+    const ids = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
+    onChange({
+      ...value,
+      deleteExistingIds: [...value.deleteExistingIds, ...ids],
+      checkedExistingIds: value.checkedExistingIds.filter((x) => !ids.includes(x)),
+    });
+  };
+
   const addNewItem = () => {
     if (!value || !newItemName.trim()) return;
     onChange({ ...value, newItems: [...value.newItems, { name: newItemName.trim(), checked: false }] });
     setNewItemName("");
   };
 
-  // Toggle check on a new item
   const toggleNewCheck = (index: number) => {
     if (!value) return;
     const items = value.newItems.map((item, i) => i === index ? { ...item, checked: !item.checked } : item);
     onChange({ ...value, newItems: items });
   };
 
-  // Remove a new item before save
   const removeNewItem = (index: number) => {
     if (!value) return;
     onChange({ ...value, newItems: value.newItems.filter((_, i) => i !== index) });
   };
 
-  // Items to display (existing minus deleted)
-  const visibleExisting = existingWorkItems.filter((wi) => !value?.deleteExistingIds.includes(wi.id));
+  const getAssetLabel = (assetId: string) => selectedAssetLabels?.[assetId] || assetId.slice(0, 6);
+
+  // Filter out deleted items
+  const visibleGrouped = groupedItems.filter((g) => !g.perAsset.every((p) => value?.deleteExistingIds.includes(p.itemId)));
+  const visibleSingle = firstAssetItems.filter((wi) => !value?.deleteExistingIds.includes(wi.id));
 
   return (
     <div className="space-y-4">
@@ -289,10 +344,58 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, documen
           {value?.isPartialScope && (
             <div className="space-y-3 rounded-lg border p-3">
               <p className="text-xs font-medium text-muted-foreground uppercase">Work Breakdown Items</p>
-              <p className="text-xs text-muted-foreground">Check items covered by this document. Unchecked items remain for future documents.</p>
+              <p className="text-xs text-muted-foreground">
+                {multiAsset
+                  ? "Check items covered by this document. Status shown per asset."
+                  : "Check items covered by this document. Unchecked items remain for future documents."}
+              </p>
 
-              {/* Existing items */}
-              {visibleExisting.map((item) => {
+              {/* Multi-asset grouped view */}
+              {multiAsset && visibleGrouped.map((group) => {
+                const allDone = group.perAsset.every((p) => p.status === "approved");
+                const pendingIds = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
+                const allPendingChecked = pendingIds.length > 0 && pendingIds.every((id) => value.checkedExistingIds.includes(id));
+                const isChecked = allDone || allPendingChecked;
+
+                return (
+                  <div key={group.name} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={isChecked}
+                        disabled={allDone}
+                        onCheckedChange={() => !allDone && toggleByName(group.name)}
+                      />
+                      <span className={`flex-1 text-sm ${allDone ? "line-through text-muted-foreground" : ""}`}>{group.name}</span>
+                      {allDone && <Badge variant="outline" className="text-[10px]">Done</Badge>}
+                      {!allDone && (
+                        <button type="button" onClick={() => markForDeleteByName(group.name)} className="text-muted-foreground hover:text-destructive">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pl-7">
+                      {group.perAsset.map((p) => (
+                        <span
+                          key={p.assetId}
+                          className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+                            p.status === "approved"
+                              ? "bg-emerald-500/10 text-emerald-500"
+                              : value.checkedExistingIds.includes(p.itemId)
+                              ? "bg-blue-500/10 text-blue-500"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {p.status === "approved" ? "✓" : value.checkedExistingIds.includes(p.itemId) ? "●" : "○"}
+                          {getAssetLabel(p.assetId)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Single-asset view */}
+              {!multiAsset && visibleSingle.map((item) => {
                 const isDone = item.status === "approved";
                 const isChecked = isDone || value.checkedExistingIds.includes(item.id);
                 return (

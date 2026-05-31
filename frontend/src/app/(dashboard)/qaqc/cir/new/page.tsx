@@ -104,7 +104,7 @@ function NewCIRPageContent() {
 
   useEffect(() => { if (docTemplates.length > 0) { const current = docTemplates.find((t) => t.id === selectedTemplateId); if (!current) { const active = docTemplates.find((t) => t.is_active); setSelectedTemplateId(active?.id || docTemplates[0].id); } } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string; status: string }[]>({
     queryKey: ["asset-requirements-all", project?.id],
     queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
     enabled: !!project?.id,
@@ -205,7 +205,7 @@ function NewCIRPageContent() {
     return new Set(allAssetRequirements.filter((ar) => disciplineAssetIds.has(ar.asset_id)).map((ar) => ar.requirement_template_id));
   })();
   const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
-  const applicableAssetIds = selectedTemplateId2 ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2).map((ar) => ar.asset_id)) : null;
+  const applicableAssetIds = selectedTemplateId2 ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2 && ar.status !== "achieved").map((ar) => ar.asset_id)) : null;
 
   useEffect(() => {
     if (!editId && !revisionOfId && disciplineId && project?.id && disciplines.length > 0) {
@@ -249,13 +249,15 @@ function NewCIRPageContent() {
       const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === commissioningLinkage.requirementTemplateId);
       if (!assetReq) continue;
       if (commissioningLinkage.isPartialScope) {
-        for (const delId of commissioningLinkage.deleteExistingIds) { await api.delete(`/commissioning/work-items/${delId}`); }
+        const wiListRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: assetReq.id } });
+        const assetWiIds = new Set((wiListRes.data as any[]).map((wi: any) => wi.id));
+        for (const delId of commissioningLinkage.deleteExistingIds) { if (assetWiIds.has(delId)) await api.delete(`/commissioning/work-items/${delId}`); }
         const createdIds: string[] = [];
         for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
           const wiRes = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: commissioningLinkage.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
           if (commissioningLinkage.newItems[i].checked) createdIds.push(wiRes.data.id);
         }
-        for (const wiId of commissioningLinkage.checkedExistingIds) { await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }); }
+        for (const wiId of commissioningLinkage.checkedExistingIds) { if (!assetWiIds.has(wiId)) continue; await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }); }
         for (const wiId of createdIds) { await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }); }
       } else {
         await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id });
@@ -382,7 +384,7 @@ function NewCIRPageContent() {
 
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}><CardContent className="pt-6">
-            <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} documentType="CIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
+            <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} selectedAssetLabels={Object.fromEntries(selectedAssets.map((a) => [a.id, a.tag_number]))} documentType="CIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
               onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); linkageDirtyRef.current = true; setIsDirty(true); }} />
           </CardContent></Card>
 

@@ -141,7 +141,7 @@ function NewWIRPageContent() {
   }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch all asset requirements to filter templates by discipline and assets by template
-  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string; status: string }[]>({
     queryKey: ["asset-requirements-all", project?.id],
     queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
     enabled: !!project?.id,
@@ -316,10 +316,10 @@ function NewWIRPageContent() {
     return new Set(allAssetRequirements.filter((ar) => disciplineAssetIds.has(ar.asset_id)).map((ar) => ar.requirement_template_id));
   })();
 
-  // Assets applicable to the selected requirement template
+  // Assets applicable to the selected requirement template (exclude already achieved)
   const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
   const applicableAssetIds = selectedTemplateId2
-    ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2).map((ar) => ar.asset_id))
+    ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2 && ar.status !== "achieved").map((ar) => ar.asset_id))
     : null;
 
   useEffect(() => {
@@ -383,22 +383,28 @@ function NewWIRPageContent() {
       if (!assetReq) continue;
 
       if (commissioningLinkage.isPartialScope) {
+        // Get work items for this specific asset's requirement
+        const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: assetReq.id } });
+        const assetWiIds = new Set((wiRes.data as any[]).map((wi: any) => wi.id));
+
         for (const delId of commissioningLinkage.deleteExistingIds) {
-          await api.delete(`/commissioning/work-items/${delId}`);
+          if (assetWiIds.has(delId)) await api.delete(`/commissioning/work-items/${delId}`);
         }
         const createdIds: string[] = [];
         for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-          const wiRes = await api.post("/commissioning/work-items", {
+          const wiCreated = await api.post("/commissioning/work-items", {
             asset_requirement_id: assetReq.id,
             name: commissioningLinkage.newItems[i].name,
             sequence_no: i + 100,
             created_dynamically: true,
           });
           if (commissioningLinkage.newItems[i].checked) {
-            createdIds.push(wiRes.data.id);
+            createdIds.push(wiCreated.data.id);
           }
         }
+        // Only link work items that belong to this asset's requirement
         for (const wiId of commissioningLinkage.checkedExistingIds) {
+          if (!assetWiIds.has(wiId)) continue;
           await api.post("/commissioning/document-links", {
             document_id: docId,
             asset_requirement_id: assetReq.id,
@@ -641,6 +647,7 @@ function NewWIRPageContent() {
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
                 selectedAssetIds={selectedAssets.map((a) => a.id)}
+                selectedAssetLabels={Object.fromEntries(selectedAssets.map((a) => [a.id, a.tag_number]))}
                 documentType="WIR"
                 applicableTemplateIds={applicableTemplateIds}
                 value={commissioningLinkage}

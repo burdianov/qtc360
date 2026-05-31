@@ -95,7 +95,7 @@ function NewMIRPageContent() {
 
   useEffect(() => { if (docTemplates.length > 0) { const current = docTemplates.find((t) => t.id === selectedTemplateId); if (!current) { const active = docTemplates.find((t) => t.is_active); setSelectedTemplateId(active?.id || docTemplates[0].id); } } }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string }[]>({ queryKey: ["asset-requirements-all", project?.id], queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data, enabled: !!project?.id });
+  const { data: allAssetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string; status: string }[]>({ queryKey: ["asset-requirements-all", project?.id], queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data, enabled: !!project?.id });
 
   const { data: rejectedDocs = {} } = useQuery<Record<string, { id: string; reference_no: string; revision_no: number; title: string; document_type: string; discipline_id: string | null }[]>>({
     queryKey: ["rejected-for-revision", project?.id, "MIR"],
@@ -169,7 +169,7 @@ function NewMIRPageContent() {
   const disciplineId = form.watch("discipline_id");
   const applicableTemplateIds = (() => { if (!disciplineId) return null; const dtIds = new Set(assetTypes.filter((t) => { const svc = services.find((s) => s.id === t.service_id); return svc?.discipline_id === disciplineId; }).map((t) => t.id)); const daIds = new Set(assets.filter((a) => dtIds.has(a.asset_type_id)).map((a) => a.id)); return new Set(allAssetRequirements.filter((ar) => daIds.has(ar.asset_id)).map((ar) => ar.requirement_template_id)); })();
   const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
-  const applicableAssetIds = selectedTemplateId2 ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2).map((ar) => ar.asset_id)) : null;
+  const applicableAssetIds = selectedTemplateId2 ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === selectedTemplateId2 && ar.status !== "achieved").map((ar) => ar.asset_id)) : null;
 
   useEffect(() => {
     if (!editId && !revisionOfId && disciplineId && project?.id && disciplines.length > 0) {
@@ -306,7 +306,7 @@ function NewMIRPageContent() {
 
 
           <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}><CardContent className="pt-6">
-            <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} documentType="MIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
+            <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} selectedAssetLabels={Object.fromEntries(selectedAssets.map((a) => [a.id, a.tag_number]))} documentType="MIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
               onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); linkageDirtyRef.current = true; setIsDirty(true); }} />
           </CardContent></Card>
 
