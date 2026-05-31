@@ -58,9 +58,15 @@ type FormValues = z.infer<typeof schema>;
 export default function NewWIRPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
-      <NewWIRPageContent />
+      <NewWIRPageInner />
     </Suspense>
   );
+}
+
+function NewWIRPageInner() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+  return <NewWIRPageContent key={editId || "new"} />;
 }
 
 function NewWIRPageContent() {

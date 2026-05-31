@@ -57,9 +57,15 @@ type FormValues = z.infer<typeof schema>;
 export default function NewCIRPage() {
   return (
     <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}>
-      <NewCIRPageContent />
+      <NewCIRPageInner />
     </Suspense>
   );
+}
+
+function NewCIRPageInner() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+  return <NewCIRPageContent key={editId || "new"} />;
 }
 
 

@@ -55,7 +55,13 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NewMIRPage() {
-  return (<Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}><NewMIRPageContent /></Suspense>);
+  return (<Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading...</div>}><NewMIRPageInner /></Suspense>);
+}
+
+function NewMIRPageInner() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+  return <NewMIRPageContent key={editId || "new"} />;
 }
 
 
