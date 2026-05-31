@@ -20,27 +20,62 @@ from app.models.commissioning import (
 from app.models.reference_number_config import ReferenceNumberConfig
 from app.services.commissioning import recalculate_requirement_status, recalculate_tag_status
 
-# --- IDs from database ---
-PROJECT_ID = uuid.UUID("61de59c0-eb71-42ad-90f4-81f561c80ac1")
-DISC_EL = uuid.UUID("54927b47-fc63-4382-ad5b-02d92388fd3c")
-DISC_MC = uuid.UUID("b2b8e07d-d512-4ef8-ab41-ce69b4a24142")
-DISC_FF = uuid.UUID("20932921-f14c-40dd-92b0-9dce58cc800a")
+# --- IDs resolved dynamically at runtime ---
+PROJECT_ID: uuid.UUID
+DISC_EL: uuid.UUID
+DISC_MC: uuid.UUID
+DISC_FF: uuid.UUID
+USER_SITE: uuid.UUID
+USER_QAQC: uuid.UUID
+USER_JERRY: uuid.UUID
+USER_DEV: uuid.UUID
+STATUS_A: uuid.UUID
+STATUS_B: uuid.UUID
+STATUS_C: uuid.UUID
+PA: dict
 
-USER_SITE = uuid.UUID("812d4e5e-4da4-4459-941c-18501fe8ff0c")
-USER_QAQC = uuid.UUID("56842bc5-04cb-4055-99ba-7dde5185e678")
-USER_JERRY = uuid.UUID("c5e6ad91-3bf9-4336-af87-433335bc78fc")
-USER_DEV = uuid.UUID("65550528-b64c-4550-b127-c7bcde29a1de")
 
-STATUS_A = uuid.UUID("f456470a-9665-44a8-bef9-57b1b477dee9")
-STATUS_B = uuid.UUID("1f33df66-9530-4978-ab9c-41d5356a5eec")
-STATUS_C = uuid.UUID("3a843c14-4f66-45e3-8e09-69dd20d13baf")
+async def _resolve_ids(db: AsyncSession):
+    """Look up all required IDs from the database by code/email."""
+    global PROJECT_ID, DISC_EL, DISC_MC, DISC_FF
+    global USER_SITE, USER_QAQC, USER_JERRY, USER_DEV
+    global STATUS_A, STATUS_B, STATUS_C, PA
 
-# Project approvers by doc_type
-PA = {
-    "WIR": {1: uuid.UUID("91d62268-592d-4f64-a657-fe1b6c9f2995"), 2: uuid.UUID("5e836e16-bc3f-4625-829b-9fe472878a88")},
-    "MIR": {1: uuid.UUID("2dabbb75-0276-419a-8605-0fddd8ee60fa"), 2: uuid.UUID("6790def0-d19d-44f6-8097-1cccbd14b485")},
-    "CIR": {1: uuid.UUID("1ea4cb20-0c03-4534-beb4-68785a54edd4"), 2: uuid.UUID("441efd9c-88c6-4417-a7cd-96fae9112755")},
-}
+    from app.models.project import Project
+    from app.models.discipline import Discipline
+    from app.models.user import User
+    from app.models.approval_status import ApprovalStatus
+    from app.models.project_approver import ProjectApprover
+
+    # Project
+    r = await db.execute(select(Project).where(Project.code == "1728"))
+    PROJECT_ID = r.scalar_one().id
+
+    # Disciplines
+    for code, attr in [("EL", "DISC_EL"), ("MC", "DISC_MC"), ("FF", "DISC_FF")]:
+        r = await db.execute(select(Discipline).where(Discipline.code == code, Discipline.project_id == PROJECT_ID))
+        globals()[attr] = r.scalar_one().id
+
+    # Users
+    email_map = {"site@jlwme.com": "USER_SITE", "qaqc@jlwme.com": "USER_QAQC",
+                 "jerry@jlwme.com": "USER_JERRY", "dev@jlwme.com": "USER_DEV"}
+    for email, attr in email_map.items():
+        r = await db.execute(select(User).where(User.email == email))
+        globals()[attr] = r.scalar_one().id
+
+    # Approval statuses
+    for letter, attr in [("A", "STATUS_A"), ("B", "STATUS_B"), ("C", "STATUS_C")]:
+        r = await db.execute(select(ApprovalStatus).where(
+            ApprovalStatus.project_id == PROJECT_ID, ApprovalStatus.letter == letter))
+        globals()[attr] = r.scalar_one().id
+
+    # Project approvers
+    pa_rows = (await db.execute(
+        select(ProjectApprover).where(ProjectApprover.project_id == PROJECT_ID)
+    )).scalars().all()
+    PA = {}
+    for pa in pa_rows:
+        PA.setdefault(pa.document_type, {})[pa.approver_order] = pa.id
 
 SIGNATORIES = ["Ahmed Al-Rashid", "Khalid Mansour", "Omar Farouk", "James Wilson", "David Chen", "Rashid Al-Maktoum"]
 
@@ -202,6 +237,9 @@ async def create_work_items(
 async def seed_demo():
     async with async_session_factory() as db:
         async with db.begin():
+            # Resolve all IDs dynamically
+            await _resolve_ids(db)
+
             # Load all assets grouped by POD
             rows = (await db.execute(text("""
                 SELECT a.id, a.tag_number, a.name, a.custom_fields->>'field_1' as pod,
