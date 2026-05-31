@@ -17,6 +17,9 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /opt/qtc360
+            ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
             git pull origin main
-            docker compose -f docker-compose.prod.yml up -d --build
+            export CACHE_BUST=$(git rev-parse HEAD)
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml exec -T backend uv run alembic upgrade head

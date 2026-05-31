@@ -24,8 +24,8 @@ export default function TemplatesPage() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const isAdmin = currentUser?.is_superuser || currentUser?.roles?.some((r: any) => r.name === "admin" || r.name === "super_admin");
   const projectId = project?.id;
-  const [name, setName] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState<Record<string, string>>({});
+  const [file, setFile] = useState<Record<string, File | null>>({});
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
@@ -41,15 +41,16 @@ export default function TemplatesPage() {
 
   const handleUpload = async (docType: string) => {
     if (!projectId) { toast.error("Select a project first"); return; }
-    if (!name) { toast.error("Enter a template name"); return; }
-    if (!file) { toast.error("Select a DOCX file"); return; }
+    if (!name[docType]) { toast.error("Enter a template name"); return; }
+    if (!file[docType]) { toast.error("Select a DOCX file"); return; }
     setUploading(true);
     try {
       const form = new FormData();
-      form.append("file", file);
-      await api.post(`/reports/templates/upload?project_id=${projectId}&doc_type=${docType}&name=${encodeURIComponent(name)}`, form);
+      form.append("file", file[docType]!);
+      await api.post(`/reports/templates/upload?project_id=${projectId}&doc_type=${docType}&name=${encodeURIComponent(name[docType])}`, form);
       toast.success("Template uploaded");
-      setFile(null); setName("");
+      setFile((prev) => ({ ...prev, [docType]: null }));
+      setName((prev) => ({ ...prev, [docType]: "" }));
       qc.invalidateQueries({ queryKey: ["doc-templates", projectId] });
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "Upload failed");
@@ -69,14 +70,14 @@ export default function TemplatesPage() {
             <div className="flex gap-4 flex-wrap items-start">
               <div className="flex-1 min-w-48">
                 <label className="text-xs text-muted-foreground mb-1.5 block">Template Name</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={`e.g. ${docType} Template v1`} />
+                <Input value={name[docType] || ""} onChange={(e) => setName((prev) => ({ ...prev, [docType]: e.target.value }))} placeholder={`e.g. ${docType} Template v1`} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">DOCX File</label>
-                <input type="file" accept=".docx" onChange={(e) => setFile(e.target.files?.[0] || null)} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
+                <input type="file" accept=".docx" onChange={(e) => setFile((prev) => ({ ...prev, [docType]: e.target.files?.[0] || null }))} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
               </div>
               <div className="pt-5">
-                <Button onClick={() => handleUpload(docType)} disabled={uploading || !file || !name}>
+                <Button onClick={() => handleUpload(docType)} disabled={uploading || !file[docType] || !name[docType]}>
                   <Upload className="h-4 w-4 mr-2" />{uploading ? "Uploading..." : "Upload"}
                 </Button>
               </div>
@@ -136,7 +137,7 @@ export default function TemplatesPage() {
         <p className="text-sm text-muted-foreground">Upload and manage Word DOCX templates for report generation</p>
       </div>
 
-      <Tabs tabs={DOC_TYPES.map(dt => ({ id: dt, label: dt, content: renderTab(dt) }))} onChange={() => { setName(""); setFile(null); }} />
+      <Tabs tabs={DOC_TYPES.map(dt => ({ id: dt, label: dt, content: renderTab(dt) }))} />
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent>

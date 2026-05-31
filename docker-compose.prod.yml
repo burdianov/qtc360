@@ -16,6 +16,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: https://api.qtc360.com/api/v1
+        CACHE_BUST: ${CACHE_BUST:-0}
     networks: [public]
     restart: unless-stopped
 
