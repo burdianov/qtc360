@@ -383,15 +383,18 @@ function NewCIRPageContent() {
           </fieldset>
 
 
-          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}><CardContent className="pt-6">
+          <Card><CardContent className="pt-6">
             <CommissioningLinkagePanel projectId={project?.id || ""} selectedAssetIds={selectedAssets.map((a) => a.id)} selectedAssetLabels={Object.fromEntries(selectedAssets.map((a) => [a.id, a.tag_number]))} documentType="CIR" applicableTemplateIds={applicableTemplateIds} value={commissioningLinkage}
               onChange={(linkage) => { if (!linkage && selectedAssets.length > 0) { setConfirmDisableLinkage(true); return; } setCommissioningLinkage(linkage); linkageDirtyRef.current = true; setIsDirty(true); }} />
           </CardContent></Card>
 
-          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : !commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
+          <Card>
             <CardHeader className="cursor-pointer" onClick={() => setAssetsOpen(!assetsOpen)}>
               <CardTitle className="text-base flex items-center justify-between">Assets ({selectedAssets.length} selected)<ChevronDown className={"h-4 w-4 text-muted-foreground transition-transform " + (assetsOpen ? "rotate-180" : "")} /></CardTitle>
             </CardHeader>
+            {!assetsOpen && selectedAssets.length > 0 && (
+              <CardContent className="pt-0"><div className="flex flex-wrap gap-2">{selectedAssets.map((a) => (<Badge key={a.id} variant="secondary" className="gap-1 pr-1">{a.tag_number}<button type="button" onClick={() => removeAsset(a.id)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button></Badge>))}</div></CardContent>
+            )}
             {assetsOpen && (
             <CardContent className="space-y-3">
               <div className="flex gap-2">

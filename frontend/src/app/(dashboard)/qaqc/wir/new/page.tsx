@@ -642,7 +642,7 @@ function NewWIRPageContent() {
 
           {/* Commissioning Linkage */}
           {/* Commissioning Linkage */}
-          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : ""}>
+          <Card>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
@@ -665,13 +665,27 @@ function NewWIRPageContent() {
           </Card>
 
           {/* Assets */}
-          <Card className={fullyLocked ? "opacity-60 pointer-events-none" : !commissioningLinkage ? "opacity-50 pointer-events-none" : ""}>
+          <Card>
             <CardHeader className="cursor-pointer" onClick={() => setAssetsOpen(!assetsOpen)}>
               <CardTitle className="text-base flex items-center justify-between">
                 Assets ({selectedAssets.length} selected)
                 <ChevronDown className={"h-4 w-4 text-muted-foreground transition-transform " + (assetsOpen ? "rotate-180" : "")} />
               </CardTitle>
             </CardHeader>
+            {!assetsOpen && selectedAssets.length > 0 && (
+              <CardContent className="pt-0">
+                <div className="flex flex-wrap gap-2">
+                  {selectedAssets.map((asset) => (
+                    <Badge key={asset.id} variant="secondary" className="gap-1 pr-1">
+                      {asset.tag_number}
+                      <button type="button" onClick={() => removeAsset(asset.id)} className="ml-1 hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            )}
             {assetsOpen && (
             <CardContent className="space-y-3">
               <div className="flex gap-2">
