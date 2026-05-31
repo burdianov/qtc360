@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { statusColors } from "@/lib/constants";
+import { formatDate } from "@/lib/format-date";
 
 interface Document {
   id: string;
@@ -78,6 +79,7 @@ export default function MIRPage() {
       const label = status === "submitted" && current_approver_order ? `Pending Approver ${current_approver_order}` : status.replace(/_/g, " ");
       return <Badge className={statusColors[status] || ""}>{label}</Badge>;
     }},
+    { accessorKey: "created_at", header: ({ column }) => <DataTableColumnHeader column={column} title="Created" />, cell: ({ row }) => formatDate(row.original.created_at) },
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
