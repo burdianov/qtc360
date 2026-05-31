@@ -39,10 +39,13 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        return (
+        base = (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        if self.environment == "production":
+            return f"{base}?ssl=require"
+        return base
 
     @property
     def upload_dir_abs(self) -> Path:
