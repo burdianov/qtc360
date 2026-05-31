@@ -26,8 +26,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - uses: astral-sh/setup-uv@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install dependencies
         working-directory: backend
@@ -41,7 +45,7 @@ jobs:
           POSTGRES_DB: qtc360_test
           POSTGRES_USER: qtc360
           POSTGRES_PASSWORD: qtc360_test
-          SECRET_KEY: ci-test-key
+          SECRET_KEY: ci-test-key-minimum-32-characters-long-for-validation
         run: uv run alembic upgrade head
 
       - name: Run tests
@@ -52,19 +56,23 @@ jobs:
           POSTGRES_DB: qtc360_test
           POSTGRES_USER: qtc360
           POSTGRES_PASSWORD: qtc360_test
-          SECRET_KEY: ci-test-key
+          SECRET_KEY: ci-test-key-minimum-32-characters-long-for-validation
         run: uv run pytest -v --tb=short || echo "No tests yet"
 
   frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install dependencies
         working-directory: frontend
@@ -80,4 +88,6 @@ jobs:
 
       - name: Build
         working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
         run: npm run build
