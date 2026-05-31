@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR"]
+DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR", "CRS"]
 DOCUMENT_STATUSES = Literal[
     "draft",
     "internally_signed",
@@ -77,6 +77,8 @@ class DocumentCreate(BaseModel):
     asset_ids: list[UUID] = []
     # Revision: if set, creates a new revision of the rejected document
     revision_of_id: UUID | None = None
+    # CRS data
+    crs_data: dict | None = None
 
 
 class DocumentUpdate(BaseModel):
@@ -102,6 +104,7 @@ class DocumentUpdate(BaseModel):
     qaqc_engineer_id: UUID | None = None
     status: DOCUMENT_STATUSES | None = None
     asset_ids: list[UUID] | None = None
+    crs_data: dict | None = None
 
 
 class DocumentResponse(BaseModel):
@@ -141,6 +144,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime | None
     asset_ids: list[UUID] = []
+    crs_data: dict | None = None
 
     model_config = {"from_attributes": True}
 

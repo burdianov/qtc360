@@ -397,6 +397,138 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
         raise HTTPException(status_code=503, detail="PDF engine unhealthy")
 
 
+# ─── CRS PDF Generation ──────────────────────────────────────────────────────
+
+
+@router.post("/generate-crs")
+async def generate_crs_pdf(
+    body: GenerateReportRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("reports.generate")),
+):
+    """Generate CRS PDF directly using reportlab (no DOCX template)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import Table, TableStyle, Paragraph
+    from reportlab.lib import colors
+    from app.models.app_setting import AppSetting
+
+    await assert_user_in_project(user, body.project_id)
+
+    doc_result = await db.execute(
+        select(Document)
+        .where(Document.id == body.document_id, Document.is_deleted == False)  # noqa: E712
+        .options(selectinload(Document.project))
+    )
+    document = doc_result.scalar_one_or_none()
+    if not document or document.document_type != "CRS":
+        raise HTTPException(status_code=404, detail="CRS document not found")
+
+    crs = document.crs_data or {}
+    rows = crs.get("rows", [])
+    subject = document.title or ""
+    approver_status = crs.get("approver_status", "")
+
+    # Load header image from app_settings
+    header_setting = (await db.execute(
+        select(AppSetting).where(AppSetting.key == f"crs_header_image_{body.project_id}")
+    )).scalar_one_or_none()
+
+    buf = io.BytesIO()
+    width, height = A4
+    c = canvas.Canvas(buf, pagesize=A4)
+    y = height - 5 * mm  # Start higher (was 15mm)
+
+    # 1. Header image
+    if header_setting and header_setting.value:
+        try:
+            import base64
+            img_data = base64.b64decode(header_setting.value)
+            from reportlab.lib.utils import ImageReader
+            from PIL import Image as PILImage
+            img = PILImage.open(io.BytesIO(img_data))
+            img_w, img_h = img.size
+            max_w = width - 20 * mm
+            ratio = min(max_w / img_w, 35 * mm / img_h)
+            draw_w, draw_h = img_w * ratio, img_h * ratio
+            c.drawImage(ImageReader(io.BytesIO(img_data)), 10 * mm, y - draw_h, draw_w, draw_h)
+            y -= draw_h + 6 * mm
+        except Exception:
+            pass
+
+    # Extra spacing after header
+    y -= 10 * mm
+
+    # 2. Project name
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(width / 2, y, document.project.name if document.project else "")
+    y -= 8 * mm
+
+    # 3. Title
+    c.setFont("Helvetica-Bold", 13)
+    c.drawCentredString(width / 2, y, "CXM's COMMENTS RESPONSE SHEET")
+    y -= 13 * mm
+
+    # 4. Reference and revision
+    c.setFont("Helvetica", 11)
+    c.drawString(15 * mm, y, f"Reference: {document.reference_no}")
+    c.drawString(width - 60 * mm, y, f"Revision: {document.revision_no}")
+    y -= 6 * mm
+
+    # 5. Subject
+    c.drawString(15 * mm, y, f"Subject: {subject}")
+    y -= 10 * mm
+
+    # 6. Table (4 columns: SN, CXM's Comments, Status, Responses)
+    if rows and len(rows) > 0:
+        styles = getSampleStyleSheet()
+        cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=10, leading=12)
+        cell_center = ParagraphStyle("cellcenter", parent=styles["Normal"], fontSize=10, leading=12, alignment=1)
+        header_style = ParagraphStyle("header", parent=styles["Normal"], fontSize=10, leading=12, fontName="Helvetica-Bold")
+        header_center = ParagraphStyle("headercenter", parent=styles["Normal"], fontSize=10, leading=12, fontName="Helvetica-Bold", alignment=1)
+
+        table_data = [
+            [Paragraph("SN", header_center), Paragraph("CXM's Comments", header_center),
+             Paragraph("Status", header_center), Paragraph("Responses to CXM's Comments", header_center)]
+        ]
+        for row in rows:
+            comment_text = str(row.get("comment", "") or "").replace("\n", "<br/>")
+            response_text = str(row.get("response", "") or "").replace("\n", "<br/>")
+            status_text = str(row.get("status", "") or approver_status or "")
+            table_data.append([
+                Paragraph(str(row.get("sn", "")), cell_center),
+                Paragraph(comment_text, cell_style),
+                Paragraph(status_text, cell_center),
+                Paragraph(response_text, cell_style),
+            ])
+
+        available_w = width - 30 * mm
+        col_widths = [10 * mm, (available_w - 10 * mm - 16 * mm) / 2, 16 * mm, (available_w - 10 * mm - 16 * mm) / 2]
+        t = Table(table_data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+
+        tw, th = t.wrap(available_w, y - 15 * mm)
+        if th > y - 15 * mm:
+            c.showPage()
+            y = height - 15 * mm
+            tw, th = t.wrap(available_w, y - 15 * mm)
+        t.drawOn(c, 15 * mm, y - th)
+
+    c.save()
+    buf.seek(0)
+    fname = f"{document.reference_no}.pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
 

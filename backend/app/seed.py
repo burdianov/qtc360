@@ -232,7 +232,7 @@ async def seed():
 
         # Reference Number Configs for 1728
         from app.models.reference_number_config import ReferenceNumberConfig
-        for doc_type in ["WIR", "MIR", "CIR", "FAT"]:
+        for doc_type in ["WIR", "MIR", "CIR", "FAT", "CRS"]:
             existing = await session.execute(
                 select(ReferenceNumberConfig).where(
                     ReferenceNumberConfig.project_id == proj_1728.id,

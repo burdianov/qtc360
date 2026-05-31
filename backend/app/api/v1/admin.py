@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -281,3 +281,44 @@ async def set_setting(
         db.add(AppSetting(key=key, value=value))
     await db.commit()
     return {"key": key, "value": value}
+
+
+@router.post("/settings/crs-header/{project_id}")
+async def upload_crs_header(
+    project_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Upload CRS header PNG image for a project."""
+    import base64
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image must be under 2MB")
+    encoded = base64.b64encode(data).decode()
+    key = f"crs_header_image_{project_id}"
+    result = await db.execute(select(AppSetting).where(AppSetting.key == key))
+    item = result.scalar_one_or_none()
+    if item:
+        item.value = encoded
+    else:
+        db.add(AppSetting(key=key, value=encoded))
+    await db.commit()
+    return {"status": "uploaded", "size": len(data)}
+
+
+@router.get("/settings/crs-header/{project_id}")
+async def get_crs_header(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Get CRS header image as base64."""
+    key = f"crs_header_image_{project_id}"
+    result = await db.execute(select(AppSetting).where(AppSetting.key == key))
+    item = result.scalar_one_or_none()
+    if not item:
+        return {"exists": False, "data": None}
+    return {"exists": True, "data": item.value}

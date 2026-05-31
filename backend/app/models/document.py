@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -65,6 +65,9 @@ class Document(BaseModel):
     # pages it has. Null while editable; frozen at "Submit to Approver 1".
     template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("doc_templates.id"))
     cover_page_count: Mapped[int | None] = mapped_column(Integer)
+
+    # CRS (Comments Response Sheet) data
+    crs_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Audit
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

@@ -213,6 +213,7 @@ async def list_documents(
     document_type: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     discipline_id: UUID | None = Query(None),
+    has_comments: bool = Query(False),
     skip: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
     paginated: bool = Query(False),
@@ -226,6 +227,15 @@ async def list_documents(
         stmt = stmt.where(Document.status == status_filter)
     if discipline_id:
         stmt = stmt.where(Document.discipline_id == discipline_id)
+    if has_comments:
+        stmt = stmt.where(
+            Document.id.in_(
+                select(DocumentApprovalRound.document_id).where(
+                    DocumentApprovalRound.comments.isnot(None),
+                    DocumentApprovalRound.comments != "",
+                )
+            )
+        )
     # Tie-break by id so paging is stable across rows with equal created_at.
     stmt = stmt.order_by(Document.created_at.desc(), Document.id.desc())
     if paginated:
@@ -319,8 +329,8 @@ async def create_document(
 
     doc = Document(**data, created_by=user.id)
 
-    # FAT documents are records — no approval workflow, always "approved"
-    if doc.document_type == "FAT":
+    # FAT and CRS documents are records — no approval workflow, always "approved"
+    if doc.document_type in ("FAT", "CRS"):
         doc.status = "approved"
     db.add(doc)
     try:
@@ -365,7 +375,7 @@ async def update_document(
     updates = body.model_dump(exclude_unset=True, exclude={"asset_ids"})
 
     # Validate status transition if status is being changed
-    if "status" in updates and updates["status"] and updates["status"] != old_status and doc.document_type != "FAT":
+    if "status" in updates and updates["status"] and updates["status"] != old_status and doc.document_type not in ("FAT", "CRS"):
         from app.schemas.document import VALID_STATUS_TRANSITIONS
         allowed = VALID_STATUS_TRANSITIONS.get(old_status, set())
         if updates["status"] not in allowed:

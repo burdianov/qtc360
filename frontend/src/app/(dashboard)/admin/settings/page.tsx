@@ -164,6 +164,11 @@ export default function SettingsPage() {
           label: "Signatures",
           content: <SignatureConfigCard />,
         },
+        {
+          id: "crs-header",
+          label: "CRS Header",
+          content: <CrsHeaderCard />,
+        },
       ]} />
     </div>
   );
@@ -430,6 +435,60 @@ function SignatureConfigCard() {
         <Button onClick={() => save.mutate()} disabled={save.isPending} size="sm">
           {save.isPending ? "Saving..." : "Save"}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+function CrsHeaderCard() {
+  const project = useSelectedProject();
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Load existing header
+  useEffect(() => {
+    if (!project?.id) return;
+    api.get(`/admin/settings/crs-header/${project.id}`).then((res) => {
+      if (res.data?.exists && res.data.data) {
+        setPreview(`data:image/png;base64,${res.data.data}`);
+      }
+    }).catch(() => {});
+  }, [project?.id]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !project?.id) return;
+    if (!file.type.startsWith("image/")) { toast.error("Please select an image file"); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be under 2MB"); return; }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.post(`/admin/settings/crs-header/${project.id}`, form);
+      toast.success("Header image uploaded");
+      const reader = new FileReader();
+      reader.onload = () => setPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } catch { toast.error("Upload failed"); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">CRS Header Image</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">Upload a PNG header image for CRS PDF reports. This image will appear at the top of every generated CRS document for this project.</p>
+        {preview && (
+          <div className="rounded-md border p-2 bg-white">
+            <img src={preview} alt="CRS Header" className="max-h-24 w-auto" />
+          </div>
+        )}
+        <div>
+          <input type="file" accept="image/png,image/jpeg" onChange={handleUpload} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
+          <p className="text-xs text-muted-foreground mt-1">Accepted: PNG or JPEG, max 2MB. Will be scaled to fit A4 width.</p>
+        </div>
+        {uploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
       </CardContent>
     </Card>
   );

@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   HardHat,
   FileSearch,
+  MessageSquareReply,
   Layers,
   Gauge,
   FileUp,
@@ -69,6 +70,7 @@ export const navigation: NavGroup[] = [
       { title: "MIR", url: "/qaqc/mir", icon: FileText },
       { title: "WIR", url: "/qaqc/wir", icon: HardHat },
       { title: "CIR", url: "/qaqc/cir", icon: FileSearch },
+      { title: "CRS", url: "/qaqc/crs", icon: MessageSquareReply },
     ],
   },
   {
