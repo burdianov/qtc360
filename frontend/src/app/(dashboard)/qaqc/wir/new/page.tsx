@@ -179,7 +179,7 @@ function NewWIRPageContent() {
   const formLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
   const fullyLocked = !!existingDoc && ["with_approver_1", "approver_1_returned", "with_approver_2", "approved", "approved_with_comments", "rejected", "superseded"].includes(existingDoc.status);
 
-  useEffect(() => { if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(true); }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(false); }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (existingDoc) {
