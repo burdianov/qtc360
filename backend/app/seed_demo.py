@@ -119,9 +119,11 @@ async def create_doc(
     title: str, asset_ids: list[uuid.UUID],
     status: str, created: date,
     site_signed: bool = False, qaqc_signed: bool = False,
-    location: str = "", creator: uuid.UUID = USER_SITE,
+    location: str = "", creator: uuid.UUID | None = None,
 ) -> Document:
     serial = await _bump_serial(db, doc_type)
+    if creator is None:
+        creator = USER_SITE
     doc = Document(
         id=uuid.uuid4(),
         project_id=PROJECT_ID,
