@@ -27,6 +27,11 @@ class Settings(BaseSettings):
 
     # File storage
     upload_dir: str = "./uploads"
+    storage_backend: str = "local"  # "local" or "r2"
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = "qtc360-files"
 
     # Auth
     secret_key: str  # REQUIRED — must be set in .env

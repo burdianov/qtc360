@@ -30,6 +30,7 @@ from app.schemas.document import (
 )
 from app.services.commissioning import recalculate_requirements_for_document
 from app.services.audit import record_audit
+from app.services.storage import storage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -530,9 +531,8 @@ async def delete_document(
         )
     else:
         # HARD DELETE: remove document, attachments, and decrement serial
-        upload_root = settings.upload_dir_abs
 
-        # Delete attachment files from disk
+        # Delete attachment files
         attachments_result = await db.execute(
             select(DocumentAttachment).where(
                 DocumentAttachment.document_id == doc.id,
@@ -541,13 +541,9 @@ async def delete_document(
         attachments = attachments_result.scalars().all()
         for att in attachments:
             try:
-                file_path = (upload_root / att.storage_path).resolve()
-                if file_path.exists() and file_path.is_file():
-                    try:
-                        file_path.relative_to(upload_root)
-                        file_path.unlink()
-                    except ValueError:
-                        pass  # Path outside upload_root, skip
+                storage.delete(att.storage_path)
+            except Exception:
+                pass  # Best-effort file cleanup
             except Exception:
                 pass  # Best-effort file cleanup
 
@@ -930,17 +926,9 @@ async def record_response_endpoint(
     )
     await db.flush()
 
-    upload_root = settings.upload_dir_abs
-    upload_dir = (upload_root / "approval-rounds" / str(round_.id)).resolve()
-    try:
-        upload_dir.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    returned_path = (upload_dir / "returned.pdf").resolve()
-    returned_path.write_bytes(data)
-    round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
+    storage_key = f"approval-rounds/{round_.id}/returned.pdf"
+    storage.save(storage_key, data)
+    round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
     round_.response_time = response_time
 
@@ -958,7 +946,7 @@ async def record_response_endpoint(
         document_approval_round_id=round_.id,
         kind="returned_pdf",
         filename=f"Approver {approver_order} — Returned.pdf",
-        storage_path=str(returned_path.relative_to(upload_root)).replace("\\", "/"),
+        storage_path=storage_key,
         content_type="application/pdf",
         size=len(data),
         sort_order=0,
@@ -1063,13 +1051,9 @@ async def replace_round_file(
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
-    upload_root = settings.upload_dir_abs
-    upload_dir = (upload_root / "approval-rounds" / str(round_.id)).resolve()
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    returned_path = (upload_dir / "returned.pdf").resolve()
-    returned_path.write_bytes(data)
-    round_.returned_file_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
+    storage_key = f"approval-rounds/{round_.id}/returned.pdf"
+    storage.save(storage_key, data)
+    round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
 
     # Always overwrite metadata (None/empty = clear)
@@ -1093,7 +1077,7 @@ async def replace_round_file(
         )
     )).scalar_one_or_none()
     if att:
-        att.storage_path = str(returned_path.relative_to(upload_root)).replace("\\", "/")
+        att.storage_path = storage_key
         att.size = len(data)
         att.filename = f"Approver {round_.approver_order} — Returned.pdf"
 
@@ -1107,11 +1091,8 @@ async def replace_round_file(
     )).scalars().all()
     for ua in user_atts:
         try:
-            ua_path = (upload_root / ua.storage_path).resolve()
-            ua_path.relative_to(upload_root)
-            if ua_path.exists():
-                ua_path.unlink()
-        except (ValueError, OSError):
+            storage.delete(ua.storage_path)
+        except Exception:
             pass
         await db.delete(ua)
 
@@ -1154,21 +1135,15 @@ async def extract_round_region(
     if not round_ or not round_.returned_file_path:
         raise HTTPException(status_code=404, detail="Round or returned file not found")
 
-    upload_root = settings.upload_dir_abs
-    file_path = (upload_root / round_.returned_file_path).resolve()
-    try:
-        file_path.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Bad file path")
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Returned file is missing on disk")
+    if not storage.exists(round_.returned_file_path):
+        raise HTTPException(status_code=404, detail="Returned file is missing")
 
     if len(body.bbox) != 4:
         raise HTTPException(status_code=400, detail="bbox must be [x, y, width, height]")
 
     try:
         text, via = extract_region_text(
-            file_path.read_bytes(),
+            storage.read(round_.returned_file_path),
             body.page,
             tuple(body.bbox),
             target_field=body.target_field,
@@ -1225,18 +1200,10 @@ async def upload_round_remarks(
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
-    upload_root = settings.upload_dir_abs
-    upload_dir = (upload_root / "approval-rounds" / str(round_.id)).resolve()
-    try:
-        upload_dir.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    remarks_path = (upload_dir / "remarks.pdf").resolve()
-    remarks_path.write_bytes(data)
+    storage_key = f"approval-rounds/{round_.id}/remarks.pdf"
+    storage.save(storage_key, data)
 
-    rel_path = str(remarks_path.relative_to(upload_root)).replace("\\", "/")
-    await attach_remarks(db, doc, round_, rel_path, file.filename or "remarks.pdf")
+    await attach_remarks(db, doc, round_, storage_key, file.filename or "remarks.pdf")
 
     await record_audit(
         db, user_id=user.id, action="update", entity_type="document", entity_id=doc.id,
@@ -1300,14 +1267,6 @@ async def upload_round_attachment(
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
-    upload_root = settings.upload_dir_abs
-    upload_dir = (upload_root / "approval-rounds" / str(round_.id) / "attachments").resolve()
-    try:
-        upload_dir.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     # Get next sort order for this round
     count_result = await db.execute(
         select(func.count()).select_from(DocumentAttachment).where(
@@ -1319,20 +1278,15 @@ async def upload_round_attachment(
     existing_count = count_result.scalar() or 0
 
     file_id = str(uuid_mod.uuid4())
-    storage_filename = f"{file_id}.pdf"
-    file_path = (upload_dir / storage_filename).resolve()
-    try:
-        file_path.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    file_path.write_bytes(data)
+    storage_key = f"approval-rounds/{round_.id}/attachments/{file_id}.pdf"
+    storage.save(storage_key, data)
 
     att = DocumentAttachment(
         document_id=doc.id,
         document_approval_round_id=round_.id,
         kind="user_attachment",
         filename=file.filename or "attachment.pdf",
-        storage_path=str(file_path.relative_to(upload_root)).replace("\\", "/"),
+        storage_path=storage_key,
         content_type="application/pdf",
         size=len(data),
         sort_order=existing_count,
@@ -1433,13 +1387,9 @@ async def delete_round_attachment(
         raise HTTPException(status_code=400, detail="Cannot delete attachment that is in the bundle. Remove from bundle first.")
 
     # Hard delete file + record
-    upload_root = settings.upload_dir_abs
-    file_path = (upload_root / att.storage_path).resolve()
     try:
-        file_path.relative_to(upload_root)
-        if file_path.exists():
-            file_path.unlink()
-    except (ValueError, OSError):
+        storage.delete(att.storage_path)
+    except Exception:
         pass
     await db.delete(att)
     await db.commit()
@@ -1477,16 +1427,10 @@ async def download_round_bundle(
     if not round_ or not round_.returned_file_path:
         raise HTTPException(status_code=404, detail="Round or returned file not found")
 
-    upload_root = settings.upload_dir_abs
-    returned_file_path = (upload_root / round_.returned_file_path).resolve()
-    try:
-        returned_file_path.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Bad file path")
-    if not returned_file_path.exists():
-        raise HTTPException(status_code=404, detail="Returned file is missing on disk")
+    if not storage.exists(round_.returned_file_path):
+        raise HTTPException(status_code=404, detail="Returned file is missing")
 
-    returned_pdf_bytes = returned_file_path.read_bytes()
+    returned_pdf_bytes = storage.read(round_.returned_file_path)
 
     # Get only attachments that are in the bundle (have insert_after_page set)
     attachments_result = await db.execute(
@@ -1515,14 +1459,9 @@ async def download_round_bundle(
     # Load attachment files and prepare for merging
     attachment_data = []
     for att in attachments:
-        att_path = (upload_root / att.storage_path).resolve()
-        try:
-            att_path.relative_to(upload_root)
-        except ValueError:
-            continue  # Skip invalid paths
-        if not att_path.exists():
-            continue  # Skip missing files
-        att_bytes = att_path.read_bytes()
+        if not storage.exists(att.storage_path):
+            continue
+        att_bytes = storage.read(att.storage_path)
         attachment_data.append((att_bytes, att.insert_after_page or 0))
 
     # Merge PDFs
@@ -1672,28 +1611,14 @@ async def upload_attachment(
     if existing_count >= MAX_ATTACHMENTS_PER_DOC:
         raise HTTPException(status_code=400, detail=f"Maximum of {MAX_ATTACHMENTS_PER_DOC} attachments per document")
 
-    # Resolve upload dir to absolute path; verify the final path stays within it.
-    upload_root = settings.upload_dir_abs
-    upload_dir = (upload_root / "attachments" / str(doc_id)).resolve()
-    try:
-        upload_dir.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     file_id = str(uuid_mod.uuid4())
-    storage_filename = f"{file_id}{suffix}"
-    file_path = (upload_dir / storage_filename).resolve()
-    try:
-        file_path.relative_to(upload_root)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Bad upload path")
-    file_path.write_bytes(data)
+    storage_key = f"attachments/{doc_id}/{file_id}{suffix}"
+    storage.save(storage_key, data)
 
     att = DocumentAttachment(
         document_id=doc_id,
         filename=file.filename or "unnamed",
-        storage_path=str(file_path.relative_to(upload_root)).replace("\\", "/"),
+        storage_path=storage_key,
         content_type=declared_mime or "application/octet-stream",
         size=len(data),
         sort_order=existing_count,

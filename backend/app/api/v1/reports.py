@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.types import DEFAULT_SIGNATURE_FONT, DEFAULT_SIGNATURE_COLOR, FONTS_DIR, LIBREOFFICE_TIMEOUT, GOTENBERG_TIMEOUT, DEFAULT_DATE_FORMAT
+from app.services.storage import storage
 from app.core.deps import (
     assert_user_in_project,
     get_current_user,
@@ -737,30 +738,21 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
     for page in reader.pages:
         writer.add_page(page)
 
-    upload_root = settings.upload_dir_abs
     missing_files = []
     for att in attachments:
-        # Resolve the storage path against the upload root and reject path traversal.
-        candidate = (upload_root / att.storage_path).resolve()
-        try:
-            candidate.relative_to(upload_root)
-        except ValueError:
-            logger.warning("Attachment %s escapes upload_dir; skipping", att.id)
-            missing_files.append(att.filename)
-            continue
-        file_path = candidate
-        if not file_path.exists():
+        if not storage.exists(att.storage_path):
             missing_files.append(att.filename)
             continue
 
-        suffix = file_path.suffix.lower()
+        att_bytes = storage.read(att.storage_path)
+        suffix = Path(att.storage_path).suffix.lower()
         if suffix == ".pdf":
             try:
-                att_reader = PdfReader(str(file_path))
+                att_reader = PdfReader(io.BytesIO(att_bytes))
                 for page in att_reader.pages:
                     writer.add_page(page)
             except Exception:
-                logger.exception("Failed to read attachment PDF %s", file_path)
+                logger.exception("Failed to read attachment PDF %s", att.storage_path)
                 missing_files.append(att.filename)
         elif suffix in (".jpg", ".jpeg", ".png"):
             try:
@@ -769,13 +761,13 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
                 from reportlab.pdfgen import canvas as rl_canvas
                 from reportlab.lib.utils import ImageReader
 
-                img = PILImage.open(str(file_path))
+                img = PILImage.open(io.BytesIO(att_bytes))
                 img_buf = io.BytesIO()
                 c = rl_canvas.Canvas(img_buf, pagesize=A4)
                 max_w, max_h = A4[0] - 72, A4[1] - 72
                 ratio = min(max_w / img.width, max_h / img.height)
                 w, h = img.width * ratio, img.height * ratio
-                c.drawImage(ImageReader(str(file_path)), 36, A4[1] - h - 36, w, h)
+                c.drawImage(ImageReader(io.BytesIO(att_bytes)), 36, A4[1] - h - 36, w, h)
                 c.save()
                 img_buf.seek(0)
                 img_reader = PdfReader(img_buf)
