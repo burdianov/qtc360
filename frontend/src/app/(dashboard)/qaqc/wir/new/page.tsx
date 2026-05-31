@@ -769,7 +769,7 @@ function NewWIRPageContent() {
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && existingDoc?.status !== "draft" && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector1Id ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
-                        {users.map((u) => (
+                        {users.filter((u) => u.id !== inspector2Id).map((u) => (
                           <SelectItem key={u.id} value={u.id}>
                             <span className="inline-flex items-baseline gap-2 w-full">
                               <span>{u.full_name}:</span>
@@ -787,7 +787,7 @@ function NewWIRPageContent() {
                     <Select onValueChange={field.onChange} value={field.value} disabled={!!editId && existingDoc?.status !== "draft" && currentUser?.id !== existingDoc?.created_by}>
                       <FormControl><SelectTrigger className="w-full"><SelectValue placeholder="Name and Designation">{inspector2Id ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}` : ""}</SelectValue></SelectTrigger></FormControl>
                       <SelectContent>
-                        {users.map((u) => (
+                        {users.filter((u) => u.id !== inspector1Id).map((u) => (
                           <SelectItem key={u.id} value={u.id}>
                             <span className="inline-flex items-baseline gap-2 w-full">
                               <span>{u.full_name}:</span>
