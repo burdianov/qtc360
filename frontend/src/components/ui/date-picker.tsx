@@ -31,6 +31,7 @@ export function DatePicker({ value, onChange, placeholder = "Select a date" }: D
       <PopoverContent align="start" className="w-auto p-3">
         <DayPicker
           mode="single"
+          weekStartsOn={1}
           selected={selected}
           onSelect={(date) => {
             if (date) {

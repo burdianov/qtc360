@@ -271,11 +271,15 @@ async def get_weekly_targets(
     from datetime import date as date_cls, timedelta as td
     today = date_cls.today()
 
-    # Build week buckets: Overdue + 8 upcoming weeks
-    weeks = [{"label": "Overdue", "start": date_cls(2020, 1, 1), "end": today - td(days=1)}]
+    # Align to Monday (weekday() returns 0=Mon, 6=Sun)
+    this_monday = today - td(days=today.weekday())
+    this_sunday = this_monday + td(days=6)
+
+    # Build week buckets: Overdue + 8 upcoming weeks (Mon-Sun)
+    weeks = [{"label": "Overdue", "start": date_cls(2020, 1, 1), "end": this_monday - td(days=1)}]
     for i in range(8):
-        start = today + td(days=i * 7)
-        end = today + td(days=(i + 1) * 7 - 1)
+        start = this_monday + td(weeks=i)
+        end = start + td(days=6)
         weeks.append({"label": f"{start.strftime('%d %b')} - {end.strftime('%d %b')}", "start": start, "end": end})
 
     result = (await db.execute(text("""
