@@ -136,7 +136,7 @@ export default function TemplatesPage() {
         <p className="text-sm text-muted-foreground">Upload and manage Word DOCX templates for report generation</p>
       </div>
 
-      <Tabs tabs={DOC_TYPES.map(dt => ({ id: dt, label: dt, content: renderTab(dt) }))} />
+      <Tabs tabs={DOC_TYPES.map(dt => ({ id: dt, label: dt, content: renderTab(dt) }))} onChange={() => { setName(""); setFile(null); }} />
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent>

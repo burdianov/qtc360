@@ -12,9 +12,10 @@ interface Tab {
 interface TabsProps {
   tabs: Tab[];
   defaultTab?: string;
+  onChange?: (tabId: string) => void;
 }
 
-export function Tabs({ tabs, defaultTab }: TabsProps) {
+export function Tabs({ tabs, defaultTab, onChange }: TabsProps) {
   const [active, setActive] = useState(defaultTab || tabs[0]?.id || "");
 
   return (
@@ -23,7 +24,7 @@ export function Tabs({ tabs, defaultTab }: TabsProps) {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActive(tab.id)}
+            onClick={() => { setActive(tab.id); onChange?.(tab.id); }}
             className={cn(
               "px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
               active === tab.id
