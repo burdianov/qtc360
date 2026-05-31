@@ -1,0 +1,60 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [public]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://api.qtc360.com/api/v1
+    networks: [public]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    networks: [public, internal]
+    volumes:
+      - ${DATA_DIR:-./data}/uploads:/app/uploads
+    env_file: .env.prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    networks: [internal]
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: qtc360
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qtc360"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    networks: [internal]
+    restart: unless-stopped
+
+networks:
+  public:
+  internal:
+
+volumes:
+  caddy_data:
+  caddy_config:

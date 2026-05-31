@@ -48,7 +48,8 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
-        if self.environment == "production":
+        # SSL only for external managed databases (Neon, etc.)
+        if self.environment == "production" and self.postgres_host not in ("localhost", "postgres", "127.0.0.1"):
             return f"{base}?ssl=require"
         return base
 
