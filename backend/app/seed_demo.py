@@ -239,10 +239,10 @@ async def create_work_items(
 async def seed_demo():
     async with async_session_factory() as db:
         async with db.begin():
-            # Skip if already seeded (check for existing documents)
+            # Skip if already seeded
             doc_count = (await db.execute(text("SELECT count(*) FROM documents"))).scalar()
             if doc_count and doc_count > 0:
-                print("[SKIP] Demo data already exists (%d documents). Skipping." % doc_count)
+                print("[SKIP] Demo data already exists (%d documents)." % doc_count)
                 return
 
             # Resolve all IDs dynamically
@@ -285,11 +285,11 @@ async def seed_demo():
 
             # --- Seed tag targets for ALL assets ---
             print("  Seeding tag targets...")
-            today = date(2026, 5, 30)
+            today = date(2026, 6, 1)
             tag_dates = {
-                "P1": {"red": date(2026, 3, 15), "yellow": date(2026, 5, 1), "green": date(2026, 6, 30), "blue": date(2026, 8, 15)},
-                "P2": {"red": date(2026, 4, 15), "yellow": date(2026, 6, 15), "green": date(2026, 8, 1), "blue": date(2026, 9, 30)},
-                "P3": {"red": date(2026, 5, 30), "yellow": date(2026, 7, 15), "green": date(2026, 9, 15), "blue": date(2026, 11, 15)},
+                "P1": {"red": date(2026, 4, 15), "yellow": date(2026, 6, 1), "green": date(2026, 7, 15), "blue": date(2026, 9, 15)},
+                "P2": {"red": date(2026, 5, 15), "yellow": date(2026, 7, 1), "green": date(2026, 9, 1), "blue": date(2026, 10, 30)},
+                "P3": {"red": date(2026, 6, 30), "yellow": date(2026, 8, 15), "green": date(2026, 10, 15), "blue": date(2026, 12, 15)},
             }
             for pod, assets in assets_by_pod.items():
                 for asset in assets:
@@ -337,17 +337,17 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
             ar_id = req["ar_id"]
 
             if req["doc_type"] == "FAT":
-                # All FAT approved (Jan 2026)
+                # All FAT approved (Feb 2026)
                 d = await create_doc(db, doc_type="FAT", disc_id=disc_id, disc_code=disc_code,
                     title=f"FAT - {asset['name']}", asset_ids=[asset["id"]],
-                    status="approved", created=_rand_date(date(2026, 1, 5), date(2026, 1, 25)))
+                    status="approved", created=_rand_date(date(2026, 2, 5), date(2026, 2, 25)))
                 await link_requirement(db, d, ar_id)
 
             elif req["doc_type"] == "MIR":
-                # All MIR approved (Feb 2026)
+                # All MIR approved (Mar 2026)
                 d = await create_doc(db, doc_type="MIR", disc_id=disc_id, disc_code=disc_code,
                     title=f"Equipment Delivery - {asset['name']}", asset_ids=[asset["id"]],
-                    status="approved", created=_rand_date(date(2026, 2, 1), date(2026, 2, 20)),
+                    status="approved", created=_rand_date(date(2026, 3, 1), date(2026, 3, 20)),
                     site_signed=True)
                 created_d = d.created_at.date()
                 await add_approval_rounds(db, d,
@@ -359,10 +359,10 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
 
             elif req["doc_type"] == "WIR":
                 if req["wb"]:
-                    # Work breakdown WIRs: approved (Mar 2026)
+                    # Work breakdown WIRs: approved (Apr 2026)
                     d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                        status="approved", created=_rand_date(date(2026, 3, 1), date(2026, 3, 20)),
+                        status="approved", created=_rand_date(date(2026, 4, 1), date(2026, 4, 20)),
                         site_signed=True, qaqc_signed=True, location="POD 1")
                     created_d = d.created_at.date()
                     await add_approval_rounds(db, d,
@@ -379,10 +379,10 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
                         wi.approved_date = created_d + timedelta(days=8)
                         wi.linked_document_id = d.id
                 else:
-                    # Non-WB WIRs: approved (Mar 2026)
+                    # Non-WB WIRs: approved (Apr 2026)
                     d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                        status="approved", created=_rand_date(date(2026, 3, 5), date(2026, 3, 25)),
+                        status="approved", created=_rand_date(date(2026, 4, 5), date(2026, 4, 25)),
                         site_signed=True, qaqc_signed=True, location="POD 1")
                     created_d = d.created_at.date()
                     await add_approval_rounds(db, d,
@@ -398,7 +398,7 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.7:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="approved", created=_rand_date(date(2026, 4, 1), date(2026, 4, 20)),
+                            status="approved", created=_rand_date(date(2026, 5, 1), date(2026, 5, 20)),
                             site_signed=True, qaqc_signed=True, location="POD 1")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -410,7 +410,7 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
                     else:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="with_approver_2", created=_rand_date(date(2026, 5, 1), date(2026, 5, 15)),
+                            status="with_approver_2", created=_rand_date(date(2026, 6, 1), date(2026, 6, 15)),
                             site_signed=True, qaqc_signed=True, location="POD 1")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -423,7 +423,7 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.4:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="with_approver_1", created=_rand_date(date(2026, 5, 10), date(2026, 5, 25)),
+                            status="with_approver_1", created=_rand_date(date(2026, 6, 10), date(2026, 6, 25)),
                             site_signed=True, qaqc_signed=True, location="POD 1")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d, aconex_sub1=created_d + timedelta(days=1))
@@ -431,14 +431,14 @@ async def _seed_pod1(db: AsyncSession, assets: list, asset_reqs: dict):
                     else:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="internally_signed", created=_rand_date(date(2026, 5, 20), date(2026, 5, 28)),
+                            status="internally_signed", created=_rand_date(date(2026, 6, 20), date(2026, 6, 28)),
                             site_signed=True, qaqc_signed=True, location="POD 1")
                         await link_requirement(db, d, ar_id)
                 else:
                     # L4: still in draft
                     d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                        status="draft", created=_rand_date(date(2026, 5, 25), date(2026, 5, 29)),
+                        status="draft", created=_rand_date(date(2026, 6, 25), date(2026, 6, 29)),
                         location="POD 1")
                     await link_requirement(db, d, ar_id)
     await db.flush()
@@ -457,13 +457,13 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
             if req["doc_type"] == "FAT":
                 d = await create_doc(db, doc_type="FAT", disc_id=disc_id, disc_code=disc_code,
                     title=f"FAT - {asset['name']}", asset_ids=[asset["id"]],
-                    status="approved", created=_rand_date(date(2026, 2, 1), date(2026, 2, 15)))
+                    status="approved", created=_rand_date(date(2026, 3, 1), date(2026, 3, 15)))
                 await link_requirement(db, d, ar_id)
 
             elif req["doc_type"] == "MIR":
                 d = await create_doc(db, doc_type="MIR", disc_id=disc_id, disc_code=disc_code,
                     title=f"Equipment Delivery - {asset['name']}", asset_ids=[asset["id"]],
-                    status="approved", created=_rand_date(date(2026, 3, 1), date(2026, 3, 15)),
+                    status="approved", created=_rand_date(date(2026, 4, 1), date(2026, 4, 15)),
                     site_signed=True)
                 created_d = d.created_at.date()
                 await add_approval_rounds(db, d,
@@ -481,7 +481,7 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
                         # Approved
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="approved", created=_rand_date(date(2026, 4, 1), date(2026, 4, 15)),
+                            status="approved", created=_rand_date(date(2026, 5, 1), date(2026, 5, 15)),
                             site_signed=True, qaqc_signed=True, location="POD 2")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -501,7 +501,7 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
                         status = random.choice(["with_approver_1", "approver_1_returned"])
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status=status, created=_rand_date(date(2026, 5, 1), date(2026, 5, 20)),
+                            status=status, created=_rand_date(date(2026, 6, 1), date(2026, 6, 20)),
                             site_signed=True, qaqc_signed=True, location="POD 2")
                         created_d = d.created_at.date()
                         if status == "approver_1_returned":
@@ -518,7 +518,7 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.6:
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="approved", created=_rand_date(date(2026, 4, 5), date(2026, 4, 25)),
+                            status="approved", created=_rand_date(date(2026, 5, 5), date(2026, 5, 25)),
                             site_signed=True, qaqc_signed=True, location="POD 2")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -530,7 +530,7 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
                     else:
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="with_approver_2", created=_rand_date(date(2026, 5, 5), date(2026, 5, 20)),
+                            status="with_approver_2", created=_rand_date(date(2026, 6, 5), date(2026, 6, 20)),
                             site_signed=True, qaqc_signed=True, location="POD 2")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -545,13 +545,13 @@ async def _seed_pod2(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.4:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="internally_signed", created=_rand_date(date(2026, 5, 15), date(2026, 5, 28)),
+                            status="internally_signed", created=_rand_date(date(2026, 6, 15), date(2026, 6, 28)),
                             site_signed=True, qaqc_signed=True, location="POD 2")
                         await link_requirement(db, d, ar_id)
                     else:
                         d = await create_doc(db, doc_type="CIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="draft", created=_rand_date(date(2026, 5, 20), date(2026, 5, 29)),
+                            status="draft", created=_rand_date(date(2026, 6, 20), date(2026, 6, 29)),
                             location="POD 2")
                         await link_requirement(db, d, ar_id)
                 # L3/L4: no docs yet for POD 2
@@ -570,10 +570,10 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
             ar_id = req["ar_id"]
 
             if req["doc_type"] == "FAT":
-                # FAT approved (Feb-Mar)
+                # FAT approved (Mar-Apr)
                 d = await create_doc(db, doc_type="FAT", disc_id=disc_id, disc_code=disc_code,
                     title=f"FAT - {asset['name']}", asset_ids=[asset["id"]],
-                    status="approved", created=_rand_date(date(2026, 2, 15), date(2026, 3, 10)))
+                    status="approved", created=_rand_date(date(2026, 3, 15), date(2026, 4, 10)))
                 await link_requirement(db, d, ar_id)
 
             elif req["doc_type"] == "MIR":
@@ -583,7 +583,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     # One rejected MIR
                     d = await create_doc(db, doc_type="MIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"Equipment Delivery - {asset['name']}", asset_ids=[asset["id"]],
-                        status="rejected", created=_rand_date(date(2026, 4, 1), date(2026, 4, 10)),
+                        status="rejected", created=_rand_date(date(2026, 5, 1), date(2026, 5, 10)),
                         site_signed=True)
                     created_d = d.created_at.date()
                     await add_approval_rounds(db, d,
@@ -596,7 +596,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     # Approved
                     d = await create_doc(db, doc_type="MIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"Equipment Delivery - {asset['name']}", asset_ids=[asset["id"]],
-                        status="approved", created=_rand_date(date(2026, 3, 15), date(2026, 4, 10)),
+                        status="approved", created=_rand_date(date(2026, 4, 15), date(2026, 5, 10)),
                         site_signed=True)
                     created_d = d.created_at.date()
                     await add_approval_rounds(db, d,
@@ -609,7 +609,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     # With approver 1
                     d = await create_doc(db, doc_type="MIR", disc_id=disc_id, disc_code=disc_code,
                         title=f"Equipment Delivery - {asset['name']}", asset_ids=[asset["id"]],
-                        status="with_approver_1", created=_rand_date(date(2026, 5, 10), date(2026, 5, 25)),
+                        status="with_approver_1", created=_rand_date(date(2026, 6, 10), date(2026, 6, 25)),
                         site_signed=True)
                     created_d = d.created_at.date()
                     await add_approval_rounds(db, d, aconex_sub1=created_d + timedelta(days=1))
@@ -621,7 +621,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.4:
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="approved", created=_rand_date(date(2026, 4, 10), date(2026, 4, 30)),
+                            status="approved", created=_rand_date(date(2026, 5, 10), date(2026, 5, 30)),
                             site_signed=True, qaqc_signed=True, location="POD 3")
                         created_d = d.created_at.date()
                         await add_approval_rounds(db, d,
@@ -633,7 +633,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     else:
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="internally_signed", created=_rand_date(date(2026, 5, 15), date(2026, 5, 28)),
+                            status="internally_signed", created=_rand_date(date(2026, 6, 15), date(2026, 6, 28)),
                             site_signed=True, qaqc_signed=True, location="POD 3")
                         await link_requirement(db, d, ar_id)
                 else:
@@ -641,7 +641,7 @@ async def _seed_pod3(db: AsyncSession, assets: list, asset_reqs: dict):
                     if random.random() < 0.3:
                         d = await create_doc(db, doc_type="WIR", disc_id=disc_id, disc_code=disc_code,
                             title=f"{req['code']} - {asset['name']}", asset_ids=[asset["id"]],
-                            status="draft", created=_rand_date(date(2026, 5, 20), date(2026, 5, 29)),
+                            status="draft", created=_rand_date(date(2026, 6, 20), date(2026, 6, 29)),
                             location="POD 3")
                         if req["wb"]:
                             wis = await create_work_items(db, ar_id, req["code"], asset["name"])
@@ -674,7 +674,7 @@ async def _seed_general_docs(db: AsyncSession):
         signed = status != "draft"
         d = await create_doc(db, doc_type=doc_type, disc_id=disc_id, disc_code=disc_code,
             title=title, asset_ids=[],
-            status=status, created=_rand_date(date(2026, 4, 1), date(2026, 5, 25)),
+            status=status, created=_rand_date(date(2026, 5, 1), date(2026, 6, 25)),
             site_signed=signed, qaqc_signed=signed if doc_type != "MIR" else False,
             location="Various")
         if status == "approved" and doc_type != "FAT":
