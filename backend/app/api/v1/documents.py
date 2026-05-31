@@ -700,16 +700,11 @@ async def sign_document(
     if role == "site_engineer":
         if doc.site_engineer_signed:
             raise HTTPException(status_code=400, detail="Already signed by inspector 1")
-        # If a specific engineer was assigned, only that engineer can sign here.
-        if doc.site_engineer_id and doc.site_engineer_id != user.id and not user.is_superuser:
-            raise HTTPException(status_code=403, detail="This slot is assigned to another engineer")
         doc.site_engineer_id = user.id
         doc.site_engineer_signed = True
     else:
         if doc.qaqc_engineer_signed:
             raise HTTPException(status_code=400, detail="Already signed by inspector 2")
-        if doc.qaqc_engineer_id and doc.qaqc_engineer_id != user.id and not user.is_superuser:
-            raise HTTPException(status_code=403, detail="This slot is assigned to another engineer")
         doc.qaqc_engineer_id = user.id
         doc.qaqc_engineer_signed = True
 
