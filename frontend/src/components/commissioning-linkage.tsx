@@ -7,12 +7,25 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface RequirementTemplate {
   id: string;
@@ -60,7 +73,15 @@ interface Props {
   onChange: (linkage: CommissioningLinkage | null) => void;
 }
 
-export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selectedAssetLabels, documentType, applicableTemplateIds, value, onChange }: Props) {
+export function CommissioningLinkagePanel({
+  projectId,
+  selectedAssetIds,
+  selectedAssetLabels,
+  documentType,
+  applicableTemplateIds,
+  value,
+  onChange,
+}: Props) {
   const [enabled, setEnabled] = useState(!!value);
   const [newItemName, setNewItemName] = useState("");
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
@@ -73,8 +94,12 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
   const { data: templates = [] } = useQuery<RequirementTemplate[]>({
     queryKey: ["requirement-templates", projectId, documentType],
     queryFn: async () => {
-      const res = await api.get("/commissioning/requirement-templates", { params: { project_id: projectId } });
-      return (res.data as RequirementTemplate[]).filter((t) => t.evidence_document_type === documentType);
+      const res = await api.get("/commissioning/requirement-templates", {
+        params: { project_id: projectId },
+      });
+      return (res.data as RequirementTemplate[]).filter(
+        (t) => t.evidence_document_type === documentType,
+      );
     },
     enabled: !!projectId,
   });
@@ -85,51 +110,97 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
 
   // Fetch work items for ALL selected assets
   const { data: allAssetWorkItems = [] } = useQuery<AssetWorkItems[]>({
-    queryKey: ["work-items-all-assets", selectedAssetIds, value?.requirementTemplateId],
+    queryKey: [
+      "work-items-all-assets",
+      selectedAssetIds,
+      value?.requirementTemplateId,
+    ],
     queryFn: async () => {
       const results: AssetWorkItems[] = [];
       for (const assetId of selectedAssetIds) {
-        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-        const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === value?.requirementTemplateId);
+        const arRes = await api.get("/commissioning/asset-requirements", {
+          params: { asset_id: assetId },
+        });
+        const ar = (arRes.data as any[]).find(
+          (r: any) =>
+            r.requirement_template_id === value?.requirementTemplateId,
+        );
         if (!ar) continue;
-        const wiRes = await api.get("/commissioning/work-items", { params: { asset_requirement_id: ar.id } });
+        const wiRes = await api.get("/commissioning/work-items", {
+          params: { asset_requirement_id: ar.id },
+        });
         results.push({ assetId, assetRequirementId: ar.id, items: wiRes.data });
       }
       return results;
     },
-    enabled: !!value?.requirementTemplateId && !!value?.isPartialScope && selectedAssetIds.length > 0,
+    enabled:
+      !!value?.requirementTemplateId &&
+      !!value?.isPartialScope &&
+      selectedAssetIds.length > 0,
   });
 
   // Build grouped view: group by item name across all assets
   const groupedItems = (() => {
     if (allAssetWorkItems.length === 0) return [];
-    const nameMap = new Map<string, { name: string; perAsset: { assetId: string; itemId: string; status: string }[] }>();
+    const nameMap = new Map<
+      string,
+      {
+        name: string;
+        perAsset: { assetId: string; itemId: string; status: string }[];
+      }
+    >();
     for (const aw of allAssetWorkItems) {
       for (const item of aw.items) {
         if (!nameMap.has(item.name)) {
           nameMap.set(item.name, { name: item.name, perAsset: [] });
         }
-        nameMap.get(item.name)!.perAsset.push({ assetId: aw.assetId, itemId: item.id, status: item.status });
+        nameMap.get(item.name)!.perAsset.push({
+          assetId: aw.assetId,
+          itemId: item.id,
+          status: item.status,
+        });
       }
     }
     return Array.from(nameMap.values());
   })();
 
   // For single asset, use first asset's items directly (backward compatible)
-  const firstAssetItems = allAssetWorkItems.length > 0 ? allAssetWorkItems[0].items : [];
+  const firstAssetItems =
+    allAssetWorkItems.length > 0 ? allAssetWorkItems[0].items : [];
   const multiAsset = selectedAssetIds.length > 1;
 
-  const selectedTemplate = value ? templates.find((t) => t.id === value.requirementTemplateId) : null;
+  const selectedTemplate = value
+    ? templates.find((t) => t.id === value.requirementTemplateId)
+    : null;
   const firstAssetId = selectedAssetIds.length > 0 ? selectedAssetIds[0] : "";
 
   // Gate check
-  const { data: gateCheck } = useQuery<{ complete: boolean; incomplete: { requirement_id: string; template_name: string; template_code: string; status: string; progress_percent: number }[] }>({
+  const { data: gateCheck } = useQuery<{
+    complete: boolean;
+    incomplete: {
+      requirement_id: string;
+      template_name: string;
+      template_code: string;
+      status: string;
+      progress_percent: number;
+    }[];
+  }>({
     queryKey: ["gate-check", firstAssetId, selectedTemplate?.level_code],
-    queryFn: async () => (await api.get("/commissioning/gate-check", { params: { asset_id: firstAssetId, level_code: selectedTemplate!.level_code } })).data,
-    enabled: !!selectedTemplate?.is_gate_requirement && selectedAssetIds.length > 0,
+    queryFn: async () =>
+      (
+        await api.get("/commissioning/gate-check", {
+          params: {
+            asset_id: firstAssetId,
+            level_code: selectedTemplate!.level_code,
+          },
+        })
+      ).data,
+    enabled:
+      !!selectedTemplate?.is_gate_requirement && selectedAssetIds.length > 0,
   });
 
-  const isGateWarning = selectedTemplate?.is_gate_requirement && gateCheck && !gateCheck.complete;
+  const isGateWarning =
+    selectedTemplate?.is_gate_requirement && gateCheck && !gateCheck.complete;
 
   const handleToggle = (on: boolean) => {
     setEnabled(on);
@@ -137,12 +208,24 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
   };
 
   const handleTemplateSelect = (templateId: string) => {
-    onChange({ requirementTemplateId: templateId, isPartialScope: false, checkedExistingIds: [], deleteExistingIds: [], newItems: [] });
+    onChange({
+      requirementTemplateId: templateId,
+      isPartialScope: false,
+      checkedExistingIds: [],
+      deleteExistingIds: [],
+      newItems: [],
+    });
   };
 
   const handlePartialToggle = (partial: boolean) => {
     if (!value) return;
-    onChange({ ...value, isPartialScope: partial, checkedExistingIds: [], deleteExistingIds: [], newItems: [] });
+    onChange({
+      ...value,
+      isPartialScope: partial,
+      checkedExistingIds: [],
+      deleteExistingIds: [],
+      newItems: [],
+    });
   };
 
   const toggleExistingCheck = (id: string) => {
@@ -158,12 +241,26 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
     if (!value) return;
     const group = groupedItems.find((g) => g.name === name);
     if (!group) return;
-    const pendingIds = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
-    const allChecked = pendingIds.every((id) => value.checkedExistingIds.includes(id));
+    const pendingIds = group.perAsset
+      .filter((p) => p.status !== "approved")
+      .map((p) => p.itemId);
+    const allChecked = pendingIds.every((id) =>
+      value.checkedExistingIds.includes(id),
+    );
     if (allChecked) {
-      onChange({ ...value, checkedExistingIds: value.checkedExistingIds.filter((id) => !pendingIds.includes(id)) });
+      onChange({
+        ...value,
+        checkedExistingIds: value.checkedExistingIds.filter(
+          (id) => !pendingIds.includes(id),
+        ),
+      });
     } else {
-      onChange({ ...value, checkedExistingIds: [...new Set([...value.checkedExistingIds, ...pendingIds])] });
+      onChange({
+        ...value,
+        checkedExistingIds: [
+          ...new Set([...value.checkedExistingIds, ...pendingIds]),
+        ],
+      });
     }
   };
 
@@ -180,43 +277,69 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
     if (!value) return;
     const group = groupedItems.find((g) => g.name === name);
     if (!group) return;
-    const ids = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
+    const ids = group.perAsset
+      .filter((p) => p.status !== "approved")
+      .map((p) => p.itemId);
     onChange({
       ...value,
       deleteExistingIds: [...value.deleteExistingIds, ...ids],
-      checkedExistingIds: value.checkedExistingIds.filter((x) => !ids.includes(x)),
+      checkedExistingIds: value.checkedExistingIds.filter(
+        (x) => !ids.includes(x),
+      ),
     });
   };
 
   const addNewItem = () => {
     if (!value || !newItemName.trim()) return;
-    onChange({ ...value, newItems: [...value.newItems, { name: newItemName.trim(), checked: false }] });
+    onChange({
+      ...value,
+      newItems: [
+        ...value.newItems,
+        { name: newItemName.trim(), checked: false },
+      ],
+    });
     setNewItemName("");
   };
 
   const toggleNewCheck = (index: number) => {
     if (!value) return;
-    const items = value.newItems.map((item, i) => i === index ? { ...item, checked: !item.checked } : item);
+    const items = value.newItems.map((item, i) =>
+      i === index ? { ...item, checked: !item.checked } : item,
+    );
     onChange({ ...value, newItems: items });
   };
 
   const removeNewItem = (index: number) => {
     if (!value) return;
-    onChange({ ...value, newItems: value.newItems.filter((_, i) => i !== index) });
+    onChange({
+      ...value,
+      newItems: value.newItems.filter((_, i) => i !== index),
+    });
   };
 
-  const getAssetLabel = (assetId: string) => selectedAssetLabels?.[assetId] || assetId.slice(0, 6);
+  const getAssetLabel = (assetId: string) =>
+    selectedAssetLabels?.[assetId] || assetId.slice(0, 6);
 
   // Filter out deleted items
-  const visibleGrouped = groupedItems.filter((g) => !g.perAsset.every((p) => value?.deleteExistingIds.includes(p.itemId)));
-  const visibleSingle = firstAssetItems.filter((wi) => !value?.deleteExistingIds.includes(wi.id));
+  const visibleGrouped = groupedItems.filter(
+    (g) =>
+      !g.perAsset.every((p) => value?.deleteExistingIds.includes(p.itemId)),
+  );
+  const visibleSingle = firstAssetItems.filter(
+    (wi) => !value?.deleteExistingIds.includes(wi.id),
+  );
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">Commissioning Requirement Linkage</p>
-          <p className="text-xs text-muted-foreground">Optionally link this document to a commissioning requirement for all listed assets</p>
+          <p className="text-sm font-medium">
+            Commissioning Requirement Linkage
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Optionally link this document to a commissioning requirement for all
+            listed assets
+          </p>
         </div>
         <Switch checked={enabled} onCheckedChange={handleToggle} />
       </div>
@@ -224,16 +347,31 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
       {enabled && (
         <div className="space-y-3 pl-1">
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Requirement</label>
-            <Select value={value?.requirementTemplateId || ""} onValueChange={(v: any) => handleTemplateSelect(v)}>
-              <SelectTrigger><SelectValue placeholder="Select requirement...">{selectedTemplate ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}` : ""}</SelectValue></SelectTrigger>
+            <label className="text-xs text-muted-foreground mb-1 block">
+              Requirement
+            </label>
+            <Select
+              value={value?.requirementTemplateId || ""}
+              onValueChange={(v: any) => handleTemplateSelect(v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select requirement...">
+                  {selectedTemplate
+                    ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}`
+                    : ""}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 {filteredTemplates.map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">[{t.level_code}]</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        [{t.level_code}]
+                      </span>
                       <span>{t.name}</span>
-                      <Badge variant="outline" className="text-[10px] ml-2">{t.requirement_category}</Badge>
+                      <Badge variant="outline" className="text-[10px] ml-2">
+                        {t.requirement_category}
+                      </Badge>
                     </span>
                   </SelectItem>
                 ))}
@@ -242,30 +380,54 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
           </div>
 
           {filteredTemplates.length === 0 && (
-            <p className="text-xs text-muted-foreground">No {documentType} requirement templates found.</p>
+            <p className="text-xs text-muted-foreground">
+              No {documentType} requirement templates found.
+            </p>
           )}
 
           {/* Gate warning */}
           {isGateWarning && (
             <div className="rounded-md border border-amber-500/50 bg-amber-500/5 p-3 space-y-2">
-              <p className="text-sm font-medium text-amber-500">⚠ Incomplete Prerequisites</p>
-              <p className="text-xs text-muted-foreground">The following {selectedTemplate?.level_code} requirements are not yet achieved:</p>
+              <p className="text-sm font-medium text-amber-500">
+                ⚠ Incomplete Prerequisites
+              </p>
+              <p className="text-xs text-muted-foreground">
+                The following {selectedTemplate?.level_code} requirements are
+                not yet achieved:
+              </p>
               <ul className="space-y-1">
                 {gateCheck!.incomplete.map((r, i) => (
                   <li key={i} className="text-xs flex items-center gap-2">
-                    <span className="font-mono text-muted-foreground">{r.template_code}</span>
+                    <span className="font-mono text-muted-foreground">
+                      {r.template_code}
+                    </span>
                     <span>{r.template_name}</span>
-                    <Badge variant="outline" className="text-[10px] ml-auto">{r.status} ({r.progress_percent}%)</Badge>
+                    <Badge variant="outline" className="text-[10px] ml-auto">
+                      {r.status} ({r.progress_percent}%)
+                    </Badge>
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-amber-500/80">You may proceed, but the tag will not be achieved until all requirements are completed.</p>
+              <p className="text-xs text-amber-500/80">
+                You may proceed, but the tag will not be achieved until all
+                requirements are completed.
+              </p>
               {!value?.gateWarningAcknowledged ? (
-                <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10" onClick={() => setGateDialogOpen(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+                  onClick={() => setGateDialogOpen(true)}
+                >
                   I acknowledge - proceed anyway
                 </Button>
               ) : (
-                <p className="text-xs text-emerald-500">✓ Acknowledged{value.gateOverrideNotes ? ` - "${value.gateOverrideNotes}"` : ""}</p>
+                <p className="text-xs text-emerald-500">
+                  ✓ Acknowledged
+                  {value.gateOverrideNotes
+                    ? ` - "${value.gateOverrideNotes}"`
+                    : ""}
+                </p>
               )}
 
               <Dialog open={gateDialogOpen} onOpenChange={setGateDialogOpen}>
@@ -276,21 +438,32 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
                       Confirm Gate Override
                     </DialogTitle>
                     <DialogDescription>
-                      You are proceeding with incomplete {selectedTemplate?.level_code} prerequisites. This action will be recorded in the audit trail.
+                      You are proceeding with incomplete{" "}
+                      {selectedTemplate?.level_code} prerequisites. This action
+                      will be recorded in the audit trail.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3">
                     <div className="rounded-md border p-3 space-y-1 max-h-40 overflow-y-auto">
                       {gateCheck!.incomplete.map((r, i) => (
-                        <div key={i} className="text-xs flex items-center gap-2">
-                          <span className="font-mono text-muted-foreground">{r.template_code}</span>
+                        <div
+                          key={i}
+                          className="text-xs flex items-center gap-2"
+                        >
+                          <span className="font-mono text-muted-foreground">
+                            {r.template_code}
+                          </span>
                           <span className="flex-1">{r.template_name}</span>
-                          <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {r.status}
+                          </Badge>
                         </div>
                       ))}
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Reason for proceeding</label>
+                      <label className="text-sm font-medium">
+                        Reason for proceeding
+                      </label>
                       <Textarea
                         placeholder="Explain why you are proceeding despite incomplete prerequisites..."
                         value={gateNotes}
@@ -301,7 +474,12 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setGateDialogOpen(false)}>Cancel</Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setGateDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
                     <Button
                       variant="destructive"
                       onClick={() => {
@@ -311,7 +489,12 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
                           gateWarningAcknowledged: true,
                           gateOverrideNotes: gateNotes || undefined,
                           gateLevelCode: selectedTemplate?.level_code,
-                          incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })),
+                          incompleteRequirements: gateCheck!.incomplete.map(
+                            (r) => ({
+                              requirement_id: r.requirement_id,
+                              status: r.status,
+                            }),
+                          ),
                         });
                         setGateDialogOpen(false);
                       }}
@@ -336,14 +519,19 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
                       : "This document covers the full scope of the requirement."}
                   </p>
                 </div>
-                <Switch checked={value.isPartialScope} onCheckedChange={handlePartialToggle} />
+                <Switch
+                  checked={value.isPartialScope}
+                  onCheckedChange={handlePartialToggle}
+                />
               </div>
             </>
           )}
 
           {value?.isPartialScope && (
             <div className="space-y-3 rounded-lg border p-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase">Work Breakdown Items</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase">
+                Work Breakdown Items
+              </p>
               <p className="text-xs text-muted-foreground">
                 {multiAsset
                   ? "Check items covered by this document. Status shown per asset."
@@ -351,78 +539,130 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
               </p>
 
               {/* Multi-asset grouped view */}
-              {multiAsset && visibleGrouped.map((group) => {
-                const allDone = group.perAsset.every((p) => p.status === "approved");
-                const pendingIds = group.perAsset.filter((p) => p.status !== "approved").map((p) => p.itemId);
-                const allPendingChecked = pendingIds.length > 0 && pendingIds.every((id) => value.checkedExistingIds.includes(id));
-                const isChecked = allDone || allPendingChecked;
+              {multiAsset &&
+                visibleGrouped.map((group) => {
+                  const allDone = group.perAsset.every(
+                    (p) => p.status === "approved",
+                  );
+                  const pendingIds = group.perAsset
+                    .filter((p) => p.status !== "approved")
+                    .map((p) => p.itemId);
+                  const allPendingChecked =
+                    pendingIds.length > 0 &&
+                    pendingIds.every((id) =>
+                      value.checkedExistingIds.includes(id),
+                    );
+                  const isChecked = allDone || allPendingChecked;
 
-                return (
-                  <div key={group.name} className="space-y-1">
-                    <div className="flex items-center gap-2">
+                  return (
+                    <div key={group.name} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={isChecked}
+                          disabled={allDone}
+                          onCheckedChange={() =>
+                            !allDone && toggleByName(group.name)
+                          }
+                        />
+                        <span
+                          className={`flex-1 text-sm ${allDone ? "line-through text-muted-foreground" : ""}`}
+                        >
+                          {group.name}
+                        </span>
+                        {allDone && (
+                          <Badge variant="outline" className="text-[10px]">
+                            Done
+                          </Badge>
+                        )}
+                        {!allDone && (
+                          <button
+                            type="button"
+                            onClick={() => markForDeleteByName(group.name)}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pl-7">
+                        {group.perAsset.map((p) => (
+                          <span
+                            key={p.assetId}
+                            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+                              p.status === "approved"
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : value.checkedExistingIds.includes(p.itemId)
+                                  ? "bg-blue-500/10 text-blue-500"
+                                  : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {p.status === "approved"
+                              ? "✓"
+                              : value.checkedExistingIds.includes(p.itemId)
+                                ? "●"
+                                : "○"}
+                            {getAssetLabel(p.assetId)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {/* Single-asset view */}
+              {!multiAsset &&
+                visibleSingle.map((item) => {
+                  const isDone = item.status === "approved";
+                  const isChecked =
+                    isDone || value.checkedExistingIds.includes(item.id);
+                  return (
+                    <div key={item.id} className="flex items-center gap-2">
                       <Checkbox
                         checked={isChecked}
-                        disabled={allDone}
-                        onCheckedChange={() => !allDone && toggleByName(group.name)}
+                        disabled={isDone}
+                        onCheckedChange={() =>
+                          !isDone && toggleExistingCheck(item.id)
+                        }
                       />
-                      <span className={`flex-1 text-sm ${allDone ? "line-through text-muted-foreground" : ""}`}>{group.name}</span>
-                      {allDone && <Badge variant="outline" className="text-[10px]">Done</Badge>}
-                      {!allDone && (
-                        <button type="button" onClick={() => markForDeleteByName(group.name)} className="text-muted-foreground hover:text-destructive">
+                      <span
+                        className={`flex-1 text-sm ${isDone ? "line-through text-muted-foreground" : ""}`}
+                      >
+                        {item.name}
+                      </span>
+                      {isDone && (
+                        <Badge variant="outline" className="text-[10px]">
+                          Done
+                        </Badge>
+                      )}
+                      {!isDone && (
+                        <button
+                          type="button"
+                          onClick={() => markForDelete(item.id)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-1.5 pl-7">
-                      {group.perAsset.map((p) => (
-                        <span
-                          key={p.assetId}
-                          className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
-                            p.status === "approved"
-                              ? "bg-emerald-500/10 text-emerald-500"
-                              : value.checkedExistingIds.includes(p.itemId)
-                              ? "bg-blue-500/10 text-blue-500"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {p.status === "approved" ? "✓" : value.checkedExistingIds.includes(p.itemId) ? "●" : "○"}
-                          {getAssetLabel(p.assetId)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Single-asset view */}
-              {!multiAsset && visibleSingle.map((item) => {
-                const isDone = item.status === "approved";
-                const isChecked = isDone || value.checkedExistingIds.includes(item.id);
-                return (
-                  <div key={item.id} className="flex items-center gap-2">
-                    <Checkbox
-                      checked={isChecked}
-                      disabled={isDone}
-                      onCheckedChange={() => !isDone && toggleExistingCheck(item.id)}
-                    />
-                    <span className={`flex-1 text-sm ${isDone ? "line-through text-muted-foreground" : ""}`}>{item.name}</span>
-                    {isDone && <Badge variant="outline" className="text-[10px]">Done</Badge>}
-                    {!isDone && (
-                      <button type="button" onClick={() => markForDelete(item.id)} className="text-muted-foreground hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
 
               {/* New items */}
               {value.newItems.map((item, i) => (
                 <div key={`new-${i}`} className="flex items-center gap-2">
-                  <Checkbox checked={item.checked} onCheckedChange={() => toggleNewCheck(i)} />
+                  <Checkbox
+                    checked={item.checked}
+                    onCheckedChange={() => toggleNewCheck(i)}
+                  />
                   <span className="flex-1 text-sm">{item.name}</span>
-                  <Badge variant="outline" className="text-[10px]">New</Badge>
-                  <button type="button" onClick={() => removeNewItem(i)} className="text-muted-foreground hover:text-destructive">
+                  <Badge variant="outline" className="text-[10px]">
+                    New
+                  </Badge>
+                  <button
+                    type="button"
+                    onClick={() => removeNewItem(i)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -435,10 +675,23 @@ export function CommissioningLinkagePanel({ projectId, selectedAssetIds, selecte
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   className="h-8 text-sm flex-1"
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addNewItem(); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addNewItem();
+                    }
+                  }}
                 />
-                <Button type="button" size="sm" variant="outline" className="h-8" disabled={!newItemName.trim()} onClick={addNewItem}>
-                  <Plus className="h-3 w-3 mr-1" />Add
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  disabled={!newItemName.trim()}
+                  onClick={addNewItem}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add
                 </Button>
               </div>
             </div>
