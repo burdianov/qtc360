@@ -14,8 +14,7 @@ backend/**/__pycache__/
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
 
 # IDE
 .vscode/
