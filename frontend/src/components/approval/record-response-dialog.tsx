@@ -10,7 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PdfRegionPicker, type PdfRegion } from "./pdf-region-picker";
 import type { ApprovalStatus } from "./approval-action-panel";
 
@@ -59,13 +64,18 @@ export function RecordResponseDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [decisionStatusId, setDecisionStatusId] = useState("");
   const [signatoryName, setSignatoryName] = useState("");
-  const [responseDate, setResponseDate] = useState(new Date().toISOString().slice(0, 10));
+  const [responseDate, setResponseDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
   const [responseTime, setResponseTime] = useState("");
   const [comments, setComments] = useState("");
   const [aconexReceivedDate, setAconexReceivedDate] = useState("");
   const [armedField, setArmedField] = useState<Field | null>(null);
-  const [lastRegion, setLastRegion] = useState<Partial<Record<Field, CapturedRegion>>>({});
+  const [lastRegion, setLastRegion] = useState<
+    Partial<Record<Field, CapturedRegion>>
+  >({});
   const [extracting, setExtracting] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Reset all fields when dialog opens
   useEffect(() => {
@@ -80,12 +90,14 @@ export function RecordResponseDialog({
       setAconexReceivedDate("");
       setArmedField(null);
       setLastRegion({});
+      setSubmitAttempted(false);
     }
   }, [open]);
 
   // Sort statuses by letter so radios show A → D consistently across projects.
   const sortedStatuses = useMemo(
-    () => [...approvalStatuses].sort((a, b) => a.letter.localeCompare(b.letter)),
+    () =>
+      [...approvalStatuses].sort((a, b) => a.letter.localeCompare(b.letter)),
     [approvalStatuses],
   );
 
@@ -112,7 +124,11 @@ export function RecordResponseDialog({
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const callExtract = async (region: PdfRegion, field: Field, force = false) => {
+  const callExtract = async (
+    region: PdfRegion,
+    field: Field,
+    force = false,
+  ) => {
     if (!file) return null;
     // Server reads the persisted file by round_id, but we don't have a round
     // yet - extraction happens against the locally-uploaded preview file via
@@ -141,7 +157,9 @@ export function RecordResponseDialog({
       const text = (res.data?.text || "") as string;
       const via = (res.data?.via || "native") as "native" | "ocr";
       if (!text.trim()) {
-        toast.warning("Nothing recognized in that region. Try a tighter box or 'Try OCR instead'.");
+        toast.warning(
+          "Nothing recognized in that region. Try a tighter box or 'Try OCR instead'.",
+        );
         return null;
       }
       setLastRegion((prev) => ({ ...prev, [field]: { region, via } }));
@@ -149,11 +167,19 @@ export function RecordResponseDialog({
       else if (field === "response_date") setResponseDate(text);
       else if (field === "response_time") setResponseTime(normalizeTime(text));
       else setComments((c) => (c ? c + " " + text : text));
-      toast.success(`Captured ${field.replace("_", " ")} via ${via === "ocr" ? "OCR" : "native text"}`);
+      toast.success(
+        `Captured ${field.replace("_", " ")} via ${via === "ocr" ? "OCR" : "native text"}`,
+      );
       return text;
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-      const msg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg).join(", ") : "Capture failed";
+      const detail = (err as { response?: { data?: { detail?: unknown } } })
+        ?.response?.data?.detail;
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((d: any) => d.msg).join(", ")
+            : "Capture failed";
       toast.error(msg);
       return null;
     } finally {
@@ -177,10 +203,17 @@ export function RecordResponseDialog({
     callExtract(r, field, true);
   };
 
+  const isValid =
+    !!file &&
+    !!decisionStatusId &&
+    !!signatoryName.trim() &&
+    !!responseDate &&
+    !!aconexReceivedDate;
+
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!file || !decisionStatusId) {
-        throw new Error("missing");
+      if (!isValid || !file) {
+        throw new Error("Please complete all required fields.");
       }
       const fd = new FormData();
       fd.append("file", file);
@@ -191,7 +224,10 @@ export function RecordResponseDialog({
         if (responseDate) fd.append("response_date", responseDate);
         if (responseTime) fd.append("response_time", responseTime);
         if (comments) fd.append("comments", comments);
-        return api.put(`/documents/${documentId}/approval-rounds/${roundId}/file`, fd);
+        return api.put(
+          `/documents/${documentId}/approval-rounds/${roundId}/file`,
+          fd,
+        );
       }
 
       // New recording - POST with query params
@@ -203,19 +239,25 @@ export function RecordResponseDialog({
       });
       if (responseTime) params.set("response_time", responseTime);
       if (comments) params.set("comments", comments);
-      if (aconexReceivedDate) params.set("aconex_received_date", aconexReceivedDate);
+      if (aconexReceivedDate)
+        params.set("aconex_received_date", aconexReceivedDate);
       return api.post(
         `/documents/${documentId}/approval-rounds?${params.toString()}`,
         fd,
       );
     },
     onSuccess: () => {
-      toast.success(roundId ? "Document replaced" : `Approver ${approverOrder} response recorded`);
+      toast.success(
+        roundId
+          ? "Document replaced"
+          : `Approver ${approverOrder} response recorded`,
+      );
       onSuccess();
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       toast.error(detail || "Could not record response");
     },
   });
@@ -225,7 +267,8 @@ export function RecordResponseDialog({
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Record Approver {approverOrder} response{approverName ? ` - ${approverName}` : ""}
+            Record Approver {approverOrder} response
+            {approverName ? ` - ${approverName}` : ""}
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -257,6 +300,7 @@ export function RecordResponseDialog({
             disableArm={!file || extracting}
             retryAsOcr={retryAsOcr}
             captured={lastRegion}
+            submitAttempted={submitAttempted}
           />
         </div>
         <div className="flex items-center justify-between pt-4 border-t mt-4">
@@ -264,12 +308,21 @@ export function RecordResponseDialog({
             PDF will be saved as a single file. You can add attachments later.
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
             <Button
-              onClick={() => submitMutation.mutate()}
-              disabled={
-                !file || !decisionStatusId || submitMutation.isPending
-              }
+              onClick={() => {
+                setSubmitAttempted(true);
+
+                if (!isValid) {
+                  toast.error("Please complete all required fields.");
+                  return;
+                }
+
+                submitMutation.mutate();
+              }}
+              disabled={submitMutation.isPending}
             >
               {submitMutation.isPending ? "Saving..." : "Save response"}
             </Button>
@@ -280,17 +333,27 @@ export function RecordResponseDialog({
   );
 }
 
-function FileInput({ file, onFile }: { file: File | null; onFile: (f: File | null) => void }) {
+function FileInput({
+  file,
+  onFile,
+}: {
+  file: File | null;
+  onFile: (f: File | null) => void;
+}) {
   return (
     <div>
-      <label className="text-xs text-muted-foreground mb-1.5 block">Returned PDF</label>
+      <label className="text-xs text-muted-foreground mb-1.5 block">
+        Returned PDF
+      </label>
       <input
         type="file"
         accept="application/pdf"
         onChange={(e) => onFile(e.target.files?.[0] || null)}
         className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
       />
-      <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
+      <p className="text-xs text-muted-foreground mt-1">
+        {file ? `Selected: ${file.name}` : "Accepted format: PDF"}
+      </p>
     </div>
   );
 }
@@ -314,29 +377,46 @@ interface FormSideProps {
   disableArm: boolean;
   retryAsOcr: (f: Field) => void;
   captured: Partial<Record<Field, CapturedRegion>>;
+  submitAttempted: boolean;
 }
 
 function FormSide(props: FormSideProps) {
   const {
-    sortedStatuses, decisionStatusId, setDecisionStatusId,
-    signatoryName, setSignatoryName,
-    responseDate, setResponseDate,
-    responseTime, setResponseTime,
-    aconexReceivedDate, setAconexReceivedDate,
-    comments, setComments,
-    armedField, armField, disableArm, retryAsOcr, captured,
+    sortedStatuses,
+    decisionStatusId,
+    setDecisionStatusId,
+    signatoryName,
+    setSignatoryName,
+    responseDate,
+    setResponseDate,
+    responseTime,
+    setResponseTime,
+    aconexReceivedDate,
+    setAconexReceivedDate,
+    comments,
+    setComments,
+    armedField,
+    armField,
+    disableArm,
+    retryAsOcr,
+    captured,
+    submitAttempted,
   } = props;
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Decision</label>
+        <label className="text-xs text-muted-foreground mb-1.5 block">
+          Decision <span className="text-destructive">*</span>
+        </label>
         <div className="grid gap-1.5">
           {sortedStatuses.map((s) => (
             <label
               key={s.id}
               className={
                 "flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm " +
-                (decisionStatusId === s.id ? "border-foreground/40 bg-accent/40" : "hover:bg-accent/30")
+                (decisionStatusId === s.id
+                  ? "border-foreground/40 bg-accent/40"
+                  : "hover:bg-accent/30")
               }
             >
               <input
@@ -346,16 +426,25 @@ function FormSide(props: FormSideProps) {
                 onChange={() => setDecisionStatusId(s.id)}
                 className="mt-0.5"
               />
+
               <div className="flex-1 min-w-0">
-                <div className="font-medium">{s.letter} - {s.name}</div>
-                <div className="text-xs text-muted-foreground">{s.description || s.action}</div>
+                <div className="font-medium">
+                  {s.letter} - {s.name}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {s.description || s.action}
+                </div>
               </div>
             </label>
           ))}
         </div>
+        {submitAttempted && !decisionStatusId && (
+          <p className="mt-1 text-xs text-destructive">Decision is required.</p>
+        )}
       </div>
       <CaptureRow
         label="Signatory name"
+        required
         field="signatory_name"
         value={signatoryName}
         onChange={setSignatoryName}
@@ -364,9 +453,15 @@ function FormSide(props: FormSideProps) {
         disableArm={disableArm}
         retryAsOcr={retryAsOcr}
         captured={captured.signatory_name}
+        error={
+          submitAttempted && !signatoryName.trim()
+            ? "Signatory name is required."
+            : undefined
+        }
       />
       <CaptureRow
         label="Response date"
+        required
         field="response_date"
         value={responseDate}
         onChange={setResponseDate}
@@ -376,6 +471,11 @@ function FormSide(props: FormSideProps) {
         retryAsOcr={retryAsOcr}
         captured={captured.response_date}
         type="date"
+        error={
+          submitAttempted && !responseDate
+            ? "Response date is required."
+            : undefined
+        }
       />
       <CaptureRow
         label="Response time"
@@ -389,8 +489,21 @@ function FormSide(props: FormSideProps) {
         captured={captured.response_time}
       />
       <div>
-        <label className="text-xs text-muted-foreground mb-1.5 block">Aconex received date</label>
-        <DatePicker value={aconexReceivedDate} onChange={setAconexReceivedDate} placeholder="Select date" />
+        <label className="text-xs text-muted-foreground mb-1.5 block">
+          Aconex received date <span className="text-destructive">*</span>
+        </label>
+
+        <DatePicker
+          value={aconexReceivedDate}
+          onChange={setAconexReceivedDate}
+          placeholder="Select date"
+        />
+
+        {submitAttempted && !aconexReceivedDate && (
+          <p className="mt-1 text-xs text-destructive">
+            Aconex received date is required.
+          </p>
+        )}
       </div>
       <CaptureRow
         label="Comments"
@@ -409,7 +522,19 @@ function FormSide(props: FormSideProps) {
 }
 
 function CaptureRow({
-  label, field, value, onChange, armed, armField, disableArm, retryAsOcr, captured, type, textarea,
+  label,
+  field,
+  value,
+  onChange,
+  armed,
+  armField,
+  disableArm,
+  retryAsOcr,
+  captured,
+  type,
+  textarea,
+  required,
+  error,
 }: {
   label: string;
   field: Field;
@@ -422,11 +547,15 @@ function CaptureRow({
   captured: CapturedRegion | undefined;
   type?: string;
   textarea?: boolean;
+  required?: boolean;
+  error?: string;
 }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-1.5">
-        <label className="text-xs text-muted-foreground flex-1">{label}</label>
+        <label className="text-xs text-muted-foreground flex-1">
+          {label} {required && <span className="text-destructive">*</span>}
+        </label>
         <Button
           type="button"
           size="sm"
@@ -438,6 +567,7 @@ function CaptureRow({
           <Crosshair className="mr-1 h-3 w-3" />
           {armed ? "Cancel" : "Capture"}
         </Button>
+        {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
         {captured && (
           <Button
             type="button"
@@ -453,15 +583,28 @@ function CaptureRow({
         )}
       </div>
       {textarea ? (
-        <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} />
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={3}
+        />
       ) : type === "date" ? (
-        <DatePicker value={value} onChange={onChange} placeholder="Select date" />
+        <DatePicker
+          value={value}
+          onChange={onChange}
+          placeholder="Select date"
+        />
       ) : (
-        <Input type={type || "text"} value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input
+          type={type || "text"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
       )}
       {captured && (
         <p className="text-[11px] text-muted-foreground mt-1">
-          Captured page {captured.region.page} via {captured.via === "ocr" ? "OCR" : "native text"}
+          Captured page {captured.region.page} via{" "}
+          {captured.via === "ocr" ? "OCR" : "native text"}
         </p>
       )}
     </div>

@@ -634,14 +634,15 @@ async def notify_signatories(
 
     # Detect previously notified signatories by checking existing notifications for this doc
     existing_notifs = (await db.execute(
-        select(Notification).where(
-            Notification.link.contains(str(doc_id)),
-            Notification.title == "Signature Required",
-        )
-    )).scalars().all()
+    select(Notification).where(
+        Notification.link.contains(str(doc_id)),
+        Notification.title.like("Signature Required%"),
+        Notification.is_deleted == False,  # noqa: E712
+    )
+)).scalars().all()
     previously_notified_ids = {n.user_id for n in existing_notifs}
 
-    link = f"/qaqc/{doc.document_type.lower()}/new?id={doc_id}"
+    link = f"/qaqc/{doc.document_type.lower()}/{doc_id}"
     disc_name = doc.discipline.name if doc.discipline else "—"
     notified = []
 
@@ -976,7 +977,7 @@ async def record_response_endpoint(
         )
         doc_with_disc = disc_result.scalar_one()
         disc_name = doc_with_disc.discipline.name if doc_with_disc.discipline else "—"
-        link = f"/qaqc/{doc.document_type.lower()}/new?id={doc_id}"
+        link = f"/qaqc/{doc.document_type.lower()}/{doc_id}"
 
         if doc.status == "rejected":
             title = f"Document Rejected — {doc.reference_no}"
