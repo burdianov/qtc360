@@ -43,3 +43,6 @@ htmlcov/
 
 # Misc
 *.log
+
+dump.sql
+*.sql
