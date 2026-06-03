@@ -336,24 +336,21 @@ export default function CommissioningRequirementsPage() {
         </label>
 
         <Popover open={assetComboboxOpen} onOpenChange={setAssetComboboxOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              role="combobox"
-              aria-expanded={assetComboboxOpen}
-              className={cn(
-                "h-9 w-full justify-between px-3 font-normal",
-                !selectedAsset && "text-muted-foreground",
-              )}
-            >
-              <span className="truncate">
-                {selectedAsset
-                  ? `${selectedAsset.tag_number} - ${selectedAsset.name}`
-                  : "Choose an asset..."}
-              </span>
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
+          <PopoverTrigger
+            type="button"
+            role="combobox"
+            aria-expanded={assetComboboxOpen}
+            className={cn(
+              "inline-flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm font-normal shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              !selectedAsset && "text-muted-foreground",
+            )}
+          >
+            <span className="truncate">
+              {selectedAsset
+                ? `${selectedAsset.tag_number} - ${selectedAsset.name}`
+                : "Choose an asset..."}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </PopoverTrigger>
 
           <PopoverContent
@@ -444,31 +441,28 @@ export default function CommissioningRequirementsPage() {
                         open={requirementComboboxOpen}
                         onOpenChange={setRequirementComboboxOpen}
                       >
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              role="combobox"
-                              aria-expanded={requirementComboboxOpen}
-                              className={cn(
-                                "h-9 w-full justify-between px-3 font-normal",
-                                !selectedTemplate && "text-muted-foreground",
-                              )}
-                            >
-                              <span className="truncate">
-                                {selectedTemplate
-                                  ? `[${selectedTemplate.level_code}] ${selectedTemplate.code} - ${selectedTemplate.name}`
-                                  : "Select requirement..."}
-                              </span>
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
+                        <FormControl>
+                          <PopoverTrigger
+                            type="button"
+                            role="combobox"
+                            aria-expanded={requirementComboboxOpen}
+                            className={cn(
+                              "inline-flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm font-normal shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              !selectedTemplate && "text-muted-foreground",
+                            )}
+                          >
+                            <span className="truncate">
+                              {selectedTemplate
+                                ? `[${selectedTemplate.level_code}] ${selectedTemplate.code} - ${selectedTemplate.name}`
+                                : "Select requirement..."}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </PopoverTrigger>
+                        </FormControl>
 
                         <PopoverContent
                           align="start"
-                          className="w-[var(--radix-popover-trigger-width)] p-0"
+                          className="w-(--radix-popover-trigger-width) p-0"
                         >
                           <Command>
                             <CommandInput placeholder="Search requirement name, code, or level..." />
