@@ -46,3 +46,7 @@ htmlcov/
 
 dump.sql
 *.sql
+
+data/
+.env.prod
+.env.prod.backup
