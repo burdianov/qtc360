@@ -24,6 +24,7 @@ dependencies = [
     "dateparser>=1.2.0",
     "reportlab>=4.5.1",
     "openpyxl>=3.1.5",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [dependency-groups]

@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Image from "next/image";
 import {
   ArrowLeft,
   Loader2,
@@ -57,6 +58,7 @@ import {
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { DocumentAttachments } from "@/components/document-attachments";
+import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 
 interface Discipline {
   id: string;
@@ -169,10 +171,6 @@ function NewMIRPageContent() {
     "new",
   );
   const [revisionOfId, setRevisionOfId] = useState<string | null>(null);
-  const [savedSignatories, setSavedSignatories] = useState<{
-    inspector1: string;
-    inspector2: string;
-  }>({ inspector1: "", inspector2: "" });
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -210,14 +208,16 @@ function NewMIRPageContent() {
   });
 
   useEffect(() => {
-    if (docTemplates.length > 0) {
-      const current = docTemplates.find((t) => t.id === selectedTemplateId);
-      if (!current) {
-        const active = docTemplates.find((t) => t.is_active);
-        setSelectedTemplateId(active?.id || docTemplates[0].id);
-      }
-    }
-  }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (docTemplates.length === 0) return;
+
+    setSelectedTemplateId((currentTemplateId) => {
+      const current = docTemplates.find((t) => t.id === currentTemplateId);
+      if (current) return currentTemplateId;
+
+      const active = docTemplates.find((t) => t.is_active);
+      return active?.id || docTemplates[0].id;
+    });
+  }, [docTemplates]);
 
   const { data: allAssetRequirements = [] } = useQuery<
     {
@@ -312,7 +312,7 @@ function NewMIRPageContent() {
 
   useEffect(() => {
     if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(false);
-  }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fullyLocked, selectedAssets.length]);
 
   useEffect(() => {
     if (existingDoc) {
@@ -342,16 +342,13 @@ function NewMIRPageContent() {
       });
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
-      setSavedSignatories({
-        inspector1: existingDoc.site_engineer_id || "",
-        inspector2: existingDoc.qaqc_engineer_id || "",
-      });
+
       if (existingDoc.asset_ids?.length && assets.length > 0) {
         const ids = new Set(existingDoc.asset_ids);
         setSelectedAssets(assets.filter((a) => ids.has(a.id)));
       }
     }
-  }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existingDoc, assets, form]);
 
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)
@@ -387,7 +384,7 @@ function NewMIRPageContent() {
         });
       })
       .catch(() => {});
-  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, allAssetRequirements, commissioningLinkage]);
 
   useEffect(() => {
     if (editId) {
@@ -469,7 +466,7 @@ function NewMIRPageContent() {
         toast.error("Failed to load rejected document data");
       }
     })();
-  }, [revisionOfId, assets.length, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [revisionOfId, editId, assets, allAssetRequirements, form]);
 
   const disciplineId = form.watch("discipline_id");
   const applicableTemplateIds = (() => {
@@ -524,10 +521,9 @@ function NewMIRPageContent() {
         .then((res) => setReferenceNo(res.data.reference_number))
         .catch(() => toast.error("Failed to generate reference number"));
     }
-  }, [editId, revisionOfId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, revisionOfId, disciplineId, project?.id, disciplines]);
 
   const inspector1Id = form.watch("inspector_1_id");
-  const inspector2Id = form.watch("inspector_2_id");
 
   const handleSign = async (role: "site_engineer" | "qaqc_engineer") => {
     if (!editId) {
@@ -625,12 +621,15 @@ function NewMIRPageContent() {
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
+      const payload = buildPayload(values);
+
       if (editId) {
-        const { project_id, document_type, reference_no, ...p } =
-          buildPayload(values);
-        res = await api.patch(`/documents/${editId}`, p);
+        res = await api.patch(
+          `/documents/${editId}`,
+          omitDocumentCreateOnlyFields(payload),
+        );
       } else {
-        res = await api.post("/documents", buildPayload(values));
+        res = await api.post("/documents", payload);
       }
       const docId = res.data?.id || editId;
       if (linkageDirtyRef.current) {
@@ -1269,7 +1268,7 @@ function NewMIRPageContent() {
                       }}
                     >
                       {signed.inspector1 ? (
-                        <img
+                        <Image
                           src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
                             (() => {
                               const u = users.find(
@@ -1279,6 +1278,9 @@ function NewMIRPageContent() {
                             })(),
                           )}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                           alt="Signature"
+                          width={300}
+                          height={100}
+                          unoptimized
                           className="h-10 object-contain"
                         />
                       ) : (

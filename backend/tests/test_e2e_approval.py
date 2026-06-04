@@ -5,6 +5,8 @@ Tests the full lifecycle via HTTP API calls against the running backend.
 import io
 import httpx
 import asyncio
+import pytest
+from uuid import uuid4
 
 BASE = "http://localhost:8000/api/v1"
 
@@ -42,6 +44,7 @@ async def login(client: httpx.AsyncClient, email: str, password: str) -> str:
     return r.json()["access_token"]
 
 
+@pytest.mark.asyncio
 async def test_wir_e2e(client: httpx.AsyncClient):
     """WIR: create -> sign (both) -> submit approver 1 -> record A -> submit approver 2 -> record A -> verify achievement"""
     print("\n=== WIR END-TO-END TEST ===")
@@ -56,9 +59,12 @@ async def test_wir_e2e(client: httpx.AsyncClient):
 
     # 1. Create WIR
     print("  1. Creating WIR...")
+    wir_reference_no = f"TEST-WIR-{uuid4().hex[:8].upper()}"
+
     r = await client.post(f"{BASE}/documents", json={
         "project_id": PROJECT_ID,
         "document_type": "WIR",
+        "reference_no": wir_reference_no,
         "title": "Power Cable Installation - Generator 1 to MDB-1",
         "discipline_id": DISCIPLINE_ID,
         "location": "POD 3, Level 1",
@@ -198,7 +204,7 @@ async def test_wir_e2e(client: httpx.AsyncClient):
     print("  [PASS] WIR end-to-end test passed!")
     return doc_id
 
-
+@pytest.mark.asyncio
 async def test_mir_e2e(client: httpx.AsyncClient):
     """MIR: create -> sign (single) -> submit approver 1 -> record A -> submit approver 2 -> record A -> approved"""
     print("\n=== MIR END-TO-END TEST ===")
@@ -303,7 +309,7 @@ async def test_mir_e2e(client: httpx.AsyncClient):
     print("  [PASS] MIR end-to-end test passed!")
     return doc_id
 
-
+@pytest.mark.asyncio
 async def test_cir_e2e(client: httpx.AsyncClient):
     """CIR: create -> sign (both) -> submit approver 1 -> record A -> submit approver 2 -> record B -> approved_with_comments"""
     print("\n=== CIR END-TO-END TEST ===")
@@ -415,7 +421,7 @@ async def test_cir_e2e(client: httpx.AsyncClient):
     print("  [PASS] CIR end-to-end test passed!")
     return doc_id
 
-
+@pytest.mark.asyncio
 async def test_fat_e2e(client: httpx.AsyncClient):
     """FAT: create -> auto-approved -> verify requirement achievement"""
     print("\n=== FAT END-TO-END TEST ===")

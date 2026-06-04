@@ -1,13 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { GripVertical, Trash2, X, Download, Edit2 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { GripVertical, Trash2, Download, Edit2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import api from "@/lib/api";
 
 interface Attachment {
@@ -36,10 +42,13 @@ export function DocumentAttachments({
   showPagePosition = false,
   showDownloadBundle = false,
 }: Props) {
-  const [editingPagePosition, setEditingPagePosition] = useState<number | null>(null);
+  const [editingPagePosition, setEditingPagePosition] = useState<number | null>(
+    null,
+  );
   const [pagePositionValue, setPagePositionValue] = useState("");
-  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(null);
-  const queryClient = useQueryClient();
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState<number | null>(
+    null,
+  );
 
   const handleAddAttachments = () => {
     const input = document.createElement("input");
@@ -51,7 +60,11 @@ export function DocumentAttachments({
       if (files) {
         onAttachmentsChange([
           ...attachments,
-          ...Array.from(files).map((f) => ({ file: f, name: f.name, size: f.size })),
+          ...Array.from(files).map((f) => ({
+            file: f,
+            name: f.name,
+            size: f.size,
+          })),
         ]);
         onDirtyChange?.();
       }
@@ -65,7 +78,7 @@ export function DocumentAttachments({
       try {
         await api.delete(`/documents/${documentId}/attachments/${att.id}`);
         toast.success("Attachment deleted");
-      } catch (err) {
+      } catch {
         toast.error("Failed to delete attachment");
         return;
       }
@@ -106,7 +119,13 @@ export function DocumentAttachments({
   };
 
   const savePagePositionMutation = useMutation({
-    mutationFn: async ({ index, page }: { index: number; page: number | null }) => {
+    mutationFn: async ({
+      index,
+      page,
+    }: {
+      index: number;
+      page: number | null;
+    }) => {
       const att = attachments[index];
       if (!att.isExisting || !att.id || !documentId) {
         // For new attachments, just update locally
@@ -164,7 +183,12 @@ export function DocumentAttachments({
               Download Bundle
             </Button>
           )}
-          <Button type="button" size="sm" variant="outline" onClick={handleAddAttachments}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleAddAttachments}
+          >
             Add Files
           </Button>
         </div>
@@ -172,10 +196,16 @@ export function DocumentAttachments({
 
       {attachments.length === 0 ? (
         <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No attachments. Click "Add Files" to upload.<br /><span className="text-xs">Accepted formats: PDF, PNG, JPG</span>
+          No attachments. Click "Add Files" to upload.
+          <br />
+          <span className="text-xs">Accepted formats: PDF, PNG, JPG</span>
         </div>
       ) : (
-        <div className="space-y-2" onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
+        <div
+          className="space-y-2"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => e.preventDefault()}
+        >
           {attachments.map((att, i) => (
             <div
               key={i}
@@ -190,9 +220,13 @@ export function DocumentAttachments({
                 <div className="text-sm truncate">{att.name}</div>
                 <div className="text-xs text-muted-foreground">
                   {(att.size / 1024).toFixed(1)} KB
-                  {showPagePosition && att.insert_after_page !== undefined && att.insert_after_page !== null && (
-                    <span className="ml-2">• Insert after page {att.insert_after_page}</span>
-                  )}
+                  {showPagePosition &&
+                    att.insert_after_page !== undefined &&
+                    att.insert_after_page !== null && (
+                      <span className="ml-2">
+                        • Insert after page {att.insert_after_page}
+                      </span>
+                    )}
                 </div>
               </div>
               {showPagePosition && (
@@ -220,22 +254,45 @@ export function DocumentAttachments({
         </div>
       )}
 
-      <Dialog open={confirmDeleteIndex !== null} onOpenChange={(open) => !open && setConfirmDeleteIndex(null)}>
+      <Dialog
+        open={confirmDeleteIndex !== null}
+        onOpenChange={(open) => !open && setConfirmDeleteIndex(null)}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete Attachment</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete &ldquo;{confirmDeleteIndex !== null ? attachments[confirmDeleteIndex]?.name : ""}&rdquo;?
+            Are you sure you want to delete &ldquo;
+            {confirmDeleteIndex !== null
+              ? attachments[confirmDeleteIndex]?.name
+              : ""}
+            &rdquo;?
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeleteIndex(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { handleRemove(confirmDeleteIndex!); setConfirmDeleteIndex(null); }}>Delete</Button>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteIndex(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                handleRemove(confirmDeleteIndex!);
+                setConfirmDeleteIndex(null);
+              }}
+            >
+              Delete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editingPagePosition !== null} onOpenChange={(open) => !open && setEditingPagePosition(null)}>
+      <Dialog
+        open={editingPagePosition !== null}
+        onOpenChange={(open) => !open && setEditingPagePosition(null)}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Set Page Position</DialogTitle>
@@ -243,7 +300,8 @@ export function DocumentAttachments({
           <div className="space-y-4">
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">
-                Insert After Page (0-indexed, leave empty for no specific position)
+                Insert After Page (0-indexed, leave empty for no specific
+                position)
               </label>
               <Input
                 type="number"
@@ -253,16 +311,23 @@ export function DocumentAttachments({
                 placeholder="e.g., 0 for after first page"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Page numbers are 0-indexed. Enter 0 to insert after the first page, 1 for after the second page, etc.
-                Leave empty if you don't want to specify a position.
+                Page numbers are 0-indexed. Enter 0 to insert after the first
+                page, 1 for after the second page, etc. Leave empty if you don't
+                want to specify a position.
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingPagePosition(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setEditingPagePosition(null)}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSavePagePosition} disabled={savePagePositionMutation.isPending}>
+            <Button
+              onClick={handleSavePagePosition}
+              disabled={savePagePositionMutation.isPending}
+            >
               {savePagePositionMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

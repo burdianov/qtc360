@@ -6,9 +6,13 @@ import { toast } from "sonner";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Props {
   open: boolean;
@@ -39,18 +43,20 @@ export function SubmitToApproverDialog({
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/documents/${documentId}/submit-to-approver`, {
-      approver_order: approverOrder,
-      submitted_at: new Date(submittedDate).toISOString(),
-      aconex_submitted_date: aconexDate || null,
-    }),
+    mutationFn: () =>
+      api.post(`/documents/${documentId}/submit-to-approver`, {
+        approver_order: approverOrder,
+        submitted_at: new Date(submittedDate).toISOString(),
+        aconex_submitted_date: aconexDate || null,
+      }),
     onSuccess: () => {
       toast.success(`Submitted to Approver ${approverOrder}`);
       onSuccess();
       onOpenChange(false);
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       toast.error(detail || "Submission failed");
     },
   });
@@ -63,21 +69,33 @@ export function SubmitToApproverDialog({
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Confirm that you have uploaded this document to Aconex and transmitted it to{" "}
-            <span className="font-medium text-foreground">{approverName || "the approver"}</span>.
-            This records the submission in QTC360 - no file upload here.
+            Confirm that you have uploaded this document to Aconex and
+            transmitted it to{" "}
+            <span className="font-medium text-foreground">
+              {approverName || "the approver"}
+            </span>
+            . This records the submission in QTC360 - no file upload here.
           </p>
           <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Submission date (QTC360)</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Submission date (QTC360)
+            </label>
             <DatePicker value={submittedDate} onChange={setSubmittedDate} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Aconex upload date</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Aconex upload date
+            </label>
             <DatePicker value={aconexDate} onChange={setAconexDate} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !submittedDate}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending || !submittedDate}
+            >
               {mutation.isPending ? "Submitting..." : "Confirm submission"}
             </Button>
           </div>

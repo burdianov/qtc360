@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Image from "next/image";
 import {
   ArrowLeft,
   Loader2,
@@ -33,7 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -58,6 +58,7 @@ import {
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { DocumentAttachments } from "@/components/document-attachments";
+import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 
 interface Discipline {
   id: string;
@@ -154,10 +155,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     "new",
   );
   const [revisionOfId, setRevisionOfId] = useState<string | null>(null);
-  const [savedSignatories, setSavedSignatories] = useState<{
-    inspector1: string;
-    inspector2: string;
-  }>({ inspector1: "", inspector2: "" });
 
   // Fetch rejected documents for revision selection
   const { data: rejectedDocs = {} } = useQuery<
@@ -225,14 +222,16 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
   // Auto-select active template
   useEffect(() => {
-    if (docTemplates.length > 0) {
-      const current = docTemplates.find((t) => t.id === selectedTemplateId);
-      if (!current) {
-        const active = docTemplates.find((t) => t.is_active);
-        setSelectedTemplateId(active?.id || docTemplates[0].id);
-      }
-    }
-  }, [docTemplates]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (docTemplates.length === 0) return;
+
+    setSelectedTemplateId((currentTemplateId) => {
+      const current = docTemplates.find((t) => t.id === currentTemplateId);
+      if (current) return currentTemplateId;
+
+      const active = docTemplates.find((t) => t.is_active);
+      return active?.id || docTemplates[0].id;
+    });
+  }, [docTemplates]);
 
   // Fetch all asset requirements to filter templates by discipline and assets by template
   const { data: allAssetRequirements = [] } = useQuery<
@@ -307,7 +306,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
   useEffect(() => {
     if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(false);
-  }, [fullyLocked, selectedAssets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fullyLocked, selectedAssets.length]);
 
   useEffect(() => {
     if (existingDoc) {
@@ -337,17 +336,14 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       });
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
-      setSavedSignatories({
-        inspector1: existingDoc.site_engineer_id || "",
-        inspector2: existingDoc.qaqc_engineer_id || "",
-      });
+
       // Restore selected assets
       if (existingDoc.asset_ids?.length && assets.length > 0) {
         const ids = new Set(existingDoc.asset_ids);
         setSelectedAssets(assets.filter((a) => ids.has(a.id)));
       }
     }
-  }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existingDoc, assets, form]);
 
   // Restore commissioning linkage from server
   useEffect(() => {
@@ -386,7 +382,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         });
       })
       .catch(() => {});
-  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, allAssetRequirements, commissioningLinkage]);
 
   // Load existing attachments
   useEffect(() => {
@@ -470,7 +466,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         toast.error("Failed to load rejected document data");
       }
     })();
-  }, [revisionOfId, assets.length, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [revisionOfId, editId, assets, allAssetRequirements, form]);
 
   // Auto-generate reference number for new WIR when discipline is selected
   const disciplineId = form.watch("discipline_id");
@@ -533,7 +529,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         .then((res) => setReferenceNo(res.data.reference_number))
         .catch(() => toast.error("Failed to generate reference number"));
     }
-  }, [editId, revisionOfId, disciplineId, project?.id, disciplines.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, revisionOfId, disciplineId, project?.id, disciplines]);
   const inspector1Id = form.watch("inspector_1_id");
   const inspector2Id = form.watch("inspector_2_id");
 
@@ -662,12 +658,15 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
+      const payload = buildPayload(values);
+
       if (editId) {
-        const { project_id, document_type, reference_no, ...updatePayload } =
-          buildPayload(values);
-        res = await api.patch(`/documents/${editId}`, updatePayload);
+        res = await api.patch(
+          `/documents/${editId}`,
+          omitDocumentCreateOnlyFields(payload),
+        );
       } else {
-        res = await api.post("/documents", buildPayload(values));
+        res = await api.post("/documents", payload);
       }
       const docId = res.data?.id || editId;
       if (linkageDirtyRef.current) {
@@ -676,7 +675,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       }
       // Upload new attachments to server
       const newAtts = attachments.filter((a) => !a.isExisting && a.file);
-      const uploadedIds: string[] = [];
       if (newAtts.length > 0 && docId) {
         for (const att of newAtts) {
           const formData = new FormData();
@@ -736,12 +734,15 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         const values = form.getValues();
         let res;
 
+        const payload = buildPayload(values);
+
         if (docId) {
-          const { project_id, document_type, reference_no, ...updatePayload } =
-            buildPayload(values);
-          res = await api.patch(`/documents/${docId}`, updatePayload);
+          res = await api.patch(
+            `/documents/${docId}`,
+            omitDocumentCreateOnlyFields(payload),
+          );
         } else {
-          res = await api.post("/documents", buildPayload(values));
+          res = await api.post("/documents", payload);
           docId = res.data.id;
           router.replace(`/qaqc/wir/${docId}`);
         }
@@ -1409,7 +1410,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                       }}
                     >
                       {signed.inspector1 ? (
-                        <img
+                        <Image
                           src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
                             (() => {
                               const u = users.find(
@@ -1419,7 +1420,10 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                             })(),
                           )}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                           alt="Signature"
-                          className="h-10 object-contain"
+                          width={300}
+                          height={100}
+                          unoptimized
+                          className="h-10 w-auto object-contain"
                         />
                       ) : (
                         <span className="text-sm text-muted-foreground">
@@ -1459,7 +1463,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                       }}
                     >
                       {signed.inspector2 ? (
-                        <img
+                        <Image
                           src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
                             (() => {
                               const u = users.find(
@@ -1469,6 +1473,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                             })(),
                           )}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
                           alt="Signature"
+                          width={300}
+                          height={100}
+                          unoptimized
                           className="h-10 object-contain"
                         />
                       ) : (

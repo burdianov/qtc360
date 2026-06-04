@@ -2,18 +2,25 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { FileText, CheckCircle2, Clock, Target } from "lucide-react";
 import {
-  FileText,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Target,
-  TrendingUp,
-} from "lucide-react";
-import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
-  ComposedChart, Area, Treemap, ScatterChart, Scatter, ReferenceLine,
+  BarChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  ComposedChart,
+  Treemap,
+  ScatterChart,
+  Scatter,
+  ReferenceLine,
 } from "recharts";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
@@ -29,14 +36,55 @@ interface Analytics {
     achieved_requirements: number;
     completion_percent: number;
   };
-  submission_timeline: { month: string; WIR: number; MIR: number; CIR: number; FAT: number; total: number; approved: number }[];
+  submission_timeline: {
+    month: string;
+    WIR: number;
+    MIR: number;
+    CIR: number;
+    FAT: number;
+    total: number;
+    approved: number;
+  }[];
   doc_status_distribution: { status: string; count: number }[];
-  progress_by_pod: { pod: string; total: number; achieved: number; percent: number }[];
-  tag_achievement: { tag: string; achieved?: number; in_progress?: number; delayed?: number; not_started?: number }[];
-  approval_turnaround: { doc_type: string; avg_days: number; max_days: number; rounds: number }[];
-  delayed_items: { tag_number: string; asset_name: string; tag_code: string; target_date: string; status: string }[];
-  docs_by_discipline: { id: string; name: string; code: string; count: number }[];
-  approval_scatter: { asset: string; tag: string; target_date: string; status: string; days_variance: number }[];
+  progress_by_pod: {
+    pod: string;
+    total: number;
+    achieved: number;
+    percent: number;
+  }[];
+  tag_achievement: {
+    tag: string;
+    achieved?: number;
+    in_progress?: number;
+    delayed?: number;
+    not_started?: number;
+  }[];
+  approval_turnaround: {
+    doc_type: string;
+    avg_days: number;
+    max_days: number;
+    rounds: number;
+  }[];
+  delayed_items: {
+    tag_number: string;
+    asset_name: string;
+    tag_code: string;
+    target_date: string;
+    status: string;
+  }[];
+  docs_by_discipline: {
+    id: string;
+    name: string;
+    code: string;
+    count: number;
+  }[];
+  approval_scatter: {
+    asset: string;
+    tag: string;
+    target_date: string;
+    status: string;
+    days_variance: number;
+  }[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -65,7 +113,11 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery<Analytics>({
     queryKey: ["dashboard", "analytics", project?.id],
     queryFn: async () =>
-      (await api.get("/dashboard/analytics", { params: { project_id: project!.id } })).data,
+      (
+        await api.get("/dashboard/analytics", {
+          params: { project_id: project!.id },
+        })
+      ).data,
     enabled: !!project,
   });
 
@@ -102,14 +154,23 @@ export default function DashboardPage() {
             <div className="lg:col-span-2 rounded-xl border bg-card p-5">
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-sm font-medium">Document Submissions</h3>
-                <a href="/documents" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">View all</a>
+                <a
+                  href="/documents"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  View all
+                </a>
               </div>
-              <p className="text-xs text-muted-foreground mb-4">Monthly submissions by type with approval trend</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Monthly submissions by type with approval trend
+              </p>
               <SubmissionTimeline data={data.submission_timeline} />
             </div>
             <div className="rounded-xl border bg-card p-5">
               <h3 className="text-sm font-medium mb-1">Status Distribution</h3>
-              <p className="text-xs text-muted-foreground mb-4">Current document statuses</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Current document statuses
+              </p>
               <StatusDonut data={data.doc_status_distribution} />
             </div>
           </div>
@@ -118,18 +179,34 @@ export default function DashboardPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border bg-card p-5">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-medium">Commissioning Progress by POD</h3>
-                <a href="/commissioning/tracking" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">View all</a>
+                <h3 className="text-sm font-medium">
+                  Commissioning Progress by POD
+                </h3>
+                <a
+                  href="/commissioning/tracking"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  View all
+                </a>
               </div>
-              <p className="text-xs text-muted-foreground mb-4">Requirement completion per POD</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Requirement completion per POD
+              </p>
               <ProgressByPod data={data.progress_by_pod} />
             </div>
             <div className="rounded-xl border bg-card p-5">
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-sm font-medium">Tag Achievement</h3>
-                <a href="/commissioning/tag-targets" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">View all</a>
+                <a
+                  href="/commissioning/tag-targets"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  View all
+                </a>
               </div>
-              <p className="text-xs text-muted-foreground mb-4">Asset tag status across all PODs</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Asset tag status across all PODs
+              </p>
               <TagAchievement data={data.tag_achievement} />
             </div>
           </div>
@@ -138,15 +215,24 @@ export default function DashboardPage() {
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="rounded-xl border bg-card p-5">
               <h3 className="text-sm font-medium mb-1">Approval Turnaround</h3>
-              <p className="text-xs text-muted-foreground mb-4">Average days to receive response</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Average days to receive response
+              </p>
               <TurnaroundChart data={data.approval_turnaround} />
             </div>
             <div className="lg:col-span-2 rounded-xl border bg-card p-5">
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-sm font-medium">Delayed Items</h3>
-                <a href="/commissioning/tag-targets" className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">View all</a>
+                <a
+                  href="/commissioning/tag-targets"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  View all
+                </a>
               </div>
-              <p className="text-xs text-muted-foreground mb-4">Assets past their target commissioning date</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                Assets past their target commissioning date
+              </p>
               <DelayedTable data={data.delayed_items} />
             </div>
           </div>
@@ -154,13 +240,22 @@ export default function DashboardPage() {
           {/* Row 5: Treemap + Scatter */}
           <div className="grid gap-4 lg:grid-cols-1">
             <div className="rounded-xl border bg-card p-5">
-              <h3 className="text-sm font-medium mb-1">Documents by Discipline</h3>
-              <p className="text-xs text-muted-foreground mb-4">Distribution of documents across disciplines</p>
+              <h3 className="text-sm font-medium mb-1">
+                Documents by Discipline
+              </h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Distribution of documents across disciplines
+              </p>
               <DisciplineTreemap data={data.docs_by_discipline} />
             </div>
             <div className="rounded-xl border bg-card p-5">
-              <h3 className="text-sm font-medium mb-1">Tag Achievement Timing</h3>
-              <p className="text-xs text-muted-foreground mb-4">Days early (negative) or late (positive) per asset tag - color by tag level</p>
+              <h3 className="text-sm font-medium mb-1">
+                Tag Achievement Timing
+              </h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Days early (negative) or late (positive) per asset tag - color
+                by tag level
+              </p>
               <ApprovalScatter data={data.approval_scatter} />
             </div>
           </div>
@@ -176,33 +271,88 @@ export default function DashboardPage() {
 function KPICards({ kpi }: { kpi: Analytics["kpi"] }) {
   const router = useRouter();
   const cards = [
-    { label: "Total Documents", value: kpi.total_documents, icon: FileText, color: "text-blue-500", bg: "bg-blue-500/10", href: "/documents" },
-    { label: "Approved", value: kpi.approved_documents, icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-500/10", href: "/documents?status=approved" },
-    { label: "Pending Approval", value: kpi.pending_approval, icon: Clock, color: "text-amber-500", bg: "bg-amber-500/10", href: "/documents?status=with_approver_1" },
-    { label: "Commissioning", value: `${kpi.completion_percent}%`, icon: Target, color: "text-purple-500", bg: "bg-purple-500/10", sub: `${kpi.achieved_requirements} of ${kpi.total_requirements} requirements`, href: "/commissioning/requirements" },
+    {
+      label: "Total Documents",
+      value: kpi.total_documents,
+      icon: FileText,
+      color: "text-blue-500",
+      bg: "bg-blue-500/10",
+      href: "/documents",
+    },
+    {
+      label: "Approved",
+      value: kpi.approved_documents,
+      icon: CheckCircle2,
+      color: "text-emerald-500",
+      bg: "bg-emerald-500/10",
+      href: "/documents?status=approved",
+    },
+    {
+      label: "Pending Approval",
+      value: kpi.pending_approval,
+      icon: Clock,
+      color: "text-amber-500",
+      bg: "bg-amber-500/10",
+      href: "/documents?status=with_approver_1",
+    },
+    {
+      label: "Commissioning",
+      value: `${kpi.completion_percent}%`,
+      icon: Target,
+      color: "text-purple-500",
+      bg: "bg-purple-500/10",
+      sub: `${kpi.achieved_requirements} of ${kpi.total_requirements} requirements`,
+      href: "/commissioning/requirements",
+    },
   ];
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map(({ label, value, icon: Icon, color, bg, sub, href }) => (
-        <div key={label} onClick={() => router.push(href)}
-          className="rounded-xl border bg-card p-5 flex flex-col justify-between cursor-pointer hover:border-primary/50 transition-colors">
+        <div
+          key={label}
+          onClick={() => router.push(href)}
+          className="rounded-xl border bg-card p-5 flex flex-col justify-between cursor-pointer hover:border-primary/50 transition-colors"
+        >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground">{label}</span>
-            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg}`}>
+            <span className="text-xs font-medium text-muted-foreground">
+              {label}
+            </span>
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${bg}`}
+            >
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
           </div>
           <p className="text-2xl font-bold">{value}</p>
-          {sub && <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>}
+          {sub && (
+            <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function SubmissionTimeline({ data }: { data: Analytics["submission_timeline"] }) {
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function SubmissionTimeline({
+  data,
+}: {
+  data: Analytics["submission_timeline"];
+}) {
+  const MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const formatted = data.map((d) => {
     const [year, month] = d.month.split("-");
     return { ...d, month: `${MONTHS[parseInt(month) - 1]}-${year.slice(2)}` };
@@ -210,12 +360,28 @@ function SubmissionTimeline({ data }: { data: Analytics["submission_timeline"] }
 
   return (
     <ResponsiveContainer width="100%" height={280}>
-      <ComposedChart data={formatted} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-        <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+      <ComposedChart
+        data={formatted}
+        margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
+      >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="var(--border)"
+          opacity={0.5}
+        />
+        <XAxis
+          dataKey="month"
+          tick={{ fontSize: 11 }}
+          stroke="var(--muted-foreground)"
+        />
         <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
         <Tooltip
-          contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+          contentStyle={{
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            fontSize: 12,
+          }}
           labelStyle={{ color: "var(--foreground)" }}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -223,7 +389,14 @@ function SubmissionTimeline({ data }: { data: Analytics["submission_timeline"] }
         <Bar dataKey="MIR" stackId="a" fill="#8b5cf6" />
         <Bar dataKey="CIR" stackId="a" fill="#f59e0b" />
         <Bar dataKey="FAT" stackId="a" fill="#10b981" radius={[4, 4, 0, 0]} />
-        <Line type="monotone" dataKey="approved" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} name="Approved" />
+        <Line
+          type="monotone"
+          dataKey="approved"
+          stroke="#ef4444"
+          strokeWidth={2}
+          dot={{ r: 3 }}
+          name="Approved"
+        />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -231,7 +404,6 @@ function SubmissionTimeline({ data }: { data: Analytics["submission_timeline"] }
 
 function StatusDonut({ data }: { data: Analytics["doc_status_distribution"] }) {
   const router = useRouter();
-  const total = data.reduce((s, d) => s + d.count, 0);
   const labels: Record<string, string> = {
     approved: "Approved",
     approved_with_comments: "Approved (B)",
@@ -247,25 +419,51 @@ function StatusDonut({ data }: { data: Analytics["doc_status_distribution"] }) {
     <div className="flex flex-col items-center">
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
-          <Pie data={data} dataKey="count" nameKey="status" cx="50%" cy="50%"
-            innerRadius={55} outerRadius={80} paddingAngle={2}
-            onClick={(_, idx) => router.push(`/documents?status=${data[idx].status}`)}
-            className="cursor-pointer">
+          <Pie
+            data={data}
+            dataKey="count"
+            nameKey="status"
+            cx="50%"
+            cy="50%"
+            innerRadius={55}
+            outerRadius={80}
+            paddingAngle={2}
+            onClick={(_, idx) =>
+              router.push(`/documents?status=${data[idx].status}`)
+            }
+            className="cursor-pointer"
+          >
             {data.map((d, i) => (
               <Cell key={i} fill={STATUS_COLORS[d.status] || "#6b7280"} />
             ))}
           </Pie>
-          <Tooltip formatter={(v: number, name: string) => [v, labels[name] || name]}
-            contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }}
-            itemStyle={{ color: "var(--foreground)" }} />
+          <Tooltip
+            formatter={(v: number, name: string) => [v, labels[name] || name]}
+            contentStyle={{
+              backgroundColor: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "var(--foreground)",
+            }}
+            itemStyle={{ color: "var(--foreground)" }}
+          />
         </PieChart>
       </ResponsiveContainer>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 w-full">
         {data.slice(0, 6).map((d) => (
-          <div key={d.status} className="flex items-center gap-1.5 text-[11px] cursor-pointer hover:opacity-70 transition-opacity"
-            onClick={() => router.push(`/documents?status=${d.status}`)}>
-            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[d.status] || "#6b7280" }} />
-            <span className="text-muted-foreground truncate">{labels[d.status] || d.status}</span>
+          <div
+            key={d.status}
+            className="flex items-center gap-1.5 text-[11px] cursor-pointer hover:opacity-70 transition-opacity"
+            onClick={() => router.push(`/documents?status=${d.status}`)}
+          >
+            <div
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: STATUS_COLORS[d.status] || "#6b7280" }}
+            />
+            <span className="text-muted-foreground truncate">
+              {labels[d.status] || d.status}
+            </span>
             <span className="ml-auto font-medium">{d.count}</span>
           </div>
         ))}
@@ -279,16 +477,24 @@ function ProgressByPod({ data }: { data: Analytics["progress_by_pod"] }) {
   return (
     <div className="space-y-5">
       {data.map((pod, i) => (
-        <div key={pod.pod} className="space-y-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-          onClick={() => router.push(`/commissioning/tracking?pod=${pod.pod}`)}>
+        <div
+          key={pod.pod}
+          className="space-y-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => router.push(`/commissioning/tracking?pod=${pod.pod}`)}
+        >
           <div className="flex justify-between text-sm">
             <span className="font-medium">{pod.pod}</span>
-            <span className="text-muted-foreground text-xs">{pod.achieved}/{pod.total} ({pod.percent}%)</span>
+            <span className="text-muted-foreground text-xs">
+              {pod.achieved}/{pod.total} ({pod.percent}%)
+            </span>
           </div>
           <div className="h-3 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pod.percent}%`, backgroundColor: POD_COLORS[i % POD_COLORS.length] }}
+              style={{
+                width: `${pod.percent}%`,
+                backgroundColor: POD_COLORS[i % POD_COLORS.length],
+              }}
             />
           </div>
         </div>
@@ -297,14 +503,24 @@ function ProgressByPod({ data }: { data: Analytics["progress_by_pod"] }) {
         <div className="flex justify-between text-sm">
           <span className="font-medium">Overall</span>
           <span className="text-muted-foreground text-xs">
-            {data.reduce((s, d) => s + d.achieved, 0)}/{data.reduce((s, d) => s + d.total, 0)}
-            {" "}({data.length > 0 ? Math.round(data.reduce((s, d) => s + d.achieved, 0) / data.reduce((s, d) => s + d.total, 0) * 100) : 0}%)
+            {data.reduce((s, d) => s + d.achieved, 0)}/
+            {data.reduce((s, d) => s + d.total, 0)} (
+            {data.length > 0
+              ? Math.round(
+                  (data.reduce((s, d) => s + d.achieved, 0) /
+                    data.reduce((s, d) => s + d.total, 0)) *
+                    100,
+                )
+              : 0}
+            %)
           </span>
         </div>
         <div className="h-3 rounded-full bg-muted overflow-hidden mt-1.5">
           <div
             className="h-full rounded-full bg-foreground/80 transition-all duration-500"
-            style={{ width: `${data.length > 0 ? Math.round(data.reduce((s, d) => s + d.achieved, 0) / data.reduce((s, d) => s + d.total, 0) * 100) : 0}%` }}
+            style={{
+              width: `${data.length > 0 ? Math.round((data.reduce((s, d) => s + d.achieved, 0) / data.reduce((s, d) => s + d.total, 0)) * 100) : 0}%`,
+            }}
           />
         </div>
       </div>
@@ -315,8 +531,15 @@ function ProgressByPod({ data }: { data: Analytics["progress_by_pod"] }) {
 function TagAchievement({ data }: { data: Analytics["tag_achievement"] }) {
   const router = useRouter();
   const order = ["red", "yellow", "green", "blue"];
-  const labels: Record<string, string> = { red: "Red Tag", yellow: "Yellow Tag", green: "Green Tag", blue: "Blue Tag" };
-  const sorted = order.map((t) => data.find((d) => d.tag === t)).filter(Boolean) as Analytics["tag_achievement"];
+  const labels: Record<string, string> = {
+    red: "Red Tag",
+    yellow: "Yellow Tag",
+    green: "Green Tag",
+    blue: "Blue Tag",
+  };
+  const sorted = order
+    .map((t) => data.find((d) => d.tag === t))
+    .filter(Boolean) as Analytics["tag_achievement"];
 
   return (
     <div className="space-y-4">
@@ -327,23 +550,57 @@ function TagAchievement({ data }: { data: Analytics["tag_achievement"] }) {
         const notStarted = tag.not_started || 0;
         const total = achieved + inProgress + delayed + notStarted;
         return (
-          <div key={tag.tag} className="space-y-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-          onClick={() => router.push(`/commissioning/tag-targets?tag=${tag.tag}`)}>
+          <div
+            key={tag.tag}
+            className="space-y-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={() =>
+              router.push(`/commissioning/tag-targets?tag=${tag.tag}`)
+            }
+          >
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: TAG_COLORS[tag.tag] }} />
+                <div
+                  className="h-3 w-3 rounded-full"
+                  style={{ backgroundColor: TAG_COLORS[tag.tag] }}
+                />
                 <span className="font-medium">{labels[tag.tag]}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{achieved}/{total} achieved</span>
+              <span className="text-xs text-muted-foreground">
+                {achieved}/{total} achieved
+              </span>
             </div>
             {/* Stacked bar */}
             <div className="h-2.5 rounded-full bg-muted overflow-hidden flex">
-              {achieved > 0 && <div className="h-full" style={{ width: `${achieved / total * 100}%`, backgroundColor: TAG_COLORS[tag.tag] }} />}
-              {inProgress > 0 && <div className="h-full" style={{ width: `${inProgress / total * 100}%`, backgroundColor: TAG_COLORS[tag.tag], opacity: 0.4 }} />}
-              {delayed > 0 && <div className="h-full bg-red-500/60" style={{ width: `${delayed / total * 100}%` }} />}
+              {achieved > 0 && (
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${(achieved / total) * 100}%`,
+                    backgroundColor: TAG_COLORS[tag.tag],
+                  }}
+                />
+              )}
+              {inProgress > 0 && (
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${(inProgress / total) * 100}%`,
+                    backgroundColor: TAG_COLORS[tag.tag],
+                    opacity: 0.4,
+                  }}
+                />
+              )}
+              {delayed > 0 && (
+                <div
+                  className="h-full bg-red-500/60"
+                  style={{ width: `${(delayed / total) * 100}%` }}
+                />
+              )}
             </div>
             <div className="flex gap-3 text-[10px] text-muted-foreground">
-              {delayed > 0 && <span className="text-red-500">{delayed} delayed</span>}
+              {delayed > 0 && (
+                <span className="text-red-500">{delayed} delayed</span>
+              )}
               {inProgress > 0 && <span>{inProgress} in progress</span>}
               {notStarted > 0 && <span>{notStarted} not started</span>}
             </div>
@@ -357,16 +614,53 @@ function TagAchievement({ data }: { data: Analytics["tag_achievement"] }) {
 function TurnaroundChart({ data }: { data: Analytics["approval_turnaround"] }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-        <XAxis dataKey="doc_type" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-        <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" label={{ value: "Days", angle: -90, position: "insideLeft", style: { fontSize: 10 } }} />
+      <BarChart
+        data={data}
+        margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
+      >
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="var(--border)"
+          opacity={0.5}
+        />
+        <XAxis
+          dataKey="doc_type"
+          tick={{ fontSize: 11 }}
+          stroke="var(--muted-foreground)"
+        />
+        <YAxis
+          tick={{ fontSize: 11 }}
+          stroke="var(--muted-foreground)"
+          label={{
+            value: "Days",
+            angle: -90,
+            position: "insideLeft",
+            style: { fontSize: 10 },
+          }}
+        />
         <Tooltip
-          contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }}
+          contentStyle={{
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "var(--foreground)",
+          }}
           itemStyle={{ color: "var(--foreground)" }}
         />
-        <Bar dataKey="avg_days" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Average" />
-        <Bar dataKey="max_days" fill="#3b82f6" opacity={0.3} radius={[4, 4, 0, 0]} name="Max" />
+        <Bar
+          dataKey="avg_days"
+          fill="#3b82f6"
+          radius={[4, 4, 0, 0]}
+          name="Average"
+        />
+        <Bar
+          dataKey="max_days"
+          fill="#3b82f6"
+          opacity={0.3}
+          radius={[4, 4, 0, 0]}
+          name="Max"
+        />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -375,7 +669,11 @@ function TurnaroundChart({ data }: { data: Analytics["approval_turnaround"] }) {
 function DelayedTable({ data }: { data: Analytics["delayed_items"] }) {
   const router = useRouter();
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No delayed items</p>;
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center">
+        No delayed items
+      </p>
+    );
   }
 
   return (
@@ -391,19 +689,31 @@ function DelayedTable({ data }: { data: Analytics["delayed_items"] }) {
         </thead>
         <tbody>
           {data.map((item, i) => (
-            <tr key={i} className="border-b border-border/50 last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => router.push(`/commissioning/tag-targets?tag=${item.tag_code}`)}>
+            <tr
+              key={i}
+              className="border-b border-border/50 last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() =>
+                router.push(`/commissioning/tag-targets?tag=${item.tag_code}`)
+              }
+            >
               <td className="py-2">
                 <div className="font-medium text-xs">{item.tag_number}</div>
-                <div className="text-[11px] text-muted-foreground">{item.asset_name}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {item.asset_name}
+                </div>
               </td>
               <td className="py-2">
                 <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: TAG_COLORS[item.tag_code] }} />
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: TAG_COLORS[item.tag_code] }}
+                  />
                   <span className="text-xs capitalize">{item.tag_code}</span>
                 </span>
               </td>
-              <td className="py-2 text-xs text-muted-foreground">{item.target_date}</td>
+              <td className="py-2 text-xs text-muted-foreground">
+                {item.target_date}
+              </td>
               <td className="py-2">
                 <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-medium">
                   {item.status.replace("_", " ")}
@@ -416,7 +726,6 @@ function DelayedTable({ data }: { data: Analytics["delayed_items"] }) {
     </div>
   );
 }
-
 
 interface WeeklyItem {
   week: string;
@@ -433,7 +742,11 @@ function WeeklyTargets() {
   const { data } = useQuery<WeeklyItem[]>({
     queryKey: ["dashboard", "weekly-targets", project?.id],
     queryFn: async () =>
-      (await api.get("/dashboard/weekly-targets", { params: { project_id: project!.id } })).data,
+      (
+        await api.get("/dashboard/weekly-targets", {
+          params: { project_id: project!.id },
+        })
+      ).data,
     enabled: !!project,
   });
 
@@ -444,32 +757,91 @@ function WeeklyTargets() {
       router.push(`/commissioning/tag-targets?tag=${tag}&status=delayed`);
     } else {
       // Extract dates from "30 May - 05 Jun" format
-      router.push(`/commissioning/tag-targets?tag=${tag}&week=${encodeURIComponent(entry.week)}`);
+      router.push(
+        `/commissioning/tag-targets?tag=${tag}&week=${encodeURIComponent(entry.week)}`,
+      );
     }
   };
 
   return (
     <div className="rounded-xl border bg-card p-5">
       <h3 className="text-sm font-medium mb-1">Upcoming Tag Targets</h3>
-      <p className="text-xs text-muted-foreground mb-4">Number of tags to achieve per week - click a bar for details</p>
+      <p className="text-xs text-muted-foreground mb-4">
+        Number of tags to achieve per week - click a bar for details
+      </p>
       <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-          <XAxis dataKey="week" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" interval={0} />
-          <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" allowDecimals={false} />
+        <BarChart
+          data={data}
+          margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="var(--border)"
+            opacity={0.5}
+          />
+          <XAxis
+            dataKey="week"
+            tick={{ fontSize: 10 }}
+            stroke="var(--muted-foreground)"
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 11 }}
+            stroke="var(--muted-foreground)"
+            allowDecimals={false}
+          />
           <Tooltip
-            contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-            labelStyle={{ color: "var(--foreground)", fontWeight: 600, marginBottom: 4 }}
-            labelFormatter={(label) => label === "Overdue" ? "⚠ OVERDUE" : `Target: ${label}`}
+            contentStyle={{
+              backgroundColor: "var(--card)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              fontSize: 12,
+            }}
+            labelStyle={{
+              color: "var(--foreground)",
+              fontWeight: 600,
+              marginBottom: 4,
+            }}
+            labelFormatter={(label) =>
+              label === "Overdue" ? "⚠ OVERDUE" : `Target: ${label}`
+            }
             formatter={(value: number, name: string) => [`${value} tags`, name]}
             itemStyle={{ paddingTop: 2 }}
             cursor={{ fill: "var(--muted)", opacity: 0.3 }}
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar dataKey="red" name="Red Tag" fill="#ef4444" radius={[3, 3, 0, 0]} className="cursor-pointer" onClick={(_, idx) => handleBarClick("red", data[idx])} />
-          <Bar dataKey="yellow" name="Yellow Tag" fill="#eab308" radius={[3, 3, 0, 0]} className="cursor-pointer" onClick={(_, idx) => handleBarClick("yellow", data[idx])} />
-          <Bar dataKey="green" name="Green Tag" fill="#22c55e" radius={[3, 3, 0, 0]} className="cursor-pointer" onClick={(_, idx) => handleBarClick("green", data[idx])} />
-          <Bar dataKey="blue" name="Blue Tag" fill="#3b82f6" radius={[3, 3, 0, 0]} className="cursor-pointer" onClick={(_, idx) => handleBarClick("blue", data[idx])} />
+          <Bar
+            dataKey="red"
+            name="Red Tag"
+            fill="#ef4444"
+            radius={[3, 3, 0, 0]}
+            className="cursor-pointer"
+            onClick={(_, idx) => handleBarClick("red", data[idx])}
+          />
+          <Bar
+            dataKey="yellow"
+            name="Yellow Tag"
+            fill="#eab308"
+            radius={[3, 3, 0, 0]}
+            className="cursor-pointer"
+            onClick={(_, idx) => handleBarClick("yellow", data[idx])}
+          />
+          <Bar
+            dataKey="green"
+            name="Green Tag"
+            fill="#22c55e"
+            radius={[3, 3, 0, 0]}
+            className="cursor-pointer"
+            onClick={(_, idx) => handleBarClick("green", data[idx])}
+          />
+          <Bar
+            dataKey="blue"
+            name="Blue Tag"
+            fill="#3b82f6"
+            radius={[3, 3, 0, 0]}
+            className="cursor-pointer"
+            onClick={(_, idx) => handleBarClick("blue", data[idx])}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -483,64 +855,179 @@ function TrackerExport() {
   const handleExport = async (type: "tracker" | "remarks") => {
     if (!project) return;
     try {
-      const { data } = await api.get("/dashboard/tracker-export", { params: { project_id: project.id } });
+      const { data } = await api.get("/dashboard/tracker-export", {
+        params: { project_id: project.id },
+      });
       if (!data || data.length === 0) return;
 
       let csv: string;
       if (type === "tracker") {
-        const headers = ["Asset Tag", "Asset Name", "POD", "Location", "Requirement", "Code", "Level", "Doc Type", "Req Status", "Doc Reference", "Doc Status", "Approver 1", "Decision 1", "Aconex Sent 1", "Aconex Received 1", "Approver 1 Remarks", "Response Date 1", "Approver 2", "Decision 2", "Aconex Sent 2", "Aconex Received 2", "Approver 2 Remarks", "Response Date 2"];
-        const rows = data.map((r: any) => [r.asset_tag, r.asset_name, r.pod, r.location, r.requirement, r.req_code, r.level, r.doc_type, r.req_status, r.doc_reference, r.doc_status, r.approver_1_signatory, r.approver_1_decision, r.approver_1_aconex_sent, r.approver_1_aconex_received, r.approver_1_remarks, r.approver_1_date, r.approver_2_signatory, r.approver_2_decision, r.approver_2_aconex_sent, r.approver_2_aconex_received, r.approver_2_remarks, r.approver_2_date]);
-        csv = [headers, ...rows].map((r) => r.map((c: string) => `"${(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+        const headers = [
+          "Asset Tag",
+          "Asset Name",
+          "POD",
+          "Location",
+          "Requirement",
+          "Code",
+          "Level",
+          "Doc Type",
+          "Req Status",
+          "Doc Reference",
+          "Doc Status",
+          "Approver 1",
+          "Decision 1",
+          "Aconex Sent 1",
+          "Aconex Received 1",
+          "Approver 1 Remarks",
+          "Response Date 1",
+          "Approver 2",
+          "Decision 2",
+          "Aconex Sent 2",
+          "Aconex Received 2",
+          "Approver 2 Remarks",
+          "Response Date 2",
+        ];
+        const rows = data.map((r: any) => [
+          r.asset_tag,
+          r.asset_name,
+          r.pod,
+          r.location,
+          r.requirement,
+          r.req_code,
+          r.level,
+          r.doc_type,
+          r.req_status,
+          r.doc_reference,
+          r.doc_status,
+          r.approver_1_signatory,
+          r.approver_1_decision,
+          r.approver_1_aconex_sent,
+          r.approver_1_aconex_received,
+          r.approver_1_remarks,
+          r.approver_1_date,
+          r.approver_2_signatory,
+          r.approver_2_decision,
+          r.approver_2_aconex_sent,
+          r.approver_2_aconex_received,
+          r.approver_2_remarks,
+          r.approver_2_date,
+        ]);
+        csv = [headers, ...rows]
+          .map((r) =>
+            r
+              .map((c: string) => `"${(c || "").replace(/"/g, '""')}"`)
+              .join(","),
+          )
+          .join("\n");
       } else {
-        const withRemarks = data.filter((r: any) => r.approver_1_remarks || r.approver_2_remarks);
-        const headers = ["Asset Tag", "Requirement", "Doc Reference", "Approver 1", "Decision", "Aconex Sent", "Aconex Received", "Remarks", "Date", "Approver 2", "Decision", "Aconex Sent", "Aconex Received", "Remarks", "Date"];
-        const rows = withRemarks.map((r: any) => [r.asset_tag, r.requirement, r.doc_reference, r.approver_1_signatory, r.approver_1_decision, r.approver_1_aconex_sent, r.approver_1_aconex_received, r.approver_1_remarks, r.approver_1_date, r.approver_2_signatory, r.approver_2_decision, r.approver_2_aconex_sent, r.approver_2_aconex_received, r.approver_2_remarks, r.approver_2_date]);
-        csv = [headers, ...rows].map((r) => r.map((c: string) => `"${(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+        const withRemarks = data.filter(
+          (r: any) => r.approver_1_remarks || r.approver_2_remarks,
+        );
+        const headers = [
+          "Asset Tag",
+          "Requirement",
+          "Doc Reference",
+          "Approver 1",
+          "Decision",
+          "Aconex Sent",
+          "Aconex Received",
+          "Remarks",
+          "Date",
+          "Approver 2",
+          "Decision",
+          "Aconex Sent",
+          "Aconex Received",
+          "Remarks",
+          "Date",
+        ];
+        const rows = withRemarks.map((r: any) => [
+          r.asset_tag,
+          r.requirement,
+          r.doc_reference,
+          r.approver_1_signatory,
+          r.approver_1_decision,
+          r.approver_1_aconex_sent,
+          r.approver_1_aconex_received,
+          r.approver_1_remarks,
+          r.approver_1_date,
+          r.approver_2_signatory,
+          r.approver_2_decision,
+          r.approver_2_aconex_sent,
+          r.approver_2_aconex_received,
+          r.approver_2_remarks,
+          r.approver_2_date,
+        ]);
+        csv = [headers, ...rows]
+          .map((r) =>
+            r
+              .map((c: string) => `"${(c || "").replace(/"/g, '""')}"`)
+              .join(","),
+          )
+          .join("\n");
       }
 
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = type === "tracker" ? `commissioning-tracker-${project.name}.csv` : `approver-remarks-${project.name}.csv`;
+      a.download =
+        type === "tracker"
+          ? `commissioning-tracker-${project.name}.csv`
+          : `approver-remarks-${project.name}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
     <div className="rounded-xl border bg-card p-5">
       <h3 className="text-sm font-medium mb-1">Reports & Exports</h3>
-      <p className="text-xs text-muted-foreground mb-4">Download commissioning data for offline use or reporting</p>
+      <p className="text-xs text-muted-foreground mb-4">
+        Download commissioning data for offline use or reporting
+      </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <button onClick={() => handleExport("tracker")}
-          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left">
+        <button
+          onClick={() => handleExport("tracker")}
+          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
             <FileText className="h-5 w-5 text-blue-500" />
           </div>
           <div>
             <p className="text-sm font-medium">Commissioning Tracker</p>
-            <p className="text-[11px] text-muted-foreground">Full tracker with all levels, statuses, and approvals</p>
+            <p className="text-[11px] text-muted-foreground">
+              Full tracker with all levels, statuses, and approvals
+            </p>
           </div>
         </button>
-        <button onClick={() => handleExport("remarks")}
-          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left">
+        <button
+          onClick={() => handleExport("remarks")}
+          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
             <Clock className="h-5 w-5 text-amber-500" />
           </div>
           <div>
             <p className="text-sm font-medium">Approver Remarks</p>
-            <p className="text-[11px] text-muted-foreground">All approver comments and decisions per document</p>
+            <p className="text-[11px] text-muted-foreground">
+              All approver comments and decisions per document
+            </p>
           </div>
         </button>
-        <button onClick={() => router.push("/commissioning/tracking")}
-          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left">
+        <button
+          onClick={() => router.push("/commissioning/tracking")}
+          className="flex items-center gap-3 p-4 rounded-lg border hover:border-primary/50 transition-colors text-left"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
             <Target className="h-5 w-5 text-emerald-500" />
           </div>
           <div>
             <p className="text-sm font-medium">Live Tracking</p>
-            <p className="text-[11px] text-muted-foreground">Real-time commissioning progress with tag status</p>
+            <p className="text-[11px] text-muted-foreground">
+              Real-time commissioning progress with tag status
+            </p>
           </div>
         </button>
       </div>
@@ -548,9 +1035,21 @@ function TrackerExport() {
   );
 }
 
-const TREEMAP_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
+const TREEMAP_COLORS = [
+  "#3b82f6",
+  "#f59e0b",
+  "#10b981",
+  "#8b5cf6",
+  "#ef4444",
+  "#06b6d4",
+  "#ec4899",
+];
 
-function DisciplineTreemap({ data }: { data: Analytics["docs_by_discipline"] }) {
+function DisciplineTreemap({
+  data,
+}: {
+  data: Analytics["docs_by_discipline"];
+}) {
   const router = useRouter();
   const treeData = data.map((d, i) => ({
     name: d.name,
@@ -563,11 +1062,35 @@ function DisciplineTreemap({ data }: { data: Analytics["docs_by_discipline"] }) 
     if (width < 40 || height < 40) return null;
     return (
       <g>
-        <rect x={x} y={y} width={width} height={height} fill={fill} rx={6} ry={6} stroke="var(--card)" strokeWidth={3} className="cursor-pointer hover:opacity-80 transition-opacity" />
-        <text x={x + width / 2} y={y + height / 2 - 8} textAnchor="middle" fill="#fff" fontSize={width > 100 ? 14 : 11} fontWeight={600}>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={fill}
+          rx={6}
+          ry={6}
+          stroke="var(--card)"
+          strokeWidth={3}
+          className="cursor-pointer hover:opacity-80 transition-opacity"
+        />
+        <text
+          x={x + width / 2}
+          y={y + height / 2 - 8}
+          textAnchor="middle"
+          fill="#fff"
+          fontSize={width > 100 ? 14 : 11}
+          fontWeight={600}
+        >
           {name}
         </text>
-        <text x={x + width / 2} y={y + height / 2 + 12} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={width > 100 ? 13 : 10}>
+        <text
+          x={x + width / 2}
+          y={y + height / 2 + 12}
+          textAnchor="middle"
+          fill="rgba(255,255,255,0.8)"
+          fontSize={width > 100 ? 13 : 10}
+        >
           {size} docs
         </text>
       </g>
@@ -592,43 +1115,111 @@ function DisciplineTreemap({ data }: { data: Analytics["docs_by_discipline"] }) 
   );
 }
 
-const SCATTER_COLORS: Record<string, string> = { WIR: "#3b82f6", MIR: "#f59e0b", CIR: "#8b5cf6", FAT: "#10b981" };
-
 function ApprovalScatter({ data }: { data: Analytics["approval_scatter"] }) {
   const byTag: Record<string, typeof data> = {};
-  data.forEach((d) => { (byTag[d.tag] ||= []).push(d); });
+  data.forEach((d) => {
+    (byTag[d.tag] ||= []).push(d);
+  });
 
   // Assign index for X axis positioning
   const indexed = data.map((d, i) => ({ ...d, idx: i }));
   const byTagIndexed: Record<string, typeof indexed> = {};
-  indexed.forEach((d) => { (byTagIndexed[d.tag] ||= []).push(d); });
+  indexed.forEach((d) => {
+    (byTagIndexed[d.tag] ||= []).push(d);
+  });
 
   return (
     <ResponsiveContainer width="100%" height={300}>
       <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-        <XAxis type="number" dataKey="idx" tick={false} stroke="var(--muted-foreground)" name="Asset" hide />
-        <YAxis type="number" dataKey="days_variance" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" label={{ value: "Days (- early, + late)", angle: -90, position: "insideLeft", fontSize: 10, fill: "var(--muted-foreground)" }} />
-        <ReferenceLine y={0} stroke="#10b981" strokeWidth={2} strokeDasharray="4 2" label={{ value: "On time", position: "right", fontSize: 10, fill: "#10b981" }} />
+        <CartesianGrid
+          strokeDasharray="3 3"
+          stroke="var(--border)"
+          opacity={0.5}
+        />
+        <XAxis
+          type="number"
+          dataKey="idx"
+          tick={false}
+          stroke="var(--muted-foreground)"
+          name="Asset"
+          hide
+        />
+        <YAxis
+          type="number"
+          dataKey="days_variance"
+          tick={{ fontSize: 11 }}
+          stroke="var(--muted-foreground)"
+          label={{
+            value: "Days (- early, + late)",
+            angle: -90,
+            position: "insideLeft",
+            fontSize: 10,
+            fill: "var(--muted-foreground)",
+          }}
+        />
+        <ReferenceLine
+          y={0}
+          stroke="#10b981"
+          strokeWidth={2}
+          strokeDasharray="4 2"
+          label={{
+            value: "On time",
+            position: "right",
+            fontSize: 10,
+            fill: "#10b981",
+          }}
+        />
         <Tooltip
           content={({ active, payload }) => {
             if (!active || !payload?.length) return null;
             const d = payload[0].payload;
             const color = TAG_COLORS[d.tag] || "#6b7280";
-            const label = d.days_variance > 0 ? `${d.days_variance} days late` : d.days_variance < 0 ? `${Math.abs(d.days_variance)} days early` : "On time";
+            const label =
+              d.days_variance > 0
+                ? `${d.days_variance} days late`
+                : d.days_variance < 0
+                  ? `${Math.abs(d.days_variance)} days early`
+                  : "On time";
             return (
-              <div style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+              <div
+                style={{
+                  backgroundColor: "var(--card)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                }}
+              >
                 <p style={{ color, fontWeight: 600 }}>{d.asset}</p>
-                <p style={{ color: "var(--foreground)" }}>{d.tag.charAt(0).toUpperCase() + d.tag.slice(1)} Tag - {d.status}</p>
-                <p style={{ color: d.days_variance > 0 ? "#ef4444" : "#10b981", fontWeight: 500 }}>{label}</p>
-                <p style={{ color: "var(--muted-foreground)", fontSize: 10 }}>Target: {d.target_date}</p>
+                <p style={{ color: "var(--foreground)" }}>
+                  {d.tag.charAt(0).toUpperCase() + d.tag.slice(1)} Tag -{" "}
+                  {d.status}
+                </p>
+                <p
+                  style={{
+                    color: d.days_variance > 0 ? "#ef4444" : "#10b981",
+                    fontWeight: 500,
+                  }}
+                >
+                  {label}
+                </p>
+                <p style={{ color: "var(--muted-foreground)", fontSize: 10 }}>
+                  Target: {d.target_date}
+                </p>
               </div>
             );
           }}
         />
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
         {Object.entries(byTagIndexed).map(([tag, points]) => (
-          <Scatter key={tag} name={`${tag.charAt(0).toUpperCase() + tag.slice(1)} Tag`} data={points} fill={TAG_COLORS[tag] || "#6b7280"} opacity={0.85} r={7} />
+          <Scatter
+            key={tag}
+            name={`${tag.charAt(0).toUpperCase() + tag.slice(1)} Tag`}
+            data={points}
+            fill={TAG_COLORS[tag] || "#6b7280"}
+            opacity={0.85}
+            r={7}
+          />
         ))}
       </ScatterChart>
     </ResponsiveContainer>

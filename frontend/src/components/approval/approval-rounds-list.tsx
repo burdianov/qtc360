@@ -1,17 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, FileText, MessageSquare, Download, Upload, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  MessageSquare,
+  Download,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
-import type { ApprovalRound, ApprovalStatus, ProjectApprover } from "./approval-action-panel";
+import type {
+  ApprovalRound,
+  ApprovalStatus,
+  ProjectApprover,
+} from "./approval-action-panel";
 
 interface Props {
   documentId: string;
@@ -34,7 +52,9 @@ export function ApprovalRoundsList({
 
   return (
     <div className="space-y-2">
-      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rounds</h4>
+      <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Rounds
+      </h4>
       <div className="space-y-2">
         {rounds.map((round) => (
           <RoundCard
@@ -43,11 +63,15 @@ export function ApprovalRoundsList({
             round={round}
             locked={locked}
             party={
-              projectApprovers.find((pa) => pa.approver_order === round.approver_order)?.approver.name || "-"
+              projectApprovers.find(
+                (pa) => pa.approver_order === round.approver_order,
+              )?.approver.name || "-"
             }
             decision={
               round.decision_status_id
-                ? approvalStatuses.find((s) => s.id === round.decision_status_id) || null
+                ? approvalStatuses.find(
+                    (s) => s.id === round.decision_status_id,
+                  ) || null
                 : null
             }
             onReplace={onReplace}
@@ -80,7 +104,10 @@ function RoundCard({
 
   const handleDownloadBundle = async () => {
     try {
-      const res = await api.get(`/documents/${documentId}/approval-rounds/${round.id}/bundle`, { responseType: "blob" });
+      const res = await api.get(
+        `/documents/${documentId}/approval-rounds/${round.id}/bundle`,
+        { responseType: "blob" },
+      );
       const disposition = res.headers["content-disposition"] || "";
       const match = disposition.match(/filename="?([^"]+)"?/);
       const filename = match?.[1] || "bundle.pdf";
@@ -90,7 +117,9 @@ function RoundCard({
       a.download = filename;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch { toast.error("Failed to download bundle"); }
+    } catch {
+      toast.error("Failed to download bundle");
+    }
   };
 
   return (
@@ -99,20 +128,29 @@ function RoundCard({
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/30"
         onClick={() => setExpanded(!expanded)}
       >
-      {expanded ? <ChevronDown className="h-4 w-4 transition-transform" /> : <ChevronRight className="h-4 w-4 transition-transform" />}
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 transition-transform" />
+        ) : (
+          <ChevronRight className="h-4 w-4 transition-transform" />
+        )}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
             Approver {round.approver_order} - {party}
           </div>
           <div className="text-xs text-muted-foreground">
-            {round.submitted_at ? `Submitted ${formatDate(round.submitted_at)}` : "Not submitted"}
-            {round.response_date && ` · Responded ${formatDate(round.response_date)}${round.response_time ? ` ${round.response_time}` : ""}`}
+            {round.submitted_at
+              ? `Submitted ${formatDate(round.submitted_at)}`
+              : "Not submitted"}
+            {round.response_date &&
+              ` · Responded ${formatDate(round.response_date)}${round.response_time ? ` ${round.response_time}` : ""}`}
           </div>
         </div>
         {decision ? (
           <Badge
             className={
-              tone === "danger" ? "bg-red-500/15 text-red-500" : "bg-emerald-500/15 text-emerald-500"
+              tone === "danger"
+                ? "bg-red-500/15 text-red-500"
+                : "bg-emerald-500/15 text-emerald-500"
             }
           >
             {decision.letter} - {decision.name}
@@ -127,89 +165,108 @@ function RoundCard({
         style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
       >
         <div className="overflow-hidden">
-        <div className="border-t px-3 py-2.5 space-y-2 text-sm">
-          {round.signatory_name && (
-            <div>
-              <span className="text-xs text-muted-foreground">Signatory: </span>
-              <span>{round.signatory_name}</span>
-            </div>
-          )}
-          {round.aconex_submitted_date && (
-            <div>
-              <span className="text-xs text-muted-foreground">Aconex submitted: </span>
-              <span className="text-xs">{formatDate(round.aconex_submitted_date)}</span>
-            </div>
-          )}
-          {round.aconex_received_date && (
-            <div>
-              <span className="text-xs text-muted-foreground">Aconex received: </span>
-              <span className="text-xs">{formatDate(round.aconex_received_date)}</span>
-            </div>
-          )}
-          {round.comments && (
-            <div className="rounded-md bg-muted/50 px-2.5 py-2 text-xs whitespace-pre-wrap">
-              {round.comments}
-            </div>
-          )}
-          {round.returned_file_name && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const res = await api.get(`/documents/${documentId}/approval-rounds/${round.id}/bundle`, { responseType: "blob" });
-                    const url = URL.createObjectURL(res.data);
-                    window.open(url, "_blank");
-                    setTimeout(() => URL.revokeObjectURL(url), 60000);
-                  } catch { toast.error("Failed to open file"); }
-                }}
-                className="flex items-center gap-2 text-xs text-sky-500 hover:underline"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                {round.returned_file_name}
-              </button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
-                disabled={locked}
-                onClick={() => onReplace?.(round.approver_order)}
-              >
-                <RefreshCw className="mr-1 h-3 w-3" />
-                Replace
-              </Button>
-            </div>
-          )}
-          {round.remarks_file_name && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Remarks: {round.remarks_file_name}
-            </div>
-          )}
-          {round.returned_file_name && (
-            <div className="flex gap-2 pt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs"
-                onClick={handleDownloadBundle}
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" />
-                Download Bundle
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs"
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Upload Attachment
-              </Button>
-            </div>
-          )}
-          <RoundAttachmentsList documentId={documentId} roundId={round.id} locked={locked} />
-        </div>
+          <div className="border-t px-3 py-2.5 space-y-2 text-sm">
+            {round.signatory_name && (
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Signatory:{" "}
+                </span>
+                <span>{round.signatory_name}</span>
+              </div>
+            )}
+            {round.aconex_submitted_date && (
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Aconex submitted:{" "}
+                </span>
+                <span className="text-xs">
+                  {formatDate(round.aconex_submitted_date)}
+                </span>
+              </div>
+            )}
+            {round.aconex_received_date && (
+              <div>
+                <span className="text-xs text-muted-foreground">
+                  Aconex received:{" "}
+                </span>
+                <span className="text-xs">
+                  {formatDate(round.aconex_received_date)}
+                </span>
+              </div>
+            )}
+            {round.comments && (
+              <div className="rounded-md bg-muted/50 px-2.5 py-2 text-xs whitespace-pre-wrap">
+                {round.comments}
+              </div>
+            )}
+            {round.returned_file_name && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(
+                        `/documents/${documentId}/approval-rounds/${round.id}/bundle`,
+                        { responseType: "blob" },
+                      );
+                      const url = URL.createObjectURL(res.data);
+                      window.open(url, "_blank");
+                      setTimeout(() => URL.revokeObjectURL(url), 60000);
+                    } catch {
+                      toast.error("Failed to open file");
+                    }
+                  }}
+                  className="flex items-center gap-2 text-xs text-sky-500 hover:underline"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {round.returned_file_name}
+                </button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                  disabled={locked}
+                  onClick={() => onReplace?.(round.approver_order)}
+                >
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                  Replace
+                </Button>
+              </div>
+            )}
+            {round.remarks_file_name && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MessageSquare className="h-3.5 w-3.5" />
+                Remarks: {round.remarks_file_name}
+              </div>
+            )}
+            {round.returned_file_name && (
+              <div className="flex gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={handleDownloadBundle}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Download Bundle
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => setUploadDialogOpen(true)}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Upload Attachment
+                </Button>
+              </div>
+            )}
+            <RoundAttachmentsList
+              documentId={documentId}
+              roundId={round.id}
+              locked={locked}
+            />
+          </div>
         </div>
       </div>
 
@@ -242,16 +299,22 @@ function UploadAttachmentDialog({
       if (!file) throw new Error("No file selected");
       const fd = new FormData();
       fd.append("file", file);
-      return api.post(`/documents/${documentId}/approval-rounds/${roundId}/attachments`, fd);
+      return api.post(
+        `/documents/${documentId}/approval-rounds/${roundId}/attachments`,
+        fd,
+      );
     },
     onSuccess: () => {
       toast.success("Attachment uploaded");
-      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+      queryClient.invalidateQueries({
+        queryKey: ["round-attachments", roundId],
+      });
       onOpenChange(false);
       setFile(null);
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       toast.error(detail || "Failed to upload attachment");
     },
   });
@@ -264,19 +327,30 @@ function UploadAttachmentDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">PDF File</label>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              PDF File
+            </label>
             <input
               type="file"
               accept="application/pdf,image/png,image/jpeg"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
             />
-            <p className="text-xs text-muted-foreground mt-1">{file ? `Selected: ${file.name}` : "Accepted formats: PDF, PNG, JPG"}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {file
+                ? `Selected: ${file.name}`
+                : "Accepted formats: PDF, PNG, JPG"}
+            </p>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => uploadMutation.mutate()} disabled={!file || uploadMutation.isPending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => uploadMutation.mutate()}
+            disabled={!file || uploadMutation.isPending}
+          >
             {uploadMutation.isPending ? "Uploading..." : "Upload"}
           </Button>
         </div>
@@ -292,34 +366,68 @@ interface RoundAttachment {
   insert_after_page: number | null;
 }
 
-function RoundAttachmentsList({ documentId, roundId, locked }: { documentId: string; roundId: string; locked?: boolean }) {
+function RoundAttachmentsList({
+  documentId,
+  roundId,
+  locked,
+}: {
+  documentId: string;
+  roundId: string;
+  locked?: boolean;
+}) {
   const queryClient = useQueryClient();
-  const [pageModalAtt, setPageModalAtt] = useState<RoundAttachment | null>(null);
+  const [pageModalAtt, setPageModalAtt] = useState<RoundAttachment | null>(
+    null,
+  );
   const [pageValue, setPageValue] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<RoundAttachment | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RoundAttachment | null>(
+    null,
+  );
 
   const { data: attachments = [] } = useQuery<RoundAttachment[]>({
     queryKey: ["round-attachments", roundId],
-    queryFn: async () => (await api.get(`/documents/${documentId}/approval-rounds/${roundId}/attachments`)).data,
+    queryFn: async () =>
+      (
+        await api.get(
+          `/documents/${documentId}/approval-rounds/${roundId}/attachments`,
+        )
+      ).data,
   });
 
   const patchMutation = useMutation({
-    mutationFn: async ({ attId, insertAfterPage }: { attId: string; insertAfterPage: number | null }) =>
-      api.patch(`/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`, { insert_after_page: insertAfterPage }),
+    mutationFn: async ({
+      attId,
+      insertAfterPage,
+    }: {
+      attId: string;
+      insertAfterPage: number | null;
+    }) =>
+      api.patch(
+        `/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`,
+        { insert_after_page: insertAfterPage },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+      queryClient.invalidateQueries({
+        queryKey: ["round-attachments", roundId],
+      });
       setPageModalAtt(null);
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (attId: string) => api.delete(`/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`),
+    mutationFn: (attId: string) =>
+      api.delete(
+        `/documents/${documentId}/approval-rounds/${roundId}/attachments/${attId}`,
+      ),
     onSuccess: () => {
       toast.success("Attachment deleted");
-      queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+      queryClient.invalidateQueries({
+        queryKey: ["round-attachments", roundId],
+      });
     },
     onError: (err: unknown) => {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       toast.error(detail || "Failed to delete");
     },
   });
@@ -333,26 +441,53 @@ function RoundAttachmentsList({ documentId, roundId, locked }: { documentId: str
         {attachments.map((att) => {
           const inBundle = att.insert_after_page !== null;
           return (
-            <div key={att.id} className="flex items-center gap-2 text-xs rounded-md border px-2 py-1.5">
+            <div
+              key={att.id}
+              className="flex items-center gap-2 text-xs rounded-md border px-2 py-1.5"
+            >
               <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="flex-1 truncate">{att.filename}</span>
-              {inBundle && <span className="text-muted-foreground shrink-0">after p.{att.insert_after_page! + 1}</span>}
+              {inBundle && (
+                <span className="text-muted-foreground shrink-0">
+                  after p.{att.insert_after_page! + 1}
+                </span>
+              )}
               {!locked && (
                 <>
                   {inBundle ? (
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-amber-600 hover:text-amber-700"
-                      onClick={() => patchMutation.mutate({ attId: att.id, insertAfterPage: null })}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[11px] text-amber-600 hover:text-amber-700"
+                      onClick={() =>
+                        patchMutation.mutate({
+                          attId: att.id,
+                          insertAfterPage: null,
+                        })
+                      }
+                    >
                       Remove from Bundle
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-emerald-600 hover:text-emerald-700"
-                      onClick={() => { setPageModalAtt(att); setPageValue(""); }}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[11px] text-emerald-600 hover:text-emerald-700"
+                      onClick={() => {
+                        setPageModalAtt(att);
+                        setPageValue("");
+                      }}
+                    >
                       Add to Bundle
                     </Button>
                   )}
                   {!inBundle && (
-                    <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-destructive"
-                      onClick={() => setDeleteTarget(att)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5 text-[11px] text-destructive"
+                      onClick={() => setDeleteTarget(att)}
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   )}
@@ -363,15 +498,28 @@ function RoundAttachmentsList({ documentId, roundId, locked }: { documentId: str
         })}
       </div>
 
-      <Dialog open={!!pageModalAtt} onOpenChange={(open) => { if (!open) setPageModalAtt(null); }}>
+      <Dialog
+        open={!!pageModalAtt}
+        onOpenChange={(open) => {
+          if (!open) setPageModalAtt(null);
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Add to Bundle</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Add to Bundle</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Insert <span className="font-medium text-foreground">{pageModalAtt?.filename}</span> into the bundle.
+              Insert{" "}
+              <span className="font-medium text-foreground">
+                {pageModalAtt?.filename}
+              </span>{" "}
+              into the bundle.
             </p>
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">After page number:</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block">
+                After page number:
+              </label>
               <Input
                 type="number"
                 min="1"
@@ -379,31 +527,64 @@ function RoundAttachmentsList({ documentId, roundId, locked }: { documentId: str
                 onChange={(e) => setPageValue(e.target.value)}
                 placeholder="e.g. 1"
               />
-              <p className="text-xs text-muted-foreground mt-1">Enter the page number after which this attachment should be inserted (starts from 1).</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Enter the page number after which this attachment should be
+                inserted (starts from 1).
+              </p>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button variant="outline" onClick={() => setPageModalAtt(null)}>Cancel</Button>
-            <Button disabled={!pageValue || patchMutation.isPending} onClick={() => {
-              const page = parseInt(pageValue);
-              if (isNaN(page) || page < 1) { toast.error("Enter a valid page number"); return; }
-              patchMutation.mutate({ attId: pageModalAtt!.id, insertAfterPage: page - 1 });
-            }}>
+            <Button variant="outline" onClick={() => setPageModalAtt(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!pageValue || patchMutation.isPending}
+              onClick={() => {
+                const page = parseInt(pageValue);
+                if (isNaN(page) || page < 1) {
+                  toast.error("Enter a valid page number");
+                  return;
+                }
+                patchMutation.mutate({
+                  attId: pageModalAtt!.id,
+                  insertAfterPage: page - 1,
+                });
+              }}
+            >
               {patchMutation.isPending ? "Saving..." : "Add to Bundle"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Delete Attachment</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Delete Attachment</DialogTitle>
+          </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete &ldquo;{deleteTarget?.filename}&rdquo;? This cannot be undone.
+            Are you sure you want to delete &ldquo;{deleteTarget?.filename}
+            &rdquo;? This cannot be undone.
           </p>
           <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="destructive" disabled={deleteMutation.isPending} onClick={() => { deleteMutation.mutate(deleteTarget!.id); setDeleteTarget(null); }}>Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                deleteMutation.mutate(deleteTarget!.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

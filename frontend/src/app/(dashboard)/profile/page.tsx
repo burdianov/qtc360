@@ -4,13 +4,17 @@ import { useState, useEffect } from "react";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
+import Image from "next/image";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface Font { id: string; name: string; }
+interface Font {
+  id: string;
+  name: string;
+}
 
 export default function ProfilePage() {
   const qc = useQueryClient();
@@ -47,7 +51,11 @@ export default function ProfilePage() {
   const isDirty = selectedFont !== initialFont || signatureText !== initialText;
 
   const saveMutation = useMutation({
-    mutationFn: () => api.patch("/auth/me", { signature_font: selectedFont, signature_text: signatureText }),
+    mutationFn: () =>
+      api.patch("/auth/me", {
+        signature_font: selectedFont,
+        signature_text: signatureText,
+      }),
     onSuccess: () => {
       toast.success("Signature style saved");
       setInitialFont(selectedFont);
@@ -63,31 +71,61 @@ export default function ProfilePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="text-sm text-muted-foreground">Manage your account preferences</p>
+        <p className="text-sm text-muted-foreground">
+          Manage your account preferences
+        </p>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Your Information</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Your Information</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <div><span className="text-muted-foreground w-24 inline-block">Name:</span> {user?.full_name}</div>
-          <div><span className="text-muted-foreground w-24 inline-block">Email:</span> {user?.email}</div>
-          <div><span className="text-muted-foreground w-24 inline-block">Designation:</span> {user?.designation?.name || <span className="text-muted-foreground italic">Not assigned</span>}</div>
+          <div>
+            <span className="text-muted-foreground w-24 inline-block">
+              Name:
+            </span>{" "}
+            {user?.full_name}
+          </div>
+          <div>
+            <span className="text-muted-foreground w-24 inline-block">
+              Email:
+            </span>{" "}
+            {user?.email}
+          </div>
+          <div>
+            <span className="text-muted-foreground w-24 inline-block">
+              Designation:
+            </span>{" "}
+            {user?.designation?.name || (
+              <span className="text-muted-foreground italic">Not assigned</span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Signature Style</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Signature Style</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Choose how your signature appears on generated documents.</p>
+          <p className="text-sm text-muted-foreground">
+            Choose how your signature appears on generated documents.
+          </p>
 
           <div className="space-y-1.5 max-w-sm">
-            <label className="text-xs text-muted-foreground">Signature Text</label>
+            <label className="text-xs text-muted-foreground">
+              Signature Text
+            </label>
             <Input
               value={signatureText}
               onChange={(e) => setSignatureText(e.target.value)}
               placeholder={user?.full_name || "Your Name"}
             />
-            <p className="text-xs text-muted-foreground">Customize if your full name is too long or you prefer a different signing style.</p>
+            <p className="text-xs text-muted-foreground">
+              Customize if your full name is too long or you prefer a different
+              signing style.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -97,10 +135,15 @@ export default function ProfilePage() {
                 onClick={() => setSelectedFont(font.id)}
                 className={`p-4 rounded-lg border text-left transition-all ${selectedFont === font.id ? "border-primary ring-2 ring-primary/20 bg-primary/5" : "border-border hover:border-primary/50"}`}
               >
-                <span className="text-xs text-muted-foreground block mb-2">{font.name}</span>
-                <img
+                <span className="text-xs text-muted-foreground block mb-2">
+                  {font.name}
+                </span>
+                <Image
                   src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(previewName)}&font_id=${font.id}&color=${sigColor}`}
                   alt={font.name}
+                  width={300}
+                  height={100}
+                  unoptimized
                   className="h-10 object-contain"
                 />
               </button>
@@ -108,7 +151,10 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!isDirty || saveMutation.isPending}
+            >
               {saveMutation.isPending ? "Saving..." : "Save Signature Style"}
             </Button>
           </div>

@@ -11,7 +11,13 @@ import { useSelectedProject } from "@/hooks/use-project";
 import { DataTable, DataTableColumnHeader } from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { exportToCsv } from "@/lib/csv";
 
@@ -30,13 +36,6 @@ interface Asset {
   tag_number: string;
 }
 
-interface RequirementTemplate {
-  id: string;
-  name: string;
-  code: string;
-  level_code: string;
-}
-
 interface AssetProgress {
   asset: Asset;
   total: number;
@@ -48,33 +47,43 @@ interface AssetProgress {
   blue_tag: boolean;
 }
 
-
-const statusColors: Record<string, string> = {
-  not_started: "bg-muted text-muted-foreground",
-  submitted: "bg-amber-500/15 text-amber-500",
-  partial: "bg-orange-500/15 text-orange-500",
-  achieved: "bg-emerald-500/15 text-emerald-500",
-  rejected: "bg-red-500/15 text-red-500",
-};
-
-interface Discipline { id: string; name: string; }
-interface Service { id: string; name: string; discipline_id: string; }
-interface AssetTypeItem { id: string; name: string; service_id: string; }
+interface Discipline {
+  id: string;
+  name: string;
+}
+interface Service {
+  id: string;
+  name: string;
+  discipline_id: string;
+}
+interface AssetTypeItem {
+  id: string;
+  name: string;
+  service_id: string;
+}
 
 export default function CommissioningTrackingPage() {
   const project = useSelectedProject();
   const searchParams = useSearchParams();
-  const [filterTag, setFilterTag] = useState<string>(searchParams.get("tag") || "");
-  const [filterPod, setFilterPod] = useState<string>(searchParams.get("pod") || "");
+  const [filterTag, setFilterTag] = useState<string>(
+    searchParams.get("tag") || "",
+  );
+  const [filterPod, setFilterPod] = useState<string>(
+    searchParams.get("pod") || "",
+  );
   const [filterDiscipline, setFilterDiscipline] = useState<string>("");
   const [filterService, setFilterService] = useState<string>("");
   const [filterAssetType, setFilterAssetType] = useState<string>("");
 
-  const { data: assets = [] } = useQuery<(Asset & { asset_type_id: string })[]>({
-    queryKey: ["assets", project?.id],
-    queryFn: async () => (await api.get("/assets", { params: { project_id: project?.id } })).data,
-    enabled: !!project?.id,
-  });
+  const { data: assets = [] } = useQuery<(Asset & { asset_type_id: string })[]>(
+    {
+      queryKey: ["assets", project?.id],
+      queryFn: async () =>
+        (await api.get("/assets", { params: { project_id: project?.id } }))
+          .data,
+      enabled: !!project?.id,
+    },
+  );
 
   const { data: disciplines = [] } = useQuery<Discipline[]>({
     queryKey: ["disciplines"],
@@ -93,19 +102,26 @@ export default function CommissioningTrackingPage() {
 
   const { data: requirements = [] } = useQuery<AssetRequirement[]>({
     queryKey: ["asset-requirements-all", project?.id],
-    queryFn: async () => (await api.get("/commissioning/asset-requirements", { params: { project_id: project?.id } })).data,
-    enabled: !!project?.id,
-  });
-
-  const { data: templates = [] } = useQuery<RequirementTemplate[]>({
-    queryKey: ["requirement-templates", project?.id],
-    queryFn: async () => (await api.get("/commissioning/requirement-templates", { params: { project_id: project?.id } })).data,
+    queryFn: async () =>
+      (
+        await api.get("/commissioning/asset-requirements", {
+          params: { project_id: project?.id },
+        })
+      ).data,
     enabled: !!project?.id,
   });
 
   // Cascade filter options
-  const filteredServices = filterDiscipline ? services.filter((s) => s.discipline_id === filterDiscipline) : services;
-  const filteredAssetTypes = filterService ? assetTypes.filter((t) => t.service_id === filterService) : filterDiscipline ? assetTypes.filter((t) => filteredServices.some((s) => s.id === t.service_id)) : assetTypes;
+  const filteredServices = filterDiscipline
+    ? services.filter((s) => s.discipline_id === filterDiscipline)
+    : services;
+  const filteredAssetTypes = filterService
+    ? assetTypes.filter((t) => t.service_id === filterService)
+    : filterDiscipline
+      ? assetTypes.filter((t) =>
+          filteredServices.some((s) => s.id === t.service_id),
+        )
+      : assetTypes;
 
   // Build set of asset IDs matching hierarchy filters
   const filteredAssetIds = new Set(
@@ -113,11 +129,19 @@ export default function CommissioningTrackingPage() {
       .filter((a) => {
         if (filterPod && !a.tag_number.includes(`:${filterPod}:`)) return false;
         if (filterAssetType) return a.asset_type_id === filterAssetType;
-        if (filterService) return assetTypes.some((t) => t.id === a.asset_type_id && t.service_id === filterService);
-        if (filterDiscipline) return assetTypes.some((t) => t.id === a.asset_type_id && filteredServices.some((s) => s.id === t.service_id));
+        if (filterService)
+          return assetTypes.some(
+            (t) => t.id === a.asset_type_id && t.service_id === filterService,
+          );
+        if (filterDiscipline)
+          return assetTypes.some(
+            (t) =>
+              t.id === a.asset_type_id &&
+              filteredServices.some((s) => s.id === t.service_id),
+          );
         return true;
       })
-      .map((a) => a.id)
+      .map((a) => a.id),
   );
 
   // Build progress summary per asset
@@ -131,7 +155,9 @@ export default function CommissioningTrackingPage() {
 
       const byTag = (tag: string) => {
         const tagReqs = assetReqs.filter((r) => r.required_for_tag === tag);
-        return tagReqs.length > 0 && tagReqs.every((r) => r.status === "achieved");
+        return (
+          tagReqs.length > 0 && tagReqs.every((r) => r.status === "achieved")
+        );
       };
 
       return {
@@ -148,68 +174,186 @@ export default function CommissioningTrackingPage() {
     .filter((p) => p.total > 0);
 
   const columns: ColumnDef<AssetProgress, unknown>[] = [
-    { accessorKey: "asset.tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, cell: ({ row }) => <span className="font-mono text-xs">{row.original.asset.tag_number}</span> },
-    { accessorKey: "asset.name", header: ({ column }) => <DataTableColumnHeader column={column} title="Asset" /> },
-    { accessorKey: "progress", header: ({ column }) => <DataTableColumnHeader column={column} title="Progress" />, cell: ({ row }) => (
-      <div className="flex items-center gap-2 min-w-[120px]">
-        <Progress value={row.original.progress} className="h-2 flex-1" />
-        <span className="text-xs text-muted-foreground w-8">{row.original.progress}%</span>
-      </div>
-    )},
-    { accessorKey: "achieved", header: "Done", cell: ({ row }) => <span className="text-xs">{row.original.achieved}/{row.original.total}</span> },
-    { id: "tags", header: "Tags", cell: ({ row }) => (
-      <div className="flex gap-1">
-        {row.original.red_tag && <Badge className={tagColors.red}>Red</Badge>}
-        {row.original.yellow_tag && <Badge className={tagColors.yellow}>Yellow</Badge>}
-        {row.original.green_tag && <Badge className={tagColors.green}>Green</Badge>}
-        {row.original.blue_tag && <Badge className={tagColors.blue}>Blue</Badge>}
-        {!row.original.red_tag && !row.original.yellow_tag && !row.original.green_tag && !row.original.blue_tag && (
-          <span className="text-xs text-muted-foreground">-</span>
-        )}
-      </div>
-    )},
+    {
+      accessorKey: "asset.tag_number",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Tag" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs">
+          {row.original.asset.tag_number}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "asset.name",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Asset" />
+      ),
+    },
+    {
+      accessorKey: "progress",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Progress" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2 min-w-30">
+          <Progress value={row.original.progress} className="h-2 flex-1" />
+          <span className="text-xs text-muted-foreground w-8">
+            {row.original.progress}%
+          </span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "achieved",
+      header: "Done",
+      cell: ({ row }) => (
+        <span className="text-xs">
+          {row.original.achieved}/{row.original.total}
+        </span>
+      ),
+    },
+    {
+      id: "tags",
+      header: "Tags",
+      cell: ({ row }) => (
+        <div className="flex gap-1">
+          {row.original.red_tag && <Badge className={tagColors.red}>Red</Badge>}
+          {row.original.yellow_tag && (
+            <Badge className={tagColors.yellow}>Yellow</Badge>
+          )}
+          {row.original.green_tag && (
+            <Badge className={tagColors.green}>Green</Badge>
+          )}
+          {row.original.blue_tag && (
+            <Badge className={tagColors.blue}>Blue</Badge>
+          )}
+          {!row.original.red_tag &&
+            !row.original.yellow_tag &&
+            !row.original.green_tag &&
+            !row.original.blue_tag && (
+              <span className="text-xs text-muted-foreground">-</span>
+            )}
+        </div>
+      ),
+    },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Commissioning Tracking</h1>
-          <p className="text-sm text-muted-foreground">Asset progress through commissioning levels</p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Commissioning Tracking
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Asset progress through commissioning levels
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => exportToCsv(progressData.map((p) => ({ tag_number: p.asset.tag_number, name: p.asset.name, progress: `${p.progress}%`, achieved: `${p.achieved}/${p.total}`, red_tag: p.red_tag ? "Yes" : "No", yellow_tag: p.yellow_tag ? "Yes" : "No", green_tag: p.green_tag ? "Yes" : "No", blue_tag: p.blue_tag ? "Yes" : "No" })), "commissioning-progress")}>
-          <Download className="h-4 w-4 mr-1" />Export CSV
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            exportToCsv(
+              progressData.map((p) => ({
+                tag_number: p.asset.tag_number,
+                name: p.asset.name,
+                progress: `${p.progress}%`,
+                achieved: `${p.achieved}/${p.total}`,
+                red_tag: p.red_tag ? "Yes" : "No",
+                yellow_tag: p.yellow_tag ? "Yes" : "No",
+                green_tag: p.green_tag ? "Yes" : "No",
+                blue_tag: p.blue_tag ? "Yes" : "No",
+              })),
+              "commissioning-progress",
+            )
+          }
+        >
+          <Download className="h-4 w-4 mr-1" />
+          Export CSV
         </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <Select value={filterDiscipline || "__all__"} onValueChange={(v) => { setFilterDiscipline(v === "__all__" ? "" : v); setFilterService(""); setFilterAssetType(""); }}>
-          <SelectTrigger className="w-44"><SelectValue>{filterDiscipline ? disciplines.find((d) => d.id === filterDiscipline)?.name : "All Disciplines"}</SelectValue></SelectTrigger>
+        <Select
+          value={filterDiscipline || "__all__"}
+          onValueChange={(v) => {
+            setFilterDiscipline(v === "__all__" ? "" : v);
+            setFilterService("");
+            setFilterAssetType("");
+          }}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {filterDiscipline
+                ? disciplines.find((d) => d.id === filterDiscipline)?.name
+                : "All Disciplines"}
+            </SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Disciplines</SelectItem>
-            {disciplines.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+            {disciplines.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Select value={filterService || "__all__"} onValueChange={(v) => { setFilterService(v === "__all__" ? "" : v); setFilterAssetType(""); }}>
-          <SelectTrigger className="w-44"><SelectValue>{filterService ? filteredServices.find((s) => s.id === filterService)?.name : "All Services"}</SelectValue></SelectTrigger>
+        <Select
+          value={filterService || "__all__"}
+          onValueChange={(v) => {
+            setFilterService(v === "__all__" ? "" : v);
+            setFilterAssetType("");
+          }}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {filterService
+                ? filteredServices.find((s) => s.id === filterService)?.name
+                : "All Services"}
+            </SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Services</SelectItem>
-            {filteredServices.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            {filteredServices.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Select value={filterAssetType || "__all__"} onValueChange={(v) => setFilterAssetType(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-44"><SelectValue>{filterAssetType ? filteredAssetTypes.find((t) => t.id === filterAssetType)?.name : "All Asset Types"}</SelectValue></SelectTrigger>
+        <Select
+          value={filterAssetType || "__all__"}
+          onValueChange={(v) => setFilterAssetType(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {filterAssetType
+                ? filteredAssetTypes.find((t) => t.id === filterAssetType)?.name
+                : "All Asset Types"}
+            </SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Asset Types</SelectItem>
-            {filteredAssetTypes.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+            {filteredAssetTypes.map((t) => (
+              <SelectItem key={t.id} value={t.id}>
+                {t.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Select value={filterPod || "__all__"} onValueChange={(v: any) => setFilterPod(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-32"><SelectValue>{filterPod || "All PODs"}</SelectValue></SelectTrigger>
+        <Select
+          value={filterPod || "__all__"}
+          onValueChange={(v: any) => setFilterPod(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="w-32">
+            <SelectValue>{filterPod || "All PODs"}</SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All PODs</SelectItem>
             <SelectItem value="P1">P1</SelectItem>
@@ -218,8 +362,17 @@ export default function CommissioningTrackingPage() {
           </SelectContent>
         </Select>
 
-        <Select value={filterTag || "__all__"} onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-44"><SelectValue>{filterTag ? `${filterTag.charAt(0).toUpperCase() + filterTag.slice(1)} Tag` : "All Tags"}</SelectValue></SelectTrigger>
+        <Select
+          value={filterTag || "__all__"}
+          onValueChange={(v: any) => setFilterTag(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue>
+              {filterTag
+                ? `${filterTag.charAt(0).toUpperCase() + filterTag.slice(1)} Tag`
+                : "All Tags"}
+            </SelectValue>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Tags</SelectItem>
             <SelectItem value="red">Red Tag (not achieved)</SelectItem>
@@ -233,14 +386,32 @@ export default function CommissioningTrackingPage() {
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-4">
         <SummaryCard label="Total Assets" value={progressData.length} />
-        <SummaryCard label="Red Tags Achieved" value={progressData.filter((p) => p.red_tag).length} color="text-red-500" />
-        <SummaryCard label="Yellow Tags Achieved" value={progressData.filter((p) => p.yellow_tag).length} color="text-yellow-500" />
-        <SummaryCard label="Green Tags Achieved" value={progressData.filter((p) => p.green_tag).length} color="text-emerald-500" />
+        <SummaryCard
+          label="Red Tags Achieved"
+          value={progressData.filter((p) => p.red_tag).length}
+          color="text-red-500"
+        />
+        <SummaryCard
+          label="Yellow Tags Achieved"
+          value={progressData.filter((p) => p.yellow_tag).length}
+          color="text-yellow-500"
+        />
+        <SummaryCard
+          label="Green Tags Achieved"
+          value={progressData.filter((p) => p.green_tag).length}
+          color="text-emerald-500"
+        />
       </div>
 
       <DataTable
         columns={columns}
-        data={filterTag ? progressData.filter((p) => !p[`${filterTag}_tag` as keyof AssetProgress]) : progressData}
+        data={
+          filterTag
+            ? progressData.filter(
+                (p) => !p[`${filterTag}_tag` as keyof AssetProgress],
+              )
+            : progressData
+        }
         searchKey="asset.tag_number"
         searchPlaceholder="Search by tag number..."
       />
@@ -248,7 +419,15 @@ export default function CommissioningTrackingPage() {
   );
 }
 
-function SummaryCard({ label, value, color }: { label: string; value: number; color?: string }) {
+function SummaryCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color?: string;
+}) {
   return (
     <div className="rounded-lg border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
