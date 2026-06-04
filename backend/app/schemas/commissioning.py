@@ -70,6 +70,12 @@ class AssetRequirementCreate(BaseModel):
     target_date: date | None = None
     notes: str | None = None
 
+class AssetRequirementUpdate(BaseModel):
+    requirement_template_id: uuid.UUID | None = None
+    required_for_tag: TAG_CODES | None = None
+    target_date: date | None = None
+    notes: str | None = None
+
 
 class AssetRequirementBulkCreate(BaseModel):
     """Assign a requirement template to multiple assets at once."""

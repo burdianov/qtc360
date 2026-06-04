@@ -42,6 +42,7 @@ from app.schemas.commissioning import (
     RequirementWorkItemCreate,
     RequirementWorkItemOut,
     RequirementWorkItemUpdate,
+    AssetRequirementUpdate,
 )
 from app.services.audit import record_audit
 from app.services.commissioning import recalculate_requirement_status
@@ -211,6 +212,74 @@ async def create_asset_requirement(
     await db.refresh(req)
     return req
 
+
+@router.patch("/asset-requirements/{asset_requirement_id}", response_model=AssetRequirementOut)
+async def update_asset_requirement(
+    asset_requirement_id: uuid.UUID,
+    data: AssetRequirementUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("commissioning.manage")),
+):
+    result = await db.execute(
+        select(AssetRequirement).where(
+            AssetRequirement.id == asset_requirement_id,
+            AssetRequirement.is_deleted == False,  # noqa: E712
+        )
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Asset requirement not found")
+
+    project_id = await _project_id_for_asset_requirement(db, asset_requirement_id)
+    await assert_user_in_project(user, project_id)
+
+    updates = data.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(req, key, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Requirement already assigned to this asset")
+
+    await db.refresh(req)
+    return req
+
+
+@router.delete("/asset-requirements/{asset_requirement_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_asset_requirement(
+    asset_requirement_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("commissioning.manage")),
+):
+    result = await db.execute(
+        select(AssetRequirement).where(
+            AssetRequirement.id == asset_requirement_id,
+            AssetRequirement.is_deleted == False,  # noqa: E712
+        )
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Asset requirement not found")
+
+    project_id = await _project_id_for_asset_requirement(db, asset_requirement_id)
+    await assert_user_in_project(user, project_id)
+
+    linked_doc = await db.execute(
+        select(DocumentRequirementLink.id).where(
+            DocumentRequirementLink.asset_requirement_id == asset_requirement_id,
+            DocumentRequirementLink.is_deleted == False,  # noqa: E712
+        )
+    )
+    if linked_doc.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete this asset requirement because it is already linked to a document",
+        )
+
+    req.is_deleted = True
+    await db.commit()
 
 @router.post("/asset-requirements/bulk", response_model=list[AssetRequirementOut], status_code=status.HTTP_201_CREATED)
 async def bulk_create_asset_requirements(

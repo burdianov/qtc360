@@ -11,7 +11,11 @@ import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import api from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
 import { useSelectedProject } from "@/hooks/use-project";
-import { DataTable, DataTableColumnHeader } from "@/components/data-table";
+import {
+  DataTable,
+  DataTableColumnHeader,
+  DataTableRowActions,
+} from "@/components/data-table";
 import { Badge } from "@/components/ui/badge";
 import { tagColors } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -119,6 +123,8 @@ export default function CommissioningRequirementsPage() {
   const [assetComboboxOpen, setAssetComboboxOpen] = useState(false);
   const [requirementComboboxOpen, setRequirementComboboxOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingRequirement, setEditingRequirement] =
+    useState<AssetRequirement | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -184,6 +190,52 @@ export default function CommissioningRequirementsPage() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async (values: FormValues) => {
+      if (!editingRequirement) {
+        throw new Error("No requirement selected");
+      }
+
+      return api.patch(
+        `/commissioning/asset-requirements/${editingRequirement.id}`,
+        {
+          requirement_template_id: values.requirement_template_id,
+          required_for_tag: values.required_for_tag,
+          target_date: values.target_date || null,
+          notes: values.notes || null,
+        },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["asset-requirements", selectedAssetId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["asset-requirements-all"] });
+      setDialogOpen(false);
+      setEditingRequirement(null);
+      form.reset({
+        requirement_template_id: "",
+        required_for_tag: "red",
+        target_date: "",
+        notes: "",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (assetRequirementId: string) => {
+      return api.delete(
+        `/commissioning/asset-requirements/${assetRequirementId}`,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["asset-requirements", selectedAssetId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["asset-requirements-all"] });
+    },
+  });
+
   const templateMap = useMemo(
     () => Object.fromEntries(templates.map((t) => [t.id, t])),
     [templates],
@@ -195,7 +247,9 @@ export default function CommissioningRequirementsPage() {
   );
 
   const availableTemplates = templates.filter(
-    (t) => t.is_active !== false && !assignedTemplateIds.has(t.id),
+    (t) =>
+      t.id === editingRequirement?.requirement_template_id ||
+      (t.is_active !== false && !assignedTemplateIds.has(t.id)),
   );
 
   const selectedAsset = assets.find((a) => a.id === selectedAssetId);
@@ -299,9 +353,48 @@ export default function CommissioningRequirementsPage() {
         </span>
       ),
     },
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      enableHiding: false,
+      cell: ({ row }) => (
+        <DataTableRowActions
+          row={row.original}
+          actions={[
+            {
+              label: "Edit",
+              onClick: (requirement) => openEditDialog(requirement),
+            },
+            {
+              label: "Delete",
+              destructive: true,
+              separator: true,
+              confirm:
+                "Remove this requirement from the selected asset? The requirement master will not be deleted.",
+              onClick: (requirement) => deleteMutation.mutate(requirement.id),
+            },
+          ]}
+        />
+      ),
+    },
   ];
 
+  const openEditDialog = (requirement: AssetRequirement) => {
+    setEditingRequirement(requirement);
+    form.reset({
+      requirement_template_id: requirement.requirement_template_id,
+      required_for_tag:
+        requirement.required_for_tag as FormValues["required_for_tag"],
+      target_date: requirement.target_date || "",
+      notes: requirement.notes || "",
+    });
+    setRequirementComboboxOpen(false);
+    setDialogOpen(true);
+  };
+
   const openAssignDialog = () => {
+    setEditingRequirement(null);
     form.reset({
       requirement_template_id: "",
       required_for_tag: "red",
@@ -411,17 +504,22 @@ export default function CommissioningRequirementsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Assign Requirement</DialogTitle>
+            <DialogTitle>
+              {editingRequirement ? "Edit Requirement" : "Assign Requirement"}
+            </DialogTitle>
             <DialogDescription>
-              Add a commissioning requirement to {selectedAsset?.tag_number} -{" "}
-              {selectedAsset?.name}.
+              {editingRequirement
+                ? `Update the requirement assigned to ${selectedAsset?.tag_number} - ${selectedAsset?.name}.`
+                : `Add a commissioning requirement to ${selectedAsset?.tag_number} - ${selectedAsset?.name}.`}
             </DialogDescription>
           </DialogHeader>
 
           <Form {...form}>
             <form
               onSubmit={form.handleSubmit((values) =>
-                assignMutation.mutate(values),
+                editingRequirement
+                  ? updateMutation.mutate(values)
+                  : assignMutation.mutate(values),
               )}
               noValidate
               className="space-y-4"
@@ -575,10 +673,17 @@ export default function CommissioningRequirementsPage() {
                 )}
               />
 
-              {assignMutation.isError && (
+              {(assignMutation.isError || updateMutation.isError) && (
                 <p className="text-sm text-destructive">
-                  Requirement could not be assigned. It may already be assigned
-                  to this asset.
+                  Requirement could not be saved. It may already be assigned to
+                  this asset.
+                </p>
+              )}
+
+              {deleteMutation.isError && (
+                <p className="text-sm text-destructive">
+                  Requirement could not be removed. It may already be linked to
+                  a document.
                 </p>
               )}
 
@@ -586,17 +691,28 @@ export default function CommissioningRequirementsPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setDialogOpen(false)}
+                  onClick={() => {
+                    setDialogOpen(false);
+                    setEditingRequirement(null);
+                  }}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={
-                    assignMutation.isPending || availableTemplates.length === 0
+                    assignMutation.isPending ||
+                    updateMutation.isPending ||
+                    availableTemplates.length === 0
                   }
                 >
-                  {assignMutation.isPending ? "Assigning..." : "Assign"}
+                  {editingRequirement
+                    ? updateMutation.isPending
+                      ? "Saving..."
+                      : "Save Changes"
+                    : assignMutation.isPending
+                      ? "Assigning..."
+                      : "Assign"}
                 </Button>
               </DialogFooter>
             </form>
