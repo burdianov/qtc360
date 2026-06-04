@@ -44,19 +44,19 @@ from app.core.types import (
 )
 
 # Default revision suffix format. Configurable via app_settings key "revision_suffix_format".
-_DEFAULT_REVISION_SUFFIX = "{ref}-REV-{rev}"
+_DEFAULT_REVISION_SUFFIX = "{ref}_{rev}"
 
 
 async def _build_download_filename(db: AsyncSession, doc: "Document") -> str:
     """Build PDF download filename, appending revision suffix if rev > 0."""
     ref = doc.reference_no or "document"
     if doc.revision_no <= 0:
-        return f"{ref}.pdf"
+        return f"{ref}_00.pdf"
     from app.models.app_setting import AppSetting
     result = await db.execute(select(AppSetting).where(AppSetting.key == "revision_suffix_format"))
     setting = result.scalar_one_or_none()
     fmt = setting.value if setting else _DEFAULT_REVISION_SUFFIX
-    name = fmt.replace("{ref}", ref).replace("{rev}", str(doc.revision_no))
+    name = fmt.replace("{ref}", ref).replace("{rev}", f"{int(doc.revision_no or 0):02d}")
     return f"{name}.pdf"
 
 

@@ -1734,7 +1734,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 const url = URL.createObjectURL(res.data);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `${referenceNo || "document"}${revisionNo > 0 ? `-REV-${revisionNo}` : ""}.pdf`;
+                a.download = `${referenceNo || "document"}_${String(revisionNo || 0).padStart(2, "0")}.pdf`;
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
               } catch {

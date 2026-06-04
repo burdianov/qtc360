@@ -343,14 +343,9 @@ async def generate_report(
     )
     attachments = att_result.scalars().all()
 
-    pdf_filename = f"{doc_type.upper()}_{document.reference_no or 'draft'}"
-    if document.revision_no > 0:
-        from app.models.app_setting import AppSetting as AS2
-        rev_fmt_result = await db.execute(select(AS2).where(AS2.key == "revision_suffix_format"))
-        rev_fmt_row = rev_fmt_result.scalar_one_or_none()
-        rev_fmt = rev_fmt_row.value if rev_fmt_row else "{ref}-REV-{rev}"
-        pdf_filename = rev_fmt.replace("{ref}", pdf_filename).replace("{rev}", str(document.revision_no))
-    pdf_filename += ".pdf"
+    ref = document.reference_no or "draft"
+    rev = int(document.revision_no or 0)
+    pdf_filename = f"{ref}_{rev:02d}.pdf"
 
     if attachments:
         pdf_bytes, missing = _merge_attachments_with_status(pdf_bytes, attachments)
@@ -524,7 +519,7 @@ async def generate_crs_pdf(
 
     c.save()
     buf.seek(0)
-    fname = f"{document.reference_no}.pdf"
+    fname = f"{document.reference_no}_{int(document.revision_no or 0):02d}.pdf"
     return Response(content=buf.getvalue(), media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
