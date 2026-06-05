@@ -158,6 +158,31 @@ function NewFATPageContent() {
     }
   }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (editId) return;
+    if (!project?.id || !disciplineId || disciplines.length === 0) return;
+
+    const disciplineCode =
+      disciplines.find((d) => d.id === disciplineId)?.code || "";
+
+    if (!disciplineCode) return;
+
+    api
+      .get("/documents/generate-ref-number", {
+        params: {
+          project_id: project.id,
+          doc_type: "FAT",
+          discipline_code: disciplineCode,
+        },
+      })
+      .then((res) => {
+        form.setValue("reference_no", res.data.reference_number || "");
+      })
+      .catch(() => {
+        toast.error("Failed to generate reference number");
+      });
+  }, [editId, project?.id, disciplineId, disciplines, form]);
+
   // Restore commissioning linkage
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)

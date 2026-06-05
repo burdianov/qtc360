@@ -1,6 +1,5 @@
 import uuid as uuid_mod
 from datetime import datetime, timezone
-from typing import Any
 from uuid import UUID
 from pathlib import Path
 
@@ -9,7 +8,6 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import (
     assert_user_in_project,
@@ -25,12 +23,13 @@ from app.models.user import User
 from app.schemas.document import (
     DocumentCreate, DocumentUpdate, DocumentResponse,
     DocumentApprovalRoundResponse,
-    SubmitToApproverRequest, RecordApprovalResponseRequest,
+    SubmitToApproverRequest,
     OCRExtractRequest, OCRExtractResponse,
 )
 from app.services.commissioning import recalculate_requirements_for_document
 from app.services.audit import record_audit
 from app.services.storage import storage
+from app.models.reference_number_counter import ReferenceNumberCounter
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -43,21 +42,12 @@ from app.core.types import (
     DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, MAX_APPROVERS,
 )
 
-# Default revision suffix format. Configurable via app_settings key "revision_suffix_format".
-_DEFAULT_REVISION_SUFFIX = "{ref}_{rev}"
-
 
 async def _build_download_filename(db: AsyncSession, doc: "Document") -> str:
-    """Build PDF download filename, appending revision suffix if rev > 0."""
+    """Build PDF download filename as REFERENCE_NO_REVISION.pdf."""
     ref = doc.reference_no or "document"
-    if doc.revision_no <= 0:
-        return f"{ref}_00.pdf"
-    from app.models.app_setting import AppSetting
-    result = await db.execute(select(AppSetting).where(AppSetting.key == "revision_suffix_format"))
-    setting = result.scalar_one_or_none()
-    fmt = setting.value if setting else _DEFAULT_REVISION_SUFFIX
-    name = fmt.replace("{ref}", ref).replace("{rev}", f"{int(doc.revision_no or 0):02d}")
-    return f"{name}.pdf"
+    rev = int(doc.revision_no or 0)
+    return f"{ref}_{rev:02d}.pdf"
 
 
 async def _allocate_serial(
@@ -65,27 +55,45 @@ async def _allocate_serial(
     *,
     project_id: UUID,
     doc_type: str,
+    discipline_id: UUID,
 ) -> tuple[ReferenceNumberConfig | None, int]:
-    """Atomically allocate the next serial for (project, doc_type).
-
-    Bumps ``next_serial`` under SELECT FOR UPDATE so two concurrent callers
-    cannot get the same value. Falls back to a per-(project, doc_type, discipline)
-    counter when no config row exists (legacy path)."""
-    result = await db.execute(
+    doc_type = doc_type.upper()
+    config_result = await db.execute(
         select(ReferenceNumberConfig)
         .where(
             ReferenceNumberConfig.project_id == project_id,
             ReferenceNumberConfig.doc_type == doc_type,
+            ReferenceNumberConfig.is_deleted == False,
         )
         .with_for_update()
     )
-    config = result.scalar_one_or_none()
+    config = config_result.scalar_one_or_none()
     if config is None:
         return None, 0
-    if config.next_serial is None or config.next_serial < (config.serial_start or 1):
-        config.next_serial = config.serial_start or 1
-    serial = int(config.next_serial)
-    config.next_serial = serial + 1
+
+    counter_result = await db.execute(
+        select(ReferenceNumberCounter)
+        .where(
+            ReferenceNumberCounter.project_id == project_id,
+            ReferenceNumberCounter.doc_type == doc_type,
+            ReferenceNumberCounter.discipline_id == discipline_id,
+        )
+        .with_for_update()
+    )
+    counter = counter_result.scalar_one_or_none()
+
+    if counter is None:
+        counter = ReferenceNumberCounter(
+            project_id=project_id,
+            doc_type=doc_type,
+            discipline_id=discipline_id,
+            next_serial=config.serial_start or 1,
+        )
+        db.add(counter)
+        await db.flush()
+
+    serial = int(counter.next_serial)
+    counter.next_serial = serial + 1
     return config, serial
 
 
@@ -117,39 +125,63 @@ async def generate_ref_number(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_project_access()),
 ):
-    """Preview the next reference number WITHOUT consuming a serial.
+    from app.models.discipline import Discipline
 
-    Note: this is best-effort — the value may differ from what ``POST /documents``
-    actually allocates if another request slips in between calls."""
+    doc_type = doc_type.upper()
+
     config_result = await db.execute(
         select(ReferenceNumberConfig).where(
             ReferenceNumberConfig.project_id == project_id,
-            ReferenceNumberConfig.doc_type == doc_type.upper(),
+            ReferenceNumberConfig.doc_type == doc_type,
+            ReferenceNumberConfig.is_deleted == False,
         )
     )
     config = config_result.scalar_one_or_none()
 
+    disc_id = None
     if discipline_code:
-        from app.models.discipline import Discipline
         disc_result = await db.execute(
-            select(Discipline.id).where(
+            select(Discipline).where(
                 Discipline.project_id == project_id,
                 Discipline.code == discipline_code,
+                Discipline.is_deleted == False,
             )
         )
-        if not disc_result.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Discipline '{discipline_code}' not found in project")
+        disc = disc_result.scalar_one_or_none()
+        if not disc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Discipline '{discipline_code}' not found in project",
+            )
+        disc_id = disc.id
 
-    if config:
-        next_serial = max(int(config.next_serial or 0), int(config.serial_start or 1))
+    if config and disc_id:
+        counter_result = await db.execute(
+            select(ReferenceNumberCounter).where(
+                ReferenceNumberCounter.project_id == project_id,
+                ReferenceNumberCounter.doc_type == doc_type,
+                ReferenceNumberCounter.discipline_id == disc_id,
+            )
+        )
+        counter = counter_result.scalar_one_or_none()
+        next_serial = counter.next_serial if counter else config.serial_start
+
         ref = _format_reference(
             config,
-            doc_type=doc_type.upper(),
+            doc_type=doc_type,
             discipline_code=discipline_code,
             serial=next_serial,
         )
+    elif config:
+        ref = _format_reference(
+            config,
+            doc_type=doc_type,
+            discipline_code=discipline_code,
+            serial=config.serial_start or 1,
+        )
     else:
-        ref = f"{doc_type.upper()}-0001"
+        ref = f"{doc_type}-0001"
+
     return {"reference_number": ref}
 
 
@@ -297,14 +329,25 @@ async def create_document(
         disc_code = ""
         if body.discipline_id:
             from app.models.discipline import Discipline
-            disc_result = await db.execute(select(Discipline).where(Discipline.id == body.discipline_id))
+            disc_result = await db.execute(
+                select(Discipline).where(
+                    Discipline.id == body.discipline_id,
+                    Discipline.project_id == body.project_id,
+                    Discipline.is_deleted == False,
+                )
+            )
             disc = disc_result.scalar_one_or_none()
-            if disc:
-                disc_code = disc.code
+            if not disc:
+                raise HTTPException(status_code=400, detail="Discipline not found in this project")
+            disc_code = disc.code
+        if not body.discipline_id:
+            raise HTTPException(status_code=400, detail="Discipline is required for automatic reference numbering")
+
         config, serial = await _allocate_serial(
             db,
             project_id=body.project_id,
             doc_type=body.document_type,
+            discipline_id=body.discipline_id,
         )
         if config is None:
             count_q = select(func.count()).select_from(Document).where(
@@ -489,7 +532,7 @@ async def delete_document(
     - If document was submitted to at least one approver: SUPERSEDE
       (mark as superseded, keep the serial number incremented)
     - If document was NOT submitted: HARD DELETE
-      (delete document + all attachments, decrement serial so it can be reused)
+      (delete document + all attachments, do not reuse serial)
     """
     from app.models.document_attachment import DocumentAttachment
     from app.models.document_approval_round import DocumentApprovalRound
@@ -540,7 +583,7 @@ async def delete_document(
             summary=f"Superseded {doc.document_type} '{doc.reference_no}' (was submitted to approver)"
         )
     else:
-        # HARD DELETE: remove document, attachments, and decrement serial
+        # HARD DELETE: remove document and attachments; serial is not reused
 
         # Delete attachment files
         attachments_result = await db.execute(
@@ -552,8 +595,6 @@ async def delete_document(
         for att in attachments:
             try:
                 storage.delete(att.storage_path)
-            except Exception:
-                pass  # Best-effort file cleanup
             except Exception:
                 pass  # Best-effort file cleanup
 
@@ -572,24 +613,10 @@ async def delete_document(
             )
         )
 
-        # Decrement serial number so it can be reused
-        config_result = await db.execute(
-            select(ReferenceNumberConfig)
-            .where(
-                ReferenceNumberConfig.project_id == doc.project_id,
-                ReferenceNumberConfig.doc_type == doc.document_type,
-            )
-            .with_for_update()
-        )
-        config = config_result.scalar_one_or_none()
-        if config and config.next_serial and config.next_serial > (config.serial_start or 1):
-            # Only decrement if it makes sense (avoid going below start)
-            config.next_serial = config.next_serial - 1
-
         await recalculate_requirements_for_document(db, doc_id)
         await record_audit(
             db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id,
-            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted, serial reused)"
+            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted; serial preserved)"
         )
 
         # Hard delete the document itself

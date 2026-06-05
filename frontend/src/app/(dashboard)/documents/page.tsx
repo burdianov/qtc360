@@ -29,6 +29,7 @@ interface Document {
   reference_no: string;
   title: string;
   revision_no: number;
+  full_reference_no?: string;
   status: string;
   current_approver_order: number | null;
   created_at: string;
@@ -92,8 +93,10 @@ export default function DocumentsPage() {
     {
       accessorKey: "reference_no",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Reference" />
+        <DataTableColumnHeader column={column} title="Number" />
       ),
+      cell: ({ row }) =>
+        row.original.full_reference_no || row.original.reference_no,
     },
     {
       accessorKey: "title",

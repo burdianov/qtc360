@@ -32,6 +32,9 @@ dist/
 .venv/
 venv/
 
+NEXT_SESSION_PROMPT.md
+domain/
+
 # Docker
 docker/postgres_data/
 

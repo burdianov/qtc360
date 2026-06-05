@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
+from pydantic import computed_field
 
 from pydantic import BaseModel
 
@@ -145,6 +146,12 @@ class DocumentResponse(BaseModel):
     updated_at: datetime | None
     asset_ids: list[UUID] = []
     crs_data: dict | None = None
+
+    @computed_field
+    def full_reference_no(self) -> str:
+        ref = self.reference_no or "document"
+        rev = int(self.revision_no or 0)
+        return f"{ref}_{rev:02d}"
 
     model_config = {"from_attributes": True}
 

@@ -29,6 +29,7 @@ from app.models.commissioning import (
 from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.designation import Designation
 from app.models.user_preference import UserPreference
+from app.models.reference_number_counter import ReferenceNumberCounter
 
 __all__ = [
     "Base", "BaseModel",
@@ -48,4 +49,5 @@ __all__ = [
     "GateOverrideAcknowledgement",
     "Designation",
     "UserPreference",
+    "ReferenceNumberCounter",
 ]

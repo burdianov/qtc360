@@ -43,6 +43,7 @@ interface SourceDoc {
   title: string;
   revision_no: number;
   description: string | null;
+  full_reference_no?: string;
 }
 interface ApprovalRound {
   id: string;
@@ -461,14 +462,14 @@ function NewCRSPageContent() {
                     <SelectTrigger>
                       <SelectValue placeholder="Select document">
                         {selectedSourceDoc
-                          ? `${selectedSourceDoc.reference_no} - ${selectedSourceDoc.title}`
+                          ? `${selectedSourceDoc.full_reference_no || selectedSourceDoc.reference_no} - ${selectedSourceDoc.title}`
                           : ""}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {sourceDocs.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
-                          {d.reference_no} - {d.title}
+                          {d.full_reference_no || d.reference_no} - {d.title}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -493,7 +494,10 @@ function NewCRSPageContent() {
                         size="icon"
                         className="h-5 w-5"
                         onClick={() =>
-                          copyToClipboard(selectedSourceDoc.reference_no)
+                          copyToClipboard(
+                            selectedSourceDoc.full_reference_no ||
+                              selectedSourceDoc.reference_no,
+                          )
                         }
                       >
                         <Copy className="h-3 w-3" />

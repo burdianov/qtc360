@@ -246,6 +246,7 @@ function NewMIRPageContent() {
         revision_no: number;
         title: string;
         document_type: string;
+        full_reference_no?: string;
         discipline_id: string | null;
       }[]
     >
@@ -784,7 +785,7 @@ function NewMIRPageContent() {
                             for (const docs of Object.values(rejectedDocs)) {
                               const d = docs.find((d) => d.id === revisionOfId);
                               if (d)
-                                return `${d.reference_no} (Rev ${d.revision_no}) - ${d.title}`;
+                                return `${d.full_reference_no || d.reference_no} - ${d.title}`;
                             }
                             return "";
                           })()}
@@ -798,7 +799,7 @@ function NewMIRPageContent() {
                             </div>
                             {docs.map((doc) => (
                               <SelectItem key={doc.id} value={doc.id}>
-                                {doc.reference_no} (Rev {doc.revision_no}) -{" "}
+                                {doc.full_reference_no || doc.reference_no} -{" "}
                                 {doc.title}
                               </SelectItem>
                             ))}
