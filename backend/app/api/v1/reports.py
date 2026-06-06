@@ -319,20 +319,34 @@ async def generate_report(
     # Convert to PDF
     pdf_bytes = await _convert_to_pdf(docx_bytes)
 
-    # Load signature config from app_settings
+    # Load per-user signature display settings
     import json as _json
-    from app.models.app_setting import AppSetting
-    _sig_default = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
-    _sig_setting = (await db.execute(select(AppSetting).where(AppSetting.key == "signature_config"))).scalar_one_or_none()
-    _sig_cfg = _sig_default
-    if _sig_setting:
-        try:
-            _sig_cfg = _json.loads(_sig_setting.value).get(document.document_type, _sig_default)
-        except Exception:
-            pass
+    from app.models.user_preference import UserPreference
+    _sig_default = {"cell_width": 75, "cell_height": 25, "x_offset": 0, "y_offset": 0}
+    _user_sig_cfgs = {}
+    for inspector in [document.site_engineer, document.qaqc_engineer]:
+        if inspector:
+            pref_result = await db.execute(
+                select(UserPreference).where(
+                    UserPreference.user_id == inspector.id,
+                    UserPreference.key == "signature_display",
+                    UserPreference.is_deleted == False,  # noqa: E712
+                )
+            )
+            pref = pref_result.scalar_one_or_none()
+            if pref and pref.value:
+                try:
+                    v = pref.value
+                    if isinstance(v, str):
+                        v = _json.loads(v)
+                    _user_sig_cfgs[str(inspector.id)] = {**_sig_default, **v}
+                except Exception:
+                    _user_sig_cfgs[str(inspector.id)] = _sig_default
+            else:
+                _user_sig_cfgs[str(inspector.id)] = _sig_default
 
-    # Stamp vector signatures onto the PDF
-    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document, _sig_cfg)
+    # Stamp signatures onto the PDF
+    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document, _sig_default, _user_sig_cfgs)
 
     # Append attachments as additional pages
     from app.models.document_attachment import DocumentAttachment
@@ -624,19 +638,24 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     return buf.getvalue()
 
 
-def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict | None = None) -> bytes:
-    """Overlay vector text signatures onto the PDF using reportlab.
-    Finds the signature marker text and draws the signature font text at that location.
-    Reads sizing/positioning from sig_cfg dict.
+def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict | None = None, user_sig_cfgs: dict | None = None) -> bytes:
+    """Overlay signatures onto the PDF.
+    Uses uploaded PNG signature if available, falls back to font-based rendering.
+    Finds the signature marker text and draws the signature at that location.
+    Reads sizing/positioning from per-user sig_cfg or falls back to global sig_cfg.
     """
     if not sig_cfg:
-        sig_cfg = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
+        sig_cfg = {"cell_width": 75, "cell_height": 25, "x_offset": 0, "y_offset": 0}
+    if not user_sig_cfgs:
+        user_sig_cfgs = {}
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.utils import ImageReader
     from pypdf import PdfReader, PdfWriter
     import fitz  # PyMuPDF
+    from app.services.storage import storage
 
     signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
     inspectors = [document.site_engineer, document.qaqc_engineer]
@@ -645,28 +664,35 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
     sigs_to_stamp: list[dict] = []
     for i, inspector in enumerate(inspectors, start=1):
         if inspector and signed_flags[i - 1]:
-            sig_name = inspector.signature_text or inspector.full_name
-            font_id = inspector.signature_font or DEFAULT_SIGNATURE_FONT
             marker = f"SIGMARK{i}"
-            sigs_to_stamp.append({"marker": marker, "name": sig_name, "font_id": font_id})
+            sig_key = f"signatures/{inspector.id}.png"
+            has_png = storage.exists(sig_key)
+            sigs_to_stamp.append({
+                "marker": marker,
+                "user_id": str(inspector.id),
+                "name": inspector.signature_text or inspector.full_name,
+                "font_id": inspector.signature_font or DEFAULT_SIGNATURE_FONT,
+                "png_key": sig_key if has_png else None,
+            })
 
     if not sigs_to_stamp:
         return pdf_bytes
 
-    # Register signature fonts with reportlab
+    # Register fonts for fallback
     fonts_dir = FONTS_DIR
     from app.services.signature import SIGNATURE_FONTS
     registered_fonts: set[str] = set()
     for sig in sigs_to_stamp:
-        fid = sig["font_id"]
-        if fid not in registered_fonts:
-            font_file = SIGNATURE_FONTS.get(fid, SIGNATURE_FONTS["dancing_script"])
-            font_path = fonts_dir / font_file
-            try:
-                pdfmetrics.registerFont(TTFont(fid, str(font_path)))
-            except Exception:
-                pass
-            registered_fonts.add(fid)
+        if not sig["png_key"]:
+            fid = sig["font_id"]
+            if fid not in registered_fonts:
+                font_file = SIGNATURE_FONTS.get(fid, SIGNATURE_FONTS["dancing_script"])
+                font_path = fonts_dir / font_file
+                try:
+                    pdfmetrics.registerFont(TTFont(fid, str(font_path)))
+                except Exception:
+                    pass
+                registered_fonts.add(fid)
 
     # Use PyMuPDF to find marker text positions
     pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -677,7 +703,6 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
             page = pdf_doc[page_idx]
             instances = page.search_for(marker)
             if instances:
-                # Take the first instance
                 rect = instances[0]
                 sig["page"] = page_idx
                 sig["x"] = rect.x0
@@ -685,67 +710,80 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
                 sig["width"] = rect.width
                 sig["height"] = rect.height
                 sig["page_height"] = page.rect.height
-                # Redact the marker text (white it out)
                 for inst in instances:
                     page.add_redact_annot(inst, fill=(1, 1, 1))
                 page.apply_redactions()
                 break
 
-    # Save the redacted PDF
     redacted_bytes = pdf_doc.tobytes()
     pdf_doc.close()
 
-    # Now overlay vector signatures using reportlab
+    # Overlay signatures using reportlab
     reader = PdfReader(io.BytesIO(redacted_bytes))
     writer = PdfWriter()
+
+    cell_width = sig_cfg.get("cell_width", 75)
+    cell_height = sig_cfg.get("cell_height", 25)
+    x_offset = sig_cfg.get("x_offset", 0)
 
     for page_idx in range(len(reader.pages)):
         page = reader.pages[page_idx]
         page_width = float(page.mediabox.width)
         page_height = float(page.mediabox.height)
 
-        # Check if any signature goes on this page
         page_sigs = [s for s in sigs_to_stamp if s.get("page") == page_idx]
 
         if page_sigs:
-            # Create overlay with reportlab
             overlay_buf = io.BytesIO()
             c = canvas.Canvas(overlay_buf, pagesize=(page_width, page_height))
 
             for sig in page_sigs:
-                font_id = sig["font_id"]
-                name = sig["name"]
+                # Per-user settings override global
+                ucfg = user_sig_cfgs.get(sig["user_id"], sig_cfg)
+                cw = ucfg.get("cell_width", cell_width)
+                ch = ucfg.get("cell_height", cell_height)
+                xo = ucfg.get("x_offset", x_offset)
+                yo = ucfg.get("y_offset", 0)
+
                 # PyMuPDF coords: origin top-left; reportlab: origin bottom-left
-                x = sig["x"] - sig["width"] * sig_cfg["x_offset"]
-                y = page_height - sig["y"] - sig["height"]
-                # Scale signature to fill the cell
-                cell_width = sig_cfg["cell_width"]
-                font_size = sig_cfg["font_size"]
-                try:
-                    c.setFont(font_id, font_size)
-                except Exception:
-                    c.setFont("Helvetica", font_size)
-                # Scale down to fit within cell_width
-                from reportlab.pdfbase.pdfmetrics import stringWidth
-                text_width = stringWidth(name, font_id, font_size)
-                if text_width > cell_width and text_width > 0:
-                    font_size = font_size * (cell_width / text_width)
+                x = sig["x"] + xo
+                y = page_height - sig["y"] - sig["height"] + yo
+
+                if sig["png_key"]:
+                    # Draw uploaded PNG, scaled to fit cell
+                    png_bytes = storage.read(sig["png_key"])
+                    img = ImageReader(io.BytesIO(png_bytes))
+                    iw, ih = img.getSize()
+                    # Scale to fit within cell while preserving aspect ratio
+                    scale = min(cw / iw, ch / ih)
+                    draw_w = iw * scale
+                    draw_h = ih * scale
+                    # Center vertically in cell
+                    y_adj = y + (ch - draw_h) / 2
+                    c.drawImage(img, x, y_adj, width=draw_w, height=draw_h, mask="auto")
+                else:
+                    # Fallback: font-based signature
+                    font_id = sig["font_id"]
+                    name = sig["name"]
+                    font_size = 36
                     try:
                         c.setFont(font_id, font_size)
                     except Exception:
                         c.setFont("Helvetica", font_size)
-                # Parse color
-                color_hex = sig_cfg["color"]
-                r = int(color_hex[1:3], 16) / 255
-                g = int(color_hex[3:5], 16) / 255
-                b = int(color_hex[5:7], 16) / 255
-                c.setFillColorRGB(r, g, b)
-                c.drawString(x, y, name)
+                    from reportlab.pdfbase.pdfmetrics import stringWidth
+                    text_width = stringWidth(name, font_id, font_size)
+                    if text_width > cw and text_width > 0:
+                        font_size = font_size * (cw / text_width)
+                        try:
+                            c.setFont(font_id, font_size)
+                        except Exception:
+                            c.setFont("Helvetica", font_size)
+                    c.setFillColorRGB(0.1, 0.14, 0.49)
+                    c.drawString(x, y, name)
 
             c.save()
             overlay_buf.seek(0)
 
-            # Merge overlay onto page
             overlay_reader = PdfReader(overlay_buf)
             page.merge_page(overlay_reader.pages[0])
 

@@ -56,6 +56,7 @@ class UserResponse(BaseModel):
     is_superuser: bool
     signature_font: str | None = None
     signature_text: str | None = None
+    signature_path: str | None = None
     designation_id: uuid.UUID | None = None
     designation: DesignationRef | None = None
     roles: list[RoleRef] = []

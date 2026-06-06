@@ -63,6 +63,7 @@ async def _purge_document_storage(db: AsyncSession, doc_id: UUID) -> int:
     Returns the number of files we attempted to unlink. Each unlink is
     wrapped in try/except — we never want storage cleanup to abort a delete.
     """
+    from app.models.document_attachment import DocumentAttachment
     keys: set[str] = set()
 
     att_result = await db.execute(
@@ -830,6 +831,7 @@ async def notify_signatories(
 async def sign_document(
     doc_id: UUID,
     role: str = Query(..., pattern="^(site_engineer|qaqc_engineer)$"),
+    on_behalf_of: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.sign")),
 ):
@@ -844,15 +846,38 @@ async def sign_document(
     if doc.status != "draft":
         raise HTTPException(status_code=400, detail="Document is not in draft status")
 
+    from app.models.signature_delegation import SignatureDelegation
+
+    # Determine the signatory
+    signatory_id = user.id
+    if on_behalf_of:
+        from uuid import UUID as _UUID
+        try:
+            behalf_uuid = _UUID(on_behalf_of)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid on_behalf_of")
+        if behalf_uuid != user.id:
+            # Verify delegation exists
+            deleg = await db.execute(
+                select(SignatureDelegation).where(
+                    SignatureDelegation.grantor_id == behalf_uuid,
+                    SignatureDelegation.delegate_id == user.id,
+                    SignatureDelegation.is_deleted == False,  # noqa: E712
+                )
+            )
+            if not deleg.scalar_one_or_none():
+                raise HTTPException(status_code=403, detail="No delegation from this user")
+        signatory_id = behalf_uuid
+
     if role == "site_engineer":
         if doc.site_engineer_signed:
             raise HTTPException(status_code=400, detail="Already signed by inspector 1")
-        doc.site_engineer_id = user.id
+        doc.site_engineer_id = signatory_id
         doc.site_engineer_signed = True
     else:
         if doc.qaqc_engineer_signed:
             raise HTTPException(status_code=400, detail="Already signed by inspector 2")
-        doc.qaqc_engineer_id = user.id
+        doc.qaqc_engineer_id = signatory_id
         doc.qaqc_engineer_signed = True
 
     # Auto-transition to internally_signed when all required sigs collected.
@@ -867,11 +892,61 @@ async def sign_document(
             doc.submitted_date = datetime.now(timezone.utc)
 
     await record_audit(db, user_id=user.id, action="sign", entity_type="document", entity_id=doc.id, summary=f"Signed {doc.document_type} '{doc.reference_no}' as {role}")
+
+    # Notify grantor if signed on their behalf
+    if signatory_id != user.id:
+        from app.models.notification import Notification
+        doc_type_lower = doc.document_type.lower()
+        db.add(Notification(
+            user_id=signatory_id,
+            project_id=doc.project_id,
+            title=f"Signed on your behalf — {doc.reference_no}",
+            message=f"{user.full_name} signed {doc.document_type} '{doc.reference_no}' on your behalf.",
+            link=f"/qaqc/{doc_type_lower}?doc={doc.id}",
+        ))
+
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
+    await db.refresh(doc)
+    return doc
+
+
+@router.post("/{doc_id}/unsign", response_model=DocumentResponse)
+async def unsign_document(
+    doc_id: UUID,
+    role: str = Query(..., pattern="^(site_engineer|qaqc_engineer)$"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.sign")),
+):
+    result = await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await assert_user_in_project(user, doc.project_id)
+    if doc.status not in ("draft", "internally_signed"):
+        raise HTTPException(status_code=400, detail="Cannot remove signature after submission")
+
+    if role == "site_engineer":
+        if not doc.site_engineer_signed:
+            raise HTTPException(status_code=400, detail="Not signed by inspector 1")
+        doc.site_engineer_signed = False
+    else:
+        if not doc.qaqc_engineer_signed:
+            raise HTTPException(status_code=400, detail="Not signed by inspector 2")
+        doc.qaqc_engineer_signed = False
+
+    # Revert to draft if it was internally_signed
+    if doc.status == "internally_signed":
+        doc.status = "draft"
+        doc.submitted_date = None
+
+    await record_audit(db, user_id=user.id, action="unsign", entity_type="document", entity_id=doc.id, summary=f"Removed signature from {doc.document_type} '{doc.reference_no}' as {role}")
+    await db.commit()
     await db.refresh(doc)
     return doc
 

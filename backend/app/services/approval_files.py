@@ -209,17 +209,29 @@ async def _assemble_s1(db: AsyncSession, doc) -> bytes:
     docx_bytes = _fill_template(template.file, context, doc_loaded)
     main_pdf_bytes = await _convert_to_pdf(docx_bytes)
 
-    _sig_default = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
-    _sig_setting = (await db.execute(
-        select(AppSetting).where(AppSetting.key == "signature_config")
-    )).scalar_one_or_none()
-    _sig_cfg = _sig_default
-    if _sig_setting:
-        try:
-            _sig_cfg = _json.loads(_sig_setting.value).get(doc_loaded.document_type, _sig_default)
-        except Exception:
-            pass
-    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc_loaded, _sig_cfg)
+    _sig_default = {"cell_width": 75, "cell_height": 25, "x_offset": 0, "y_offset": 0}
+    from app.models.user_preference import UserPreference
+    _user_sig_cfgs = {}
+    for inspector in [doc_loaded.site_engineer, doc_loaded.qaqc_engineer]:
+        if inspector:
+            _pref = (await db.execute(
+                select(UserPreference).where(
+                    UserPreference.user_id == inspector.id,
+                    UserPreference.key == "signature_display",
+                    UserPreference.is_deleted == False,  # noqa: E712
+                )
+            )).scalar_one_or_none()
+            if _pref and _pref.value:
+                try:
+                    v = _pref.value
+                    if isinstance(v, str):
+                        v = _json.loads(v)
+                    _user_sig_cfgs[str(inspector.id)] = {**_sig_default, **v}
+                except Exception:
+                    _user_sig_cfgs[str(inspector.id)] = _sig_default
+            else:
+                _user_sig_cfgs[str(inspector.id)] = _sig_default
+    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc_loaded, _sig_default, _user_sig_cfgs)
 
     # Doc-level user attachments (kind="user").
     attachments_result = await db.execute(

@@ -56,6 +56,7 @@ interface User {
   designation: { id: string; name: string } | null;
   signature_text: string | null;
   signature_font: string | null;
+  has_signature: boolean;
 }
 interface Asset {
   id: string;
@@ -133,6 +134,7 @@ function NewMIRPageContent() {
     inspector1: boolean;
     inspector2: boolean;
   }>({ inspector1: false, inspector2: false });
+  const [sigTouched, setSigTouched] = useState(false);
   const [commissioningLinkage, setCommissioningLinkage] =
     useState<CommissioningLinkage | null>(null);
   const linkageDirtyRef = useRef(false);
@@ -155,6 +157,15 @@ function NewMIRPageContent() {
     queryKey: ["users"],
     queryFn: async () => (await api.get("/auth/users")).data,
   });
+
+  const { data: delegatedBy = [] } = useQuery<{ grantor_id: string }[]>({
+    queryKey: ["delegated-by"],
+    queryFn: async () => (await api.get("/auth/me/delegated-by")).data,
+  });
+  const delegatedByIds = new Set(delegatedBy.map((d) => d.grantor_id));
+  const canSignFor = (assignedId: string | undefined) =>
+    assignedId === currentUser?.id || (!!assignedId && delegatedByIds.has(assignedId));
+
   const { data: assets = [] } = useQuery<Asset[]>({
     queryKey: ["assets", project?.id],
     queryFn: async () =>
@@ -517,8 +528,14 @@ function NewMIRPageContent() {
       toast.error("Please save the document first before signing");
       return;
     }
+    if (isDirty || form.formState.isDirty) {
+      toast.error("Please save your changes before signing");
+      return;
+    }
+    const assignedId = inspector1Id;
+    const url = `/documents/${editId}/sign?role=${role}${assignedId ? `&on_behalf_of=${assignedId}` : ""}`;
     try {
-      await api.post(`/documents/${editId}/sign?role=${role}`);
+      await api.post(url);
       setSigned((s) =>
         role === "site_engineer"
           ? { ...s, inspector1: true }
@@ -528,6 +545,22 @@ function NewMIRPageContent() {
       toast.success("Signed successfully");
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "Failed to sign");
+    }
+  };
+
+  const handleUnsign = async (role: "site_engineer" | "qaqc_engineer") => {
+    if (!editId) return;
+    try {
+      await api.post(`/documents/${editId}/unsign?role=${role}`);
+      setSigned((s) =>
+        role === "site_engineer"
+          ? { ...s, inspector1: false }
+          : { ...s, inspector2: false },
+      );
+      queryClient.invalidateQueries({ queryKey: ["document", editId] });
+      toast.success("Signature removed");
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to remove signature");
     }
   };
 
@@ -1081,16 +1114,18 @@ function NewMIRPageContent() {
               <CardHeader>
                 <CardTitle className="text-base">Signatory</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+              <CardContent className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-4 items-start">
                   <FormField
                     control={form.control}
                     name="inspector_1_id"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Name</FormLabel>
+                        <div className="flex gap-1.5 w-[48%]">
+                        <div className="flex-1 min-w-0">
                         <Select
-                          onValueChange={field.onChange}
+                          onValueChange={(v: string) => { field.onChange(v); setSigTouched(true); }}
                           value={field.value}
                           disabled={
                             !!editId &&
@@ -1121,92 +1156,81 @@ function NewMIRPageContent() {
                             ))}
                           </SelectContent>
                         </Select>
+                        </div>
+                        {field.value && (
+                          <button
+                            type="button"
+                            className="shrink-0 p-2 rounded-md border hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            onClick={() => { field.onChange(""); if (signed.inspector1) handleUnsign("site_engineer"); }}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                        </div>
+                        {sigTouched && inspector1Id && inspector1Id !== currentUser?.id && !canSignFor(inspector1Id) && (
+                          <p className="text-xs text-amber-600">You don't have signing rights for this user</p>
+                        )}
+                        {inspector1Id && canSignFor(inspector1Id) && !users.find((u) => u.id === inspector1Id)?.has_signature && (
+                          <p className="text-xs text-amber-600">No signature uploaded for this user</p>
+                        )}
                       </FormItem>
                     )}
                   />
                   <div>
+                    <label className="text-sm font-medium mb-2 block">Signature</label>
                     <div
-                      className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${signed.inspector1 ? "border-emerald-500/50 bg-emerald-500/5" : currentUser?.id === inspector1Id ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50 cursor-not-allowed"}`}
+                      className={`h-14 rounded-md border-2 border-dashed flex items-center justify-center transition-colors relative ${signed.inspector1 ? "border-emerald-500/50 bg-emerald-500/5" : canSignFor(inspector1Id) ? "border-border hover:border-primary/50 cursor-pointer" : "border-border opacity-50 cursor-not-allowed"}`}
                       onClick={() => {
-                        if (
-                          currentUser?.id === inspector1Id &&
-                          !signed.inspector1
-                        )
+                        if (canSignFor(inspector1Id) && !signed.inspector1)
                           handleSign("site_engineer");
                       }}
                     >
                       {signed.inspector1 ? (
-                        <Image
-                          src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
-                            (() => {
-                              const u = users.find(
-                                (u) => u.id === inspector1Id,
-                              );
-                              return u?.signature_text || u?.full_name || "";
-                            })(),
-                          )}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
-                          alt="Signature"
-                          width={300}
-                          height={100}
-                          unoptimized
-                          className="h-10 object-contain"
-                        />
+                        <>
+                          <SignatureImage userId={inspector1Id} />
+                          {(!existingDoc || existingDoc.status === "draft" || existingDoc.status === "internally_signed") && (
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => { e.stopPropagation(); handleUnsign("site_engineer"); }}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
                       ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {currentUser?.id === inspector1Id
-                            ? "Click to sign"
-                            : "Awaiting signature"}
+                        <span className="text-xs text-muted-foreground">
+                          {canSignFor(inspector1Id) ? "Click to sign" : "Awaiting signature"}
                         </span>
                       )}
                     </div>
-                    <div className="h-5 mt-1">
-                      {currentUser?.id === inspector1Id && (
-                        <Link
-                          href="/profile"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                          <PenLine className="h-3 w-3" />
-                          Change signature style
-                        </Link>
-                      )}
-                    </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField
-                        control={form.control}
-                        name="inspector_date_1"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Inspection Date</FormLabel>
-                            <FormControl>
-                              <DatePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select date"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="inspector_time_1"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Inspection Time</FormLabel>
-                            <FormControl>
-                              <TimePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select time"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
+                </div>
+                <div className="flex gap-4 items-end">
+                  <FormField
+                    control={form.control}
+                    name="inspector_date_1"
+                    render={({ field }) => (
+                      <FormItem className="w-40">
+                        <FormLabel>Inspection Date</FormLabel>
+                        <FormControl>
+                          <DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="inspector_time_1"
+                    render={({ field }) => (
+                      <FormItem className="w-32">
+                        <FormLabel>Inspection Time</FormLabel>
+                        <FormControl>
+                          <TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -1353,4 +1377,20 @@ function NewMIRPageContent() {
       )}
     </div>
   );
+}
+
+
+function SignatureImage({ userId }: { userId: string | undefined }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    api.get(`/auth/users/${userId}/signature`, { responseType: "blob" })
+      .then((res) => { if (active) setSrc(URL.createObjectURL(res.data)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [userId]);
+  if (!src) return <span className="text-xs text-muted-foreground">Signed</span>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="Signature" className="h-10 max-w-full object-contain" />;
 }

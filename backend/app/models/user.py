@@ -29,6 +29,7 @@ class User(BaseModel):
     password_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     signature_font: Mapped[str | None] = mapped_column(String(50), default="dancing_script")
     signature_text: Mapped[str | None] = mapped_column(String(255), default=None)
+    signature_path: Mapped[str | None] = mapped_column(String(500), default=None)
     # Bumped on password change / admin reset to invalidate outstanding tokens.
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 

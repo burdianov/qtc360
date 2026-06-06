@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -155,6 +156,7 @@ async def list_users_basic(
             "designation": {"id": str(u.designation.id), "name": u.designation.name} if u.designation else None,
             "signature_font": u.signature_font,
             "signature_text": u.signature_text,
+            "has_signature": bool(u.signature_path),
         }
         for u in users
     ]
@@ -175,9 +177,153 @@ async def update_me(
     return {"status": "ok"}
 
 
+@router.post("/me/signature")
+async def upload_signature(
+    file: UploadFile,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Upload a PNG signature image for the current user."""
+    if not file.content_type or not file.content_type.startswith("image/png"):
+        raise HTTPException(status_code=400, detail="Only PNG files are accepted")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 2MB)")
+    from app.services.storage import storage
+    key = f"signatures/{user.id}.png"
+    storage.save(key, data)
+    user.signature_path = key
+    await db.commit()
+    return {"signature_path": key}
+
+
+@router.delete("/me/signature")
+async def delete_signature(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Delete the current user's uploaded signature."""
+    if user.signature_path:
+        from app.services.storage import storage
+        storage.delete(user.signature_path)
+        user.signature_path = None
+        await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/users/{user_id}/signature")
+async def get_user_signature(
+    user_id: str,
+    _: User = Depends(get_current_user),
+):
+    """Serve a user's signature PNG."""
+    from app.services.storage import storage
+    from app.core.config import settings
+    key = f"signatures/{user_id}.png"
+    if not storage.exists(key):
+        raise HTTPException(status_code=404, detail="No signature uploaded")
+    path = settings.upload_dir_abs / key
+    return FileResponse(path, media_type="image/png")
+
+
 @router.get("/me/projects", response_model=list[ProjectSummaryResponse])
 async def my_projects(user: User = Depends(get_current_user)):
     return [{"id": p.id, "name": p.name, "code": p.code} for p in user.projects]
+
+
+# --- Signature Delegations ---
+
+@router.get("/me/delegations")
+async def list_delegations(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List users I have granted signing rights to."""
+    from app.models.signature_delegation import SignatureDelegation
+    result = await db.execute(
+        select(SignatureDelegation)
+        .where(SignatureDelegation.grantor_id == user.id, SignatureDelegation.is_deleted == False)  # noqa: E712
+        .options(selectinload(SignatureDelegation.delegate))
+    )
+    return [
+        {"id": str(d.id), "delegate_id": str(d.delegate_id), "delegate_name": d.delegate.full_name}
+        for d in result.scalars().all()
+    ]
+
+
+@router.post("/me/delegations")
+async def grant_delegation(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Grant signing rights to another user."""
+    from app.models.signature_delegation import SignatureDelegation
+    from uuid import UUID as _UUID
+    delegate_id = body.get("delegate_id")
+    if not delegate_id:
+        raise HTTPException(status_code=400, detail="delegate_id required")
+    if str(delegate_id) == str(user.id):
+        raise HTTPException(status_code=400, detail="Cannot delegate to yourself")
+    try:
+        delegate_uuid = _UUID(str(delegate_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid delegate_id")
+    # Check if already exists
+    existing = await db.execute(
+        select(SignatureDelegation).where(
+            SignatureDelegation.grantor_id == user.id,
+            SignatureDelegation.delegate_id == delegate_uuid,
+            SignatureDelegation.is_deleted == False,  # noqa: E712
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Delegation already exists")
+    delegation = SignatureDelegation(grantor_id=user.id, delegate_id=delegate_uuid)
+    db.add(delegation)
+    await db.commit()
+    return {"status": "ok", "id": str(delegation.id)}
+
+
+@router.delete("/me/delegations/{delegation_id}")
+async def revoke_delegation(
+    delegation_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Revoke a signing delegation."""
+    from app.models.signature_delegation import SignatureDelegation
+    result = await db.execute(
+        select(SignatureDelegation).where(
+            SignatureDelegation.id == delegation_id,
+            SignatureDelegation.grantor_id == user.id,
+            SignatureDelegation.is_deleted == False,  # noqa: E712
+        )
+    )
+    delegation = result.scalar_one_or_none()
+    if not delegation:
+        raise HTTPException(status_code=404, detail="Delegation not found")
+    delegation.is_deleted = True
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/me/delegated-by")
+async def list_delegated_by(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List users who have granted me signing rights."""
+    from app.models.signature_delegation import SignatureDelegation
+    result = await db.execute(
+        select(SignatureDelegation)
+        .where(SignatureDelegation.delegate_id == user.id, SignatureDelegation.is_deleted == False)  # noqa: E712
+        .options(selectinload(SignatureDelegation.grantor))
+    )
+    return [
+        {"grantor_id": str(d.grantor_id), "grantor_name": d.grantor.full_name, "has_signature": bool(d.grantor.signature_path)}
+        for d in result.scalars().all()
+    ]
 
 
 
@@ -207,10 +353,10 @@ async def set_preference(
 
     stmt = (
         pg_insert(UserPreference.__table__)
-        .values(user_id=user.id, key=key, value=body)
+        .values(user_id=user.id, key=key, value=body.get("value", body))
         .on_conflict_do_update(
             constraint="uq_user_preference_key",
-            set_={"value": body, "is_deleted": False},
+            set_={"value": body.get("value", body), "is_deleted": False},
         )
     )
     try:

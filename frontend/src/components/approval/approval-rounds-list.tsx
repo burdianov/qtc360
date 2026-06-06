@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  Eye,
   FileText,
   MessageSquare,
   Download,
@@ -244,6 +245,27 @@ function RoundCard({
             )}
             {round.returned_file_name && (
               <div className="flex gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(
+                        `/documents/${documentId}/approval-rounds/${round.id}/bundle`,
+                        { responseType: "blob" },
+                      );
+                      const url = URL.createObjectURL(res.data);
+                      window.open(url, "_blank");
+                      setTimeout(() => URL.revokeObjectURL(url), 120000);
+                    } catch {
+                      toast.error("Failed to preview PDF");
+                    }
+                  }}
+                >
+                  <Eye className="mr-1.5 h-3.5 w-3.5" />
+                  Preview
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

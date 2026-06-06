@@ -372,11 +372,6 @@ export default function SettingsPage() {
             ),
           },
           {
-            id: "signatures",
-            label: "Signatures",
-            content: <SignatureConfigCard />,
-          },
-          {
             id: "crs-header",
             label: "CRS Header",
             content: <CrsHeaderCard />,
@@ -599,7 +594,7 @@ function SignatureConfigCard() {
   const [config, setConfig] = useState<
     Record<
       string,
-      { font_size: number; cell_width: number; x_offset: number; color: string }
+      { font_size: number; cell_width: number; cell_height: number; x_offset: number; color: string }
     >
   >({});
   const [loaded, setLoaded] = useState(false);
@@ -607,6 +602,7 @@ function SignatureConfigCard() {
   const defaultCfg = {
     font_size: 36,
     cell_width: 75,
+    cell_height: 25,
     x_offset: -0.3,
     color: "#1a237e",
   };
@@ -715,6 +711,21 @@ function SignatureConfigCard() {
             />
             <p className="text-[10px] text-muted-foreground mt-1">
               Max width the signature can occupy (1 inch = 72pt)
+            </p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1.5 block">
+              Cell Height (pt)
+            </label>
+            <Input
+              type="number"
+              value={current.cell_height ?? 25}
+              onChange={(e) =>
+                updateField("cell_height", Number(e.target.value))
+              }
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Max height for the signature image (1 inch = 72pt)
             </p>
           </div>
           <div>

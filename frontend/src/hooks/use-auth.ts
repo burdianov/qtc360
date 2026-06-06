@@ -25,6 +25,7 @@ export interface User {
   is_superuser: boolean;
   signature_font?: string | null;
   signature_text?: string | null;
+  signature_path?: string | null;
   designation_id?: string | null;
   designation?: DesignationRef | null;
   roles?: RoleRef[];

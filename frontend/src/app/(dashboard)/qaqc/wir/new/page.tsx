@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
-import { ArrowLeft, Loader2, Send, PenLine, Download } from "lucide-react";
+import { ArrowLeft, Loader2, Send, PenLine, Download, X } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -56,6 +56,7 @@ interface User {
   designation: { id: string; name: string } | null;
   signature_text: string | null;
   signature_font: string | null;
+  has_signature: boolean;
 }
 interface Asset {
   id: string;
@@ -106,7 +107,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
-  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -121,6 +121,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     inspector1: boolean;
     inspector2: boolean;
   }>({ inspector1: false, inspector2: false });
+  const [sigTouched, setSigTouched] = useState({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] =
     useState<CommissioningLinkage | null>(null); // CommissioningLinkage = CommissioningLinkageBlock[]
   const linkageDirtyRef = useRef(false);
@@ -169,6 +170,14 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     queryKey: ["users"],
     queryFn: async () => (await api.get("/auth/users")).data,
   });
+
+  const { data: delegatedBy = [] } = useQuery<{ grantor_id: string }[]>({
+    queryKey: ["delegated-by"],
+    queryFn: async () => (await api.get("/auth/me/delegated-by")).data,
+  });
+  const delegatedByIds = new Set(delegatedBy.map((d) => d.grantor_id));
+  const canSignFor = (assignedId: string | undefined) =>
+    assignedId === currentUser?.id || (!!assignedId && delegatedByIds.has(assignedId));
 
   const { data: assets = [] } = useQuery<Asset[]>({
     queryKey: ["assets", project?.id],
@@ -515,8 +524,14 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       toast.error("Please save the document first before signing");
       return;
     }
+    if (isDirty || form.formState.isDirty) {
+      toast.error("Please save your changes before signing");
+      return;
+    }
+    const assignedId = role === "site_engineer" ? inspector1Id : inspector2Id;
+    const url = `/documents/${editId}/sign?role=${role}${assignedId ? `&on_behalf_of=${assignedId}` : ""}`;
     try {
-      await api.post(`/documents/${editId}/sign?role=${role}`);
+      await api.post(url);
       setSigned((s) =>
         role === "site_engineer"
           ? { ...s, inspector1: true }
@@ -526,6 +541,22 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       toast.success("Signed successfully");
     } catch (e: any) {
       toast.error(e.response?.data?.detail || "Failed to sign");
+    }
+  };
+
+  const handleUnsign = async (role: "site_engineer" | "qaqc_engineer") => {
+    if (!editId) return;
+    try {
+      await api.post(`/documents/${editId}/unsign?role=${role}`);
+      setSigned((s) =>
+        role === "site_engineer"
+          ? { ...s, inspector1: false }
+          : { ...s, inspector2: false },
+      );
+      queryClient.invalidateQueries({ queryKey: ["document", editId] });
+      toast.success("Signature removed");
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to remove signature");
     }
   };
 
@@ -1142,285 +1173,264 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
               <CardHeader>
                 <CardTitle className="text-base">Signatories</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-                  {/* Row 1: Inspector select */}
-                  <FormField
-                    control={form.control}
-                    name="inspector_1_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Signatory 1</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          disabled={
-                            !!editId &&
-                            existingDoc?.status !== "draft" &&
-                            currentUser?.id !== existingDoc?.created_by
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Name and Designation">
-                                {inspector1Id
-                                  ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}`
-                                  : ""}
-                              </SelectValue>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {users
-                              .filter((u) => u.id !== inspector2Id)
-                              .map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  <span className="inline-flex items-baseline gap-2 w-full">
-                                    <span>{u.full_name}:</span>
-                                    <span className="text-muted-foreground">
-                                      {u.designation?.name || "-"}
+              <CardContent className="space-y-5">
+                {/* Signatory 1 & 2 side by side */}
+                <div className="grid sm:grid-cols-2 gap-6">
+                  {/* Signatory 1 */}
+                  <div className="space-y-3">
+                    <FormField
+                      control={form.control}
+                      name="inspector_1_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Signatory 1</FormLabel>
+                          <div className="flex gap-1.5 w-[48%]">
+                          <div className="flex-1 min-w-0">
+                          <Select
+                            onValueChange={(v) => { field.onChange(v); setIsDirty(true); setSigTouched((t) => ({ ...t, inspector1: true })); }}
+                            value={field.value}
+                            disabled={
+                              !!editId &&
+                              existingDoc?.status !== "draft" &&
+                              currentUser?.id !== existingDoc?.created_by
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Name and Designation">
+                                  {inspector1Id
+                                    ? `${users.find((u) => u.id === inspector1Id)?.full_name || ""}`
+                                    : ""}
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {users
+                                .filter((u) => u.id !== inspector2Id)
+                                .map((u) => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    <span className="inline-flex items-baseline gap-2 w-full">
+                                      <span>{u.full_name}:</span>
+                                      <span className="text-muted-foreground">
+                                        {u.designation?.name || "-"}
+                                      </span>
                                     </span>
-                                  </span>
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="inspector_2_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Signatory 2</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          disabled={
-                            !!editId &&
-                            existingDoc?.status !== "draft" &&
-                            currentUser?.id !== existingDoc?.created_by
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Name and Designation">
-                                {inspector2Id
-                                  ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}`
-                                  : ""}
-                              </SelectValue>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {users
-                              .filter((u) => u.id !== inspector1Id)
-                              .map((u) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  <span className="inline-flex items-baseline gap-2 w-full">
-                                    <span>{u.full_name}:</span>
-                                    <span className="text-muted-foreground">
-                                      {u.designation?.name || "-"}
-                                    </span>
-                                  </span>
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Row 2: Signature boxes */}
-                  <div>
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          </div>
+                          {field.value && (
+                            <button
+                              type="button"
+                              className="shrink-0 p-2 rounded-md border hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              onClick={() => { field.onChange(""); if (signed.inspector1) handleUnsign("site_engineer"); }}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                          </div>
+                          {sigTouched.inspector1 && inspector1Id && inspector1Id !== currentUser?.id && !canSignFor(inspector1Id) && (
+                            <p className="text-xs text-amber-600">You don't have signing rights for this user</p>
+                          )}
+                          {inspector1Id && canSignFor(inspector1Id) && !users.find((u) => u.id === inspector1Id)?.has_signature && (
+                            <p className="text-xs text-amber-600">No signature uploaded for this user</p>
+                          )}
+                        </FormItem>
+                      )}
+                    />
                     <div
-                      className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
+                      className={`h-14 rounded-md border-2 border-dashed flex items-center justify-center transition-colors relative ${
                         signed.inspector1
                           ? "border-emerald-500/50 bg-emerald-500/5"
-                          : currentUser?.id === inspector1Id
+                          : canSignFor(inspector1Id)
                             ? "border-border hover:border-primary/50 cursor-pointer"
                             : "border-border opacity-50 cursor-not-allowed"
                       }`}
                       onClick={() => {
-                        if (
-                          currentUser?.id === inspector1Id &&
-                          !signed.inspector1
-                        )
+                        if (canSignFor(inspector1Id) && !signed.inspector1)
                           handleSign("site_engineer");
                       }}
                     >
                       {signed.inspector1 ? (
-                        <Image
-                          src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
-                            (() => {
-                              const u = users.find(
-                                (u) => u.id === inspector1Id,
-                              );
-                              return u?.signature_text || u?.full_name || "";
-                            })(),
-                          )}&font_id=${users.find((u) => u.id === inspector1Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
-                          alt="Signature"
-                          width={300}
-                          height={100}
-                          unoptimized
-                          className="h-10 w-auto object-contain"
-                        />
+                        <>
+                          <SignatureImage userId={inspector1Id} />
+                          {(!existingDoc || existingDoc.status === "draft" || existingDoc.status === "internally_signed") && (
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => { e.stopPropagation(); handleUnsign("site_engineer"); }}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
                       ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {currentUser?.id === inspector1Id
-                            ? "Click to sign"
-                            : "Awaiting signature"}
+                        <span className="text-xs text-muted-foreground">
+                          {canSignFor(inspector1Id) ? "Click to sign" : "Awaiting signature"}
                         </span>
                       )}
                     </div>
-                    <div className="h-5 mt-1">
-                      {currentUser?.id === inspector1Id && (
-                        <Link
-                          href="/profile"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                          <PenLine className="h-3 w-3" />
-                          Change signature style
-                        </Link>
-                      )}
-                    </div>
+                    <fieldset
+                      disabled={currentUser?.id !== inspector1Id}
+                      className="disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      <FormField
+                        control={form.control}
+                        name="remarks_1"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Remarks</FormLabel>
+                            <FormControl>
+                              <Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </fieldset>
                   </div>
-                  <div>
+
+                  {/* Signatory 2 */}
+                  <div className="space-y-3">
+                    <FormField
+                      control={form.control}
+                      name="inspector_2_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Signatory 2</FormLabel>
+                          <div className="flex gap-1.5 w-[48%]">
+                          <div className="flex-1 min-w-0">
+                          <Select
+                            onValueChange={(v) => { field.onChange(v); setIsDirty(true); setSigTouched((t) => ({ ...t, inspector2: true })); }}
+                            value={field.value}
+                            disabled={
+                              !!editId &&
+                              existingDoc?.status !== "draft" &&
+                              currentUser?.id !== existingDoc?.created_by
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Name and Designation">
+                                  {inspector2Id
+                                    ? `${users.find((u) => u.id === inspector2Id)?.full_name || ""}`
+                                    : ""}
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {users
+                                .filter((u) => u.id !== inspector1Id)
+                                .map((u) => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    <span className="inline-flex items-baseline gap-2 w-full">
+                                      <span>{u.full_name}:</span>
+                                      <span className="text-muted-foreground">
+                                        {u.designation?.name || "-"}
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          </div>
+                          {field.value && (
+                            <button
+                              type="button"
+                              className="shrink-0 p-2 rounded-md border hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              onClick={() => { field.onChange(""); if (signed.inspector2) handleUnsign("qaqc_engineer"); }}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                          </div>
+                          {sigTouched.inspector2 && inspector2Id && inspector2Id !== currentUser?.id && !canSignFor(inspector2Id) && (
+                            <p className="text-xs text-amber-600">You don't have signing rights for this user</p>
+                          )}
+                          {inspector2Id && canSignFor(inspector2Id) && !users.find((u) => u.id === inspector2Id)?.has_signature && (
+                            <p className="text-xs text-amber-600">No signature uploaded for this user</p>
+                          )}
+                        </FormItem>
+                      )}
+                    />
                     <div
-                      className={`h-16 rounded-md border-2 border-dashed flex items-center justify-center transition-colors ${
+                      className={`h-14 rounded-md border-2 border-dashed flex items-center justify-center transition-colors relative ${
                         signed.inspector2
                           ? "border-emerald-500/50 bg-emerald-500/5"
-                          : currentUser?.id === inspector2Id
+                          : canSignFor(inspector2Id)
                             ? "border-border hover:border-primary/50 cursor-pointer"
                             : "border-border opacity-50 cursor-not-allowed"
                       }`}
                       onClick={() => {
-                        if (
-                          currentUser?.id === inspector2Id &&
-                          !signed.inspector2
-                        )
+                        if (canSignFor(inspector2Id) && !signed.inspector2)
                           handleSign("qaqc_engineer");
                       }}
                     >
                       {signed.inspector2 ? (
-                        <Image
-                          src={`${api.defaults.baseURL}/reports/signature-preview?name=${encodeURIComponent(
-                            (() => {
-                              const u = users.find(
-                                (u) => u.id === inspector2Id,
-                              );
-                              return u?.signature_text || u?.full_name || "";
-                            })(),
-                          )}&font_id=${users.find((u) => u.id === inspector2Id)?.signature_font || "dancing_script"}&color=${sigColor}`}
-                          alt="Signature"
-                          width={300}
-                          height={100}
-                          unoptimized
-                          className="h-10 object-contain"
-                        />
+                        <>
+                          <SignatureImage userId={inspector2Id} />
+                          {(!existingDoc || existingDoc.status === "draft" || existingDoc.status === "internally_signed") && (
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => { e.stopPropagation(); handleUnsign("qaqc_engineer"); }}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
                       ) : (
-                        <span className="text-sm text-muted-foreground">
-                          {currentUser?.id === inspector2Id
-                            ? "Click to sign"
-                            : "Awaiting signature"}
+                        <span className="text-xs text-muted-foreground">
+                          {canSignFor(inspector2Id) ? "Click to sign" : "Awaiting signature"}
                         </span>
                       )}
                     </div>
-                    <div className="h-5 mt-1">
-                      {currentUser?.id === inspector2Id && (
-                        <Link
-                          href="/profile"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                        >
-                          <PenLine className="h-3 w-3" />
-                          Change signature style
-                        </Link>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 3: Inspection Date & Time (shared, editable by either signatory) */}
-                  <div className="sm:col-span-2">
-                    <div className="grid grid-cols-2 gap-3">
+                    <fieldset
+                      disabled={currentUser?.id !== inspector2Id}
+                      className="disabled:opacity-50 disabled:pointer-events-none"
+                    >
                       <FormField
                         control={form.control}
-                        name="inspector_date_1"
+                        name="remarks_2"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Inspection Date</FormLabel>
+                            <FormLabel>Remarks</FormLabel>
                             <FormControl>
-                              <DatePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select date"
-                              />
+                              <Textarea placeholder="Remarks..." className="resize-none" rows={2} {...field} />
                             </FormControl>
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name="inspector_time_1"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Inspection Time</FormLabel>
-                            <FormControl>
-                              <TimePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select time"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    </fieldset>
                   </div>
+                </div>
 
-                  {/* Row 4: Remarks */}
-                  <fieldset
-                    disabled={currentUser?.id !== inspector1Id}
-                    className="disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    <FormField
-                      control={form.control}
-                      name="remarks_1"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Remarks</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Remarks..."
-                              className="resize-none"
-                              rows={2}
-                              {...field}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </fieldset>
-                  <fieldset
-                    disabled={currentUser?.id !== inspector2Id}
-                    className="disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    <FormField
-                      control={form.control}
-                      name="remarks_2"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Remarks</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Remarks..."
-                              className="resize-none"
-                              rows={2}
-                              {...field}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </fieldset>
+                {/* Date & Time */}
+                <div className="flex gap-4 items-end">
+                  <FormField
+                    control={form.control}
+                    name="inspector_date_1"
+                    render={({ field }) => (
+                      <FormItem className="w-40">
+                        <FormLabel>Inspection Date</FormLabel>
+                        <FormControl>
+                          <DatePicker value={field.value} onChange={field.onChange} placeholder="Select date" />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="inspector_time_1"
+                    render={({ field }) => (
+                      <FormItem className="w-32">
+                        <FormLabel>Inspection Time</FormLabel>
+                        <FormControl>
+                          <TimePicker value={field.value} onChange={field.onChange} placeholder="Select time" />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -1570,4 +1580,20 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       )}
     </div>
   );
+}
+
+
+function SignatureImage({ userId }: { userId: string | undefined }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    api.get(`/auth/users/${userId}/signature`, { responseType: "blob" })
+      .then((res) => { if (active) setSrc(URL.createObjectURL(res.data)); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [userId]);
+  if (!src) return <span className="text-xs text-muted-foreground">Signed</span>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="Signature" className="h-10 max-w-full object-contain" />;
 }
