@@ -4,7 +4,7 @@ from uuid import UUID
 from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1825,10 +1825,19 @@ async def list_attachments(
     await _load_doc_for_attachment(db, doc_id, user)
     result = await db.execute(
         select(DocumentAttachment)
-        .where(DocumentAttachment.document_id == doc_id, DocumentAttachment.kind == "user", DocumentAttachment.is_deleted == False)  # noqa: E712
-        .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
+        .where(
+            DocumentAttachment.document_id == doc_id,
+            DocumentAttachment.kind.in_(["user", "checklist"]),
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+        .order_by(
+            # Checklist attachments come first
+            case((DocumentAttachment.kind == "checklist", 0), else_=1),
+            DocumentAttachment.sort_order,
+            DocumentAttachment.id,
+        )
     )
-    return [{"id": str(a.id), "filename": a.filename, "size": a.size, "sort_order": a.sort_order, "content_type": a.content_type} for a in result.scalars().all()]
+    return [{"id": str(a.id), "filename": a.filename, "size": a.size, "sort_order": a.sort_order, "content_type": a.content_type, "kind": a.kind} for a in result.scalars().all()]
 
 
 @router.post("/{doc_id}/attachments", status_code=201)

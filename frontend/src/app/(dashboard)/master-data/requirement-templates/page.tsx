@@ -21,6 +21,7 @@ import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction }
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
 import { Spinner } from "@/components/ui/spinner";
 import { TableSkeleton } from "@/components/loaders/table-skeleton";
+import { ChecklistItemsDialog } from "@/components/checklist-items-dialog";
 
 interface RequirementTemplate {
   id: string;
@@ -66,6 +67,7 @@ export default function RequirementTemplatesPage() {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RequirementTemplate | null>(null);
+  const [checklistTemplate, setChecklistTemplate] = useState<RequirementTemplate | null>(null);
 
   const { data: templates = [], isLoading } = useQuery<RequirementTemplate[]>({
     queryKey: ["requirement-templates", project?.id],
@@ -105,6 +107,7 @@ export default function RequirementTemplatesPage() {
 
   const rowActions: RowAction<RequirementTemplate>[] = [
     { label: "Edit", onClick: openEdit },
+    { label: "Checklist Items", onClick: (row) => setChecklistTemplate(row) },
     { label: "Delete", onClick: (row) => deleteMutation.mutate(row.id), destructive: true, separator: true, confirm: "Are you sure you want to delete this template? This action cannot be undone." },
   ];
 
@@ -187,6 +190,14 @@ export default function RequirementTemplatesPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      {checklistTemplate && (
+        <ChecklistItemsDialog
+          open={!!checklistTemplate}
+          onOpenChange={(v) => { if (!v) setChecklistTemplate(null); }}
+          templateId={checklistTemplate.id}
+          templateName={checklistTemplate.name}
+        />
+      )}
     </div>
   );
 }

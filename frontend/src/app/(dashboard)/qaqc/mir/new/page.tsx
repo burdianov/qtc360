@@ -1043,6 +1043,7 @@ function NewMIRPageContent() {
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
+                documentId={editId || undefined}
                 allAssetIds={assets.map((a) => a.id)}
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),

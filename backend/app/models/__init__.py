@@ -26,6 +26,7 @@ from app.models.commissioning import (
     DocumentRequirementLink,
     AssetTagTarget,
 )
+from app.models.checklist import ChecklistItem, DocumentChecklist, DocumentChecklistResponse
 from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.designation import Designation
 from app.models.user_preference import UserPreference
@@ -47,6 +48,7 @@ __all__ = [
     "RequirementTemplate", "AssetRequirement", "RequirementWorkItem",
     "DocumentRequirementLink", "AssetTagTarget",
     "GateOverrideAcknowledgement",
+    "ChecklistItem", "DocumentChecklist", "DocumentChecklistResponse",
     "Designation",
     "UserPreference",
     "ReferenceNumberCounter",

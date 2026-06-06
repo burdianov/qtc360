@@ -9,6 +9,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.ref_config import router as ref_config_router
 from app.api.v1.commissioning import router as commissioning_router
+from app.api.v1.checklist import router as checklist_router
 
 router = APIRouter(prefix="/api/v1")
 
@@ -27,3 +28,4 @@ router.include_router(reports_router)
 router.include_router(notifications_router)
 router.include_router(ref_config_router)
 router.include_router(commissioning_router)
+router.include_router(checklist_router)

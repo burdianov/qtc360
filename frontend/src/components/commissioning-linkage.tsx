@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DocumentChecklistButtons } from "@/components/document-checklist-buttons";
 import {
   Dialog,
   DialogContent,
@@ -88,6 +89,8 @@ interface Props {
   onRemoveBlock?: (block: CommissioningLinkageBlock) => void;
   /** Called when assets are removed from a block (requirement change or manual deselect) — for DB cleanup */
   onUnlinkAssets?: (requirementTemplateId: string, assetIds: string[]) => void;
+  /** Document ID for checklist integration — if provided, shows checklist buttons per requirement */
+  documentId?: string;
 }
 
 export function CommissioningLinkagePanel({
@@ -101,6 +104,7 @@ export function CommissioningLinkagePanel({
   onChange,
   onRemoveBlock,
   onUnlinkAssets,
+  documentId,
 }: Props) {
   const [enabled, setEnabled] = useState(!!value && value.length > 0);
 
@@ -174,6 +178,7 @@ export function CommissioningLinkagePanel({
               onChange={(patch) => updateBlock(idx, patch)}
               onRemove={() => removeBlock(idx)}
               onUnlinkAssets={onUnlinkAssets}
+              documentId={documentId}
             />
           ))}
 
@@ -204,9 +209,10 @@ interface BlockProps {
   onChange: (patch: Partial<CommissioningLinkageBlock>) => void;
   onRemove: () => void;
   onUnlinkAssets?: (requirementTemplateId: string, assetIds: string[]) => void;
+  documentId?: string;
 }
 
-function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetRequirements, onChange, onRemove, onUnlinkAssets }: BlockProps) {
+function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetRequirements, onChange, onRemove, onUnlinkAssets, documentId }: BlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");
@@ -294,6 +300,15 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
               </SelectContent>
             </Select>
           </div>
+
+          {/* Checklist buttons */}
+          {block.requirementTemplateId && documentId && (
+            <DocumentChecklistButtons
+              documentId={documentId}
+              requirementTemplateId={block.requirementTemplateId}
+              requirementName={selectedTemplate?.name || ""}
+            />
+          )}
 
           {/* Asset picker — only assets that have this requirement assigned */}
           {block.requirementTemplateId && (

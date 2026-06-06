@@ -553,22 +553,22 @@ function MatrixCell({
           </div>
         )}
       />
-      <TooltipContent side="top" className="!block w-max p-3 space-y-2 bg-popover text-popover-foreground border shadow-md">
+      <TooltipContent side="top" className="!block w-max max-w-[min(640px,90vw)] p-3 space-y-2 bg-popover text-popover-foreground border shadow-md">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-semibold leading-tight">{colName}</span>
-          <span className="text-xs text-muted-foreground">{tagNumber}</span>
+          <span className="text-sm font-semibold leading-tight whitespace-nowrap">{colName}</span>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{tagNumber}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${STATUS_COLORS[cell.status]}`} />
-          <span className="text-xs font-medium">{STATUS_LABELS[cell.status] || cell.status}</span>
+          <span className="text-xs font-medium whitespace-nowrap">{STATUS_LABELS[cell.status] || cell.status}</span>
         </div>
         {cell.docs.length > 0 && (
           <div className="border-t pt-2 space-y-1">
             <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Documents</span>
             {cell.docs.map((d) => (
-              <div key={d.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate font-mono">{d.reference_no}</span>
-                <span className={`shrink-0 capitalize ${d.status === "approved" || d.status === "approved_with_comments" ? "text-emerald-600" : d.status === "rejected" ? "text-red-500" : "text-muted-foreground"}`}>
+              <div key={d.id} className="flex items-center justify-between gap-3 text-xs">
+                <span className="font-mono whitespace-pre-wrap break-all">{d.reference_no}</span>
+                <span className={`shrink-0 capitalize whitespace-nowrap ${d.status === "approved" || d.status === "approved_with_comments" ? "text-emerald-600" : d.status === "rejected" ? "text-red-500" : "text-muted-foreground"}`}>
                   {d.status.replace(/_/g, " ")}
                 </span>
               </div>
