@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -705,13 +706,17 @@ export default function CommissioningRequirementsPage() {
                     updateMutation.isPending ||
                     availableTemplates.length === 0
                   }
+                  aria-busy={assignMutation.isPending || updateMutation.isPending || undefined}
                 >
+                  {(assignMutation.isPending || updateMutation.isPending) && (
+                    <Spinner size="sm" className="mr-1 text-current" />
+                  )}
                   {editingRequirement
                     ? updateMutation.isPending
-                      ? "Saving..."
+                      ? "Saving…"
                       : "Save Changes"
                     : assignMutation.isPending
-                      ? "Assigning..."
+                      ? "Assigning…"
                       : "Assign"}
                 </Button>
               </DialogFooter>

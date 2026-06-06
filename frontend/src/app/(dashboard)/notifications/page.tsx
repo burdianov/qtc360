@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Bell, X, Trash2 } from "lucide-react";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 interface Notification {
   id: string;
@@ -118,11 +119,7 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        Loading...
-      </div>
-    );
+    return <CenteredSpinner label="Loading notifications…" />;
   }
 
   return (

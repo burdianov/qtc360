@@ -41,6 +41,8 @@ import {
   FormMessage,
 } from "@/components/form";
 import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface Role {
   id: string;
@@ -281,7 +283,7 @@ export default function UsersPage() {
     },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -496,9 +498,10 @@ export default function UsersPage() {
                 <Button type="button" variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={mutation.isPending}>
+                <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="text-current" />}
                   {mutation.isPending
-                    ? "Saving..."
+                    ? "Saving…"
                     : editing
                       ? "Update"
                       : "Create"}

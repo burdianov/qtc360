@@ -9,6 +9,7 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Font {
@@ -154,8 +155,10 @@ export default function ProfilePage() {
             <Button
               onClick={() => saveMutation.mutate()}
               disabled={!isDirty || saveMutation.isPending}
+              aria-busy={saveMutation.isPending || undefined}
             >
-              {saveMutation.isPending ? "Saving..." : "Save Signature Style"}
+              {saveMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {saveMutation.isPending ? "Saving…" : "Save Signature Style"}
             </Button>
           </div>
         </CardContent>

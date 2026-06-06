@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { Spinner } from "@/components/ui/spinner";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface ApproverTitle { id: string; code: string; title: string; }
 interface Approver { id: string; name: string; code: string; title: ApproverTitle | null; created_at: string; }
@@ -87,7 +89,7 @@ export default function ApproversPage() {
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -142,7 +144,10 @@ export default function ApproversPage() {
               )} />
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
+                <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="text-current" />}
+                  {mutation.isPending ? "Saving…" : editing ? "Update" : "Create"}
+                </Button>
               </div>
             </form>
           </Form>

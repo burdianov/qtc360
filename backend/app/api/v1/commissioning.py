@@ -460,6 +460,35 @@ async def create_document_requirement_link(
     return link
 
 
+@router.delete("/document-links", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_requirement_links(
+    document_id: uuid.UUID = Query(...),
+    asset_requirement_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Remove all links between a document and a specific asset requirement (and their work items)."""
+    pid_doc = await _project_id_for_document(db, document_id)
+    pid_req = await _project_id_for_asset_requirement(db, asset_requirement_id)
+    if pid_doc is None or pid_req is None:
+        raise HTTPException(status_code=404, detail="Document or requirement not found")
+    await assert_user_in_project(user, pid_doc)
+
+    result = await db.execute(
+        select(DocumentRequirementLink).where(
+            DocumentRequirementLink.document_id == document_id,
+            DocumentRequirementLink.asset_requirement_id == asset_requirement_id,
+            DocumentRequirementLink.is_deleted == False,  # noqa: E712
+        )
+    )
+    links = result.scalars().all()
+    for link in links:
+        link.is_deleted = True
+    await db.flush()
+    await recalculate_requirement_status(db, asset_requirement_id)
+    await db.commit()
+
+
 @router.get("/document-links", response_model=list[DocumentRequirementLinkOut])
 async def list_document_links(
     document_id: uuid.UUID | None = None,

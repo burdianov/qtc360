@@ -3,6 +3,7 @@
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useCurrentUser();
@@ -16,7 +17,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [isLoading, user, isAdmin, router]);
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <CenteredSpinner label="Verifying access…" />;
   if (!isAdmin) return null;
 
   return <>{children}</>;

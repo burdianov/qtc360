@@ -58,7 +58,9 @@ import {
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { DocumentAttachments } from "@/components/document-attachments";
+import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 interface Discipline {
   id: string;
@@ -117,7 +119,7 @@ export default function NewCIRPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-8 text-center text-muted-foreground">Loading...</div>
+        <CenteredSpinner label="Loading document…" />
       }
     >
       <NewCIRPageInner />
@@ -140,11 +142,6 @@ function NewCIRPageContent() {
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
-  const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
-  const [assetSearch, setAssetSearch] = useState("");
-  const [assetsOpen, setAssetsOpen] = useState(false);
-  const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -314,10 +311,6 @@ function NewCIRPageContent() {
     ].includes(existingDoc.status);
 
   useEffect(() => {
-    if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(false);
-  }, [fullyLocked, selectedAssets.length]);
-
-  useEffect(() => {
     if (existingDoc) {
       form.reset({
         subject: existingDoc.title || "",
@@ -345,11 +338,6 @@ function NewCIRPageContent() {
       });
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
-
-      if (existingDoc.asset_ids?.length && assets.length > 0) {
-        const ids = new Set(existingDoc.asset_ids);
-        setSelectedAssets(assets.filter((a) => ids.has(a.id)));
-      }
     }
   }, [existingDoc, assets, form]);
 
@@ -359,33 +347,23 @@ function NewCIRPageContent() {
     api
       .get("/commissioning/document-links", { params: { document_id: editId } })
       .then(async (res) => {
-        const links = res.data as {
-          asset_requirement_id: string;
-          requirement_work_item_id: string | null;
-        }[];
+        const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
         if (links.length === 0) return;
-        const firstArId = links[0].asset_requirement_id;
-        const ar = allAssetRequirements.find((r) => r.id === firstArId);
-        if (!ar) return;
-        const hasWorkItems = links.some(
-          (l) => l.requirement_work_item_id != null,
-        );
-        let isPartial = hasWorkItems;
-        if (!isPartial) {
-          const wiRes = await api.get("/commissioning/work-items", {
-            params: { asset_requirement_id: firstArId },
-          });
-          isPartial = wiRes.data.length > 0;
+        const arIdToTmpl = new Map<string, string>();
+        const arIdToAsset = new Map<string, string>();
+        for (const ar of allAssetRequirements) { arIdToTmpl.set(ar.id, ar.requirement_template_id); arIdToAsset.set(ar.id, ar.asset_id); }
+        const byTmpl = new Map<string, Set<string>>();
+        for (const link of links) {
+          const tmpl = arIdToTmpl.get(link.asset_requirement_id);
+          if (!tmpl) continue;
+          if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
+          byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
         }
-        setCommissioningLinkage({
-          requirementTemplateId: ar.requirement_template_id,
-          isPartialScope: isPartial,
-          checkedExistingIds: links
-            .filter((l) => l.requirement_work_item_id)
-            .map((l) => l.requirement_work_item_id!),
-          deleteExistingIds: [],
-          newItems: [],
-        });
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+        for (const [tmplId, assetSet] of byTmpl.entries()) {
+          blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: links.some((l) => l.requirement_work_item_id != null), assetStates: {} });
+        }
+        if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
       .catch(() => {});
   }, [editId, allAssetRequirements, commissioningLinkage]);
@@ -434,10 +412,6 @@ function NewCIRPageContent() {
         });
         setReferenceNo(doc.reference_no || "");
         setRevisionNo(doc.revision_no + 1);
-        if (doc.asset_ids?.length && assets.length > 0) {
-          const ids = new Set(doc.asset_ids);
-          setSelectedAssets(assets.filter((a: Asset) => ids.has(a.id)));
-        }
         const linksRes = await api.get("/commissioning/document-links", {
           params: { document_id: revisionOfId },
         });
@@ -446,23 +420,21 @@ function NewCIRPageContent() {
           requirement_work_item_id: string | null;
         }[];
         if (links.length > 0) {
-          const ar = allAssetRequirements.find(
-            (r) => r.id === links[0].asset_requirement_id,
-          );
-          if (ar) {
-            setCommissioningLinkage({
-              requirementTemplateId: ar.requirement_template_id,
-              isPartialScope: links.some(
-                (l) => l.requirement_work_item_id != null,
-              ),
-              checkedExistingIds: links
-                .filter((l) => l.requirement_work_item_id)
-                .map((l) => l.requirement_work_item_id!),
-              deleteExistingIds: [],
-              newItems: [],
-            });
-            linkageDirtyRef.current = true;
+          const arIdToTmpl = new Map<string, string>();
+          const arIdToAsset = new Map<string, string>();
+          for (const ar of allAssetRequirements) { arIdToTmpl.set(ar.id, ar.requirement_template_id); arIdToAsset.set(ar.id, ar.asset_id); }
+          const byTmpl = new Map<string, Set<string>>();
+          for (const link of links) {
+            const tmpl = arIdToTmpl.get(link.asset_requirement_id);
+            if (!tmpl) continue;
+            if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
+            byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
           }
+          const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+          for (const [tmplId, assetSet] of byTmpl.entries()) {
+            blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: links.some((l) => l.requirement_work_item_id != null), assetStates: {} });
+          }
+          if (blocks.length > 0) { setCommissioningLinkage(blocks); linkageDirtyRef.current = true; }
         }
         setIsDirty(true);
       } catch {
@@ -493,20 +465,12 @@ function NewCIRPageContent() {
         .map((ar) => ar.requirement_template_id),
     );
   })();
-  const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
-  const applicableAssetIds = selectedTemplateId2
-    ? new Set(
-        allAssetRequirements
-          .filter(
-            (ar) =>
-              ar.requirement_template_id === selectedTemplateId2 &&
-              ar.status !== "achieved",
-          )
-          .map((ar) => ar.asset_id),
-      )
-    : null;
+  // applicableAssetIds removed — each block manages its own asset selection
 
   useEffect(() => {
+    // Reference number is allocated server-side at the moment of save.
+    // We no longer pre-fetch it (it could go stale). It will be populated
+    // from the POST response in onSuccess.
     if (
       !editId &&
       !revisionOfId &&
@@ -514,17 +478,7 @@ function NewCIRPageContent() {
       project?.id &&
       disciplines.length > 0
     ) {
-      const code = disciplines.find((d) => d.id === disciplineId)?.code || "";
-      api
-        .get("/documents/generate-ref-number", {
-          params: {
-            project_id: project.id,
-            doc_type: "CIR",
-            discipline_code: code,
-          },
-        })
-        .then((res) => setReferenceNo(res.data.reference_number))
-        .catch(() => toast.error("Failed to generate reference number"));
+      setReferenceNo(""); // ensure no stale value
     }
   }, [editId, revisionOfId, disciplineId, project?.id, disciplines]);
 
@@ -553,7 +507,6 @@ function NewCIRPageContent() {
   const buildPayload = (values: FormValues) => ({
     project_id: project!.id,
     document_type: "CIR",
-    reference_no: referenceNo || "",
     title: values.subject,
     description: values.description,
     discipline_id: values.discipline_id,
@@ -570,82 +523,45 @@ function NewCIRPageContent() {
     inspector_time_1: values.inspector_time_1 || null,
     inspector_date_2: values.inspector_date_2 || null,
     inspector_time_2: values.inspector_time_2 || null,
-    asset_ids: selectedAssets.map((a) => a.id),
+    asset_ids: commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [],
     ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
   });
 
   const saveCommissioningLinkage = async (docId: string | null) => {
-    if (!commissioningLinkage || !docId || selectedAssets.length === 0) return;
-    for (const asset of selectedAssets) {
-      const arRes = await api.get("/commissioning/asset-requirements", {
-        params: { asset_id: asset.id },
-      });
-      const assetReq = (arRes.data as any[]).find(
-        (ar: any) =>
-          ar.requirement_template_id ===
-          commissioningLinkage.requirementTemplateId,
-      );
-      if (!assetReq) continue;
-      if (commissioningLinkage.isPartialScope) {
-        const wiListRes = await api.get("/commissioning/work-items", {
-          params: { asset_requirement_id: assetReq.id },
-        });
-        const assetWiIds = new Set(
-          (wiListRes.data as any[]).map((wi: any) => wi.id),
-        );
-        for (const delId of commissioningLinkage.deleteExistingIds) {
-          if (assetWiIds.has(delId))
-            await api.delete(`/commissioning/work-items/${delId}`);
+    if (!commissioningLinkage || !docId) return;
+    for (const block of commissioningLinkage) {
+      if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
+      for (const assetId of block.assetIds) {
+        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+        const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === block.requirementTemplateId);
+        if (!assetReq) continue;
+        if (block.isPartialScope) {
+          const s = block.assetStates[assetId];
+          for (const delId of s?.deleteExistingIds ?? []) await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
+          const created: string[] = [];
+          for (let i = 0; i < (s?.newItems ?? []).length; i++) {
+            const wi = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: s!.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+            if (s!.newItems[i].checked) created.push(wi.data.id);
+          }
+          for (const wiId of [...(s?.checkedExistingIds ?? []), ...created]) {
+            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }).catch(() => {});
+          }
+        } else {
+          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id }).catch(() => {});
         }
-        const createdIds: string[] = [];
-        for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-          const wiRes = await api.post("/commissioning/work-items", {
-            asset_requirement_id: assetReq.id,
-            name: commissioningLinkage.newItems[i].name,
-            sequence_no: i + 100,
-            created_dynamically: true,
-          });
-          if (commissioningLinkage.newItems[i].checked)
-            createdIds.push(wiRes.data.id);
-        }
-        for (const wiId of commissioningLinkage.checkedExistingIds) {
-          if (!assetWiIds.has(wiId)) continue;
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
-        }
-        for (const wiId of createdIds) {
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
-        }
-      } else {
-        await api.post("/commissioning/document-links", {
-          document_id: docId,
-          asset_requirement_id: assetReq.id,
-        });
       }
-    }
-    if (commissioningLinkage.gateWarningAcknowledged) {
-      for (const asset of selectedAssets) {
-        await api
-          .post("/commissioning/gate-overrides", {
-            asset_id: asset.id,
-            document_id: docId,
-            level_code: commissioningLinkage.gateLevelCode || "L2B",
-            incomplete_requirements:
-              commissioningLinkage.incompleteRequirements || [],
-            notes: commissioningLinkage.gateOverrideNotes || null,
-          })
-          .catch(() => {});
+      if (block.gateWarningAcknowledged) {
+        for (const assetId of block.assetIds) {
+          await api.post("/commissioning/gate-overrides", { asset_id: assetId, document_id: docId, level_code: block.gateLevelCode || "L2B", incomplete_requirements: block.incompleteRequirements || [], notes: block.gateOverrideNotes || null }).catch(() => {});
+        }
       }
     }
   };
-
+            document_id: docId,
+            asset_requirement_id: assetReq.id,
+            requirement_work_item_id: wiId,
+          });
+        }
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
@@ -686,9 +602,11 @@ function NewCIRPageContent() {
     },
     onSuccess: (res) => {
       toast.success(editId ? "CIR updated" : "CIR saved as draft");
-      setAssetSearch("");
       setIsDirty(false);
       setRevisionOfId(null);
+      // Server returns the assigned reference number; surface it immediately
+      // so the user sees the value before the page navigates to the edit URL.
+      if (res?.data?.reference_no) setReferenceNo(res.data.reference_no);
       if (res?.data?.revision_no !== undefined)
         setRevisionNo(res.data.revision_no);
       form.reset(form.getValues());
@@ -730,17 +648,6 @@ function NewCIRPageContent() {
       }
     }
     router.push("/qaqc/cir");
-  };
-  const addAsset = (id: string) => {
-    const a = assets.find((x) => x.id === id);
-    if (a && !selectedAssets.find((x) => x.id === id)) {
-      setSelectedAssets([...selectedAssets, a]);
-      setIsDirty(true);
-    }
-  };
-  const removeAsset = (id: string) => {
-    setSelectedAssets(selectedAssets.filter((a) => a.id !== id));
-    setIsDirty(true);
   };
 
   return (
@@ -864,7 +771,7 @@ function NewCIRPageContent() {
                         value={referenceNo}
                         disabled
                         className="font-mono bg-muted flex-1"
-                        placeholder="Select discipline to generate..."
+                        placeholder="Reference will be assigned on save"
                       />
                       {(revisionNo > 0 || editId) && (
                         <div className="flex items-center px-3 rounded-md border bg-muted text-sm font-mono whitespace-nowrap">
@@ -1051,194 +958,35 @@ function NewCIRPageContent() {
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
-                selectedAssetIds={selectedAssets.map((a) => a.id)}
-                selectedAssetLabels={Object.fromEntries(
-                  selectedAssets.map((a) => [a.id, a.tag_number]),
-                )}
+                allAssetIds={assets.map((a) => a.id)}
+                allAssetLabels={Object.fromEntries(assets.map((a) => [a.id, a.tag_number || a.name]))}
+                allAssetRequirements={allAssetRequirements}
                 documentType="CIR"
                 applicableTemplateIds={applicableTemplateIds}
                 value={commissioningLinkage}
                 onChange={(linkage) => {
-                  if (!linkage && selectedAssets.length > 0) {
-                    setConfirmDisableLinkage(true);
-                    return;
-                  }
                   setCommissioningLinkage(linkage);
                   linkageDirtyRef.current = true;
                   setIsDirty(true);
                 }}
+                onRemoveBlock={async (block) => {
+                  if (!editId || !block.requirementTemplateId) return;
+                  for (const assetId of block.assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
+                onUnlinkAssets={async (tmplId, assetIds) => {
+                  if (!editId) return;
+                  for (const assetId of assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
               />
             </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader
-              className="cursor-pointer"
-              onClick={() => setAssetsOpen(!assetsOpen)}
-            >
-              <CardTitle className="text-base flex items-center justify-between">
-                Assets ({selectedAssets.length} selected)
-                <ChevronDown
-                  className={
-                    "h-4 w-4 text-muted-foreground transition-transform " +
-                    (assetsOpen ? "rotate-180" : "")
-                  }
-                />
-              </CardTitle>
-            </CardHeader>
-            {!assetsOpen && selectedAssets.length > 0 && (
-              <CardContent className="pt-0">
-                <div className="flex flex-wrap gap-2">
-                  {selectedAssets.map((a) => (
-                    <Badge
-                      key={a.id}
-                      variant="secondary"
-                      className="gap-1 pr-1"
-                    >
-                      {a.tag_number}
-                      <button
-                        type="button"
-                        onClick={() => removeAsset(a.id)}
-                        className="ml-1 hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            )}
-            {assetsOpen && (
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Select
-                    value={assetTypeFilter}
-                    onValueChange={(v: any) =>
-                      setAssetTypeFilter(v === "__all__" ? "" : v)
-                    }
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="All asset types">
-                        {assetTypeFilter
-                          ? assetTypes.find((t) => t.id === assetTypeFilter)
-                              ?.name
-                          : "All asset types"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All asset types</SelectItem>
-                      {assetTypes
-                        .filter((t) => {
-                          if (!disciplineId) return true;
-                          const svc = services.find(
-                            (s) => s.id === t.service_id,
-                          );
-                          return svc?.discipline_id === disciplineId;
-                        })
-                        .map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Search assets..."
-                    value={assetSearch}
-                    onChange={(e) => setAssetSearch(e.target.value)}
-                    className="flex-1"
-                  />
-                </div>
-                <div className="rounded-md border max-h-52 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
-                  {(() => {
-                    const disciplineTypeIds = disciplineId
-                      ? new Set(
-                          assetTypes
-                            .filter((t) => {
-                              const svc = services.find(
-                                (s) => s.id === t.service_id,
-                              );
-                              return svc?.discipline_id === disciplineId;
-                            })
-                            .map((t) => t.id),
-                        )
-                      : null;
-                    const filtered = assets.filter((a) => {
-                      if (applicableAssetIds && !applicableAssetIds.has(a.id))
-                        return false;
-                      if (
-                        disciplineTypeIds &&
-                        !disciplineTypeIds.has(a.asset_type_id)
-                      )
-                        return false;
-                      if (
-                        assetTypeFilter &&
-                        a.asset_type_id !== assetTypeFilter
-                      )
-                        return false;
-                      if (assetSearch) {
-                        const q = assetSearch.toLowerCase();
-                        if (
-                          !a.tag_number.toLowerCase().includes(q) &&
-                          !a.name.toLowerCase().includes(q)
-                        )
-                          return false;
-                      }
-                      return true;
-                    });
-                    if (filtered.length === 0)
-                      return (
-                        <p className="p-3 text-sm text-muted-foreground">
-                          No assets match filters.
-                        </p>
-                      );
-                    return filtered.map((a) => {
-                      const isSelected = !!selectedAssets.find(
-                        (s) => s.id === a.id,
-                      );
-                      return (
-                        <label
-                          key={a.id}
-                          className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() =>
-                              isSelected ? removeAsset(a.id) : addAsset(a.id)
-                            }
-                            className="h-4 w-4 rounded border-input"
-                          />
-                          <span className="text-sm">
-                            {a.tag_number} - {a.name}
-                          </span>
-                        </label>
-                      );
-                    });
-                  })()}
-                </div>
-                {selectedAssets.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAssets.map((a) => (
-                      <Badge
-                        key={a.id}
-                        variant="secondary"
-                        className="gap-1 pr-1"
-                      >
-                        {a.tag_number}
-                        <button
-                          type="button"
-                          onClick={() => removeAsset(a.id)}
-                          className="ml-1 hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            )}
           </Card>
 
           <fieldset
@@ -1589,7 +1337,8 @@ function NewCIRPageContent() {
                       (!isDirty && !form.formState.isDirty)
                     }
                   >
-                    {mutation.isPending ? "Saving..." : "Save as Draft"}
+                    {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+                    {mutation.isPending ? "Saving…" : "Save as Draft"}
                   </Button>
                   <Button
                     type="button"
@@ -1669,7 +1418,7 @@ function NewCIRPageContent() {
                 const url = URL.createObjectURL(res.data);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `${referenceNo || "document"}_${String(revisionNo || 0).padStart(2, "0")}.pdf`;
+                a.download = `${existingDoc?.reference_no || "document"}_${String(existingDoc?.revision_no ?? 0).padStart(2, "0")}.pdf`;
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
               } catch {
@@ -1696,39 +1445,6 @@ function NewCIRPageContent() {
         </Card>
       )}
 
-      <Dialog
-        open={confirmDisableLinkage}
-        onOpenChange={setConfirmDisableLinkage}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Disable Commissioning Linkage?</DialogTitle>
-            <DialogDescription>
-              You have {selectedAssets.length} asset
-              {selectedAssets.length > 1 ? "s" : ""} selected. Disabling the
-              linkage will deselect all assets.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDisableLinkage(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setSelectedAssets([]);
-                setCommissioningLinkage(null);
-                setConfirmDisableLinkage(false);
-              }}
-            >
-              Disable & Clear Assets
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

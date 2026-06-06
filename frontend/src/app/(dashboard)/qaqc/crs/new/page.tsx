@@ -31,6 +31,8 @@ import {
   FormMessage,
 } from "@/components/form";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
+import { Spinner } from "@/components/ui/spinner";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 interface Discipline {
   id: string;
@@ -73,7 +75,7 @@ export default function NewCRSPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-8 text-center text-muted-foreground">Loading...</div>
+        <CenteredSpinner label="Loading document…" />
       }
     >
       <NewCRSPageInner />
@@ -119,21 +121,14 @@ function NewCRSPageContent() {
     enabled: !!project?.id,
   });
 
-  // Generate ref number when discipline changes
+  // Reference number is allocated server-side at the moment of save.
+  // We no longer pre-fetch it (it could go stale). For new docs the
+  // field stays empty until the save response populates it.
   useEffect(() => {
     if (!project?.id || !disciplineId) return;
     const disc = disciplines.find((d) => d.id === disciplineId);
     if (!disc) return;
-    api
-      .get("/documents/generate-ref-number", {
-        params: {
-          project_id: project.id,
-          doc_type: "CRS",
-          discipline_code: disc.code,
-        },
-      })
-      .then((res) => setRefNumber(res.data?.reference_number || ""))
-      .catch(() => {});
+    setRefNumber(""); // ensure no stale value
   }, [project?.id, disciplineId, disciplines]);
 
   // Fetch source documents (filter to latest revision only)
@@ -265,7 +260,7 @@ function NewCRSPageContent() {
       const payload = {
         project_id: project!.id,
         document_type: "CRS",
-        reference_no: refNumber,
+        // reference_no is allocated server-side; do not send.
         title: values.subject,
         status: "approved",
         discipline_id: values.discipline_id,
@@ -288,6 +283,9 @@ function NewCRSPageContent() {
     },
     onSuccess: (res) => {
       toast.success(editId ? "CRS updated" : "CRS saved");
+      // Server returns the assigned reference number; surface it
+      // immediately so the user sees the value before the page navigates.
+      if (res?.data?.reference_no) setRefNumber(res.data.reference_no);
       queryClient.invalidateQueries({ queryKey: ["documents", "CRS"] });
       if (!editId && res?.data?.id)
         router.replace(`/qaqc/crs/new?id=${res.data.id}`);
@@ -339,7 +337,7 @@ function NewCRSPageContent() {
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${refNumber || "CRS"}.pdf`;
+        a.download = `${existingDoc?.reference_no || "CRS"}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -404,7 +402,12 @@ function NewCRSPageContent() {
               />
               <FormItem>
                 <FormLabel>Reference Number</FormLabel>
-                <Input value={refNumber} readOnly className="bg-muted" />
+                <Input
+                  value={refNumber}
+                  readOnly
+                  className="bg-muted"
+                  placeholder="Reference will be assigned on save"
+                />
               </FormItem>
               <FormItem>
                 <FormLabel>Revision</FormLabel>
@@ -722,8 +725,9 @@ function NewCRSPageContent() {
               <Download className="h-4 w-4 mr-1" />
               Download PDF
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving..." : "Save"}
+            <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+              {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {mutation.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </form>

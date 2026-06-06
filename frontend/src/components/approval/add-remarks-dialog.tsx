@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ApprovalRound } from "./approval-action-panel";
 
@@ -62,8 +63,9 @@ export function AddRemarksDialog({ open, onOpenChange, documentId, round, onSucc
           )}
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={() => mutation.mutate()} disabled={!file || mutation.isPending}>
-              {mutation.isPending ? "Uploading..." : "Attach"}
+            <Button onClick={() => mutation.mutate()} disabled={!file || mutation.isPending} aria-busy={mutation.isPending || undefined}>
+              {mutation.isPending && <Spinner size="sm" className="text-current" />}
+              {mutation.isPending ? "Uploading…" : "Attach"}
             </Button>
           </div>
         </div>

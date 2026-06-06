@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { Spinner } from "@/components/ui/spinner";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface Client {
   id: string;
@@ -188,7 +190,7 @@ export default function ProjectsPage() {
     },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -292,8 +294,9 @@ export default function ProjectsPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending || (!!editing && !isDirty)}>
-                  {mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}
+                <Button type="submit" disabled={mutation.isPending || (!!editing && !isDirty)} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+                  {mutation.isPending ? "Saving…" : editing ? "Update" : "Create"}
                 </Button>
               </div>
             </form>

@@ -36,16 +36,23 @@ async def cleanup():
                 SET actual_achieved_date = NULL, status = 'not_started'
             """))
 
-            # 4. Reset reference number counters back to serial_start
+            # 4. Reset reference number counters back to serial_start.
+            # Each (project, doc_type) config has a serial_start; each
+            # (project, doc_type, discipline) counter is set back to it.
             await session.execute(text("""
-                UPDATE reference_number_configs
-                SET next_serial = serial_start
+                UPDATE reference_number_counters c
+                SET next_serial = COALESCE(cfg.serial_start, 1)
+                FROM reference_number_configs cfg
+                WHERE cfg.project_id = c.project_id
+                  AND cfg.doc_type = c.doc_type
+                  AND cfg.is_deleted = false
             """))
 
         print("[OK] Cleanup complete:")
         print("  - Deleted: documents, attachments, approval rounds, document_assets,")
         print("    requirement links, work items, gate overrides, notifications, audit logs")
-        print("  - Reset: asset_requirements status/progress, tag targets, serial counters")
+        print("  - Reset: asset_requirements status/progress, tag targets,")
+        print("    reference number counters (per project/doc_type/discipline)")
 
 
 if __name__ == "__main__":

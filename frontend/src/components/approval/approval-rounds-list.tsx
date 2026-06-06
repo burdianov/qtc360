@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -350,8 +351,10 @@ function UploadAttachmentDialog({
           <Button
             onClick={() => uploadMutation.mutate()}
             disabled={!file || uploadMutation.isPending}
+            aria-busy={uploadMutation.isPending || undefined}
           >
-            {uploadMutation.isPending ? "Uploading..." : "Upload"}
+            {uploadMutation.isPending && <Spinner size="sm" className="text-current" />}
+            {uploadMutation.isPending ? "Uploading…" : "Upload"}
           </Button>
         </div>
       </DialogContent>
@@ -539,6 +542,7 @@ function RoundAttachmentsList({
             </Button>
             <Button
               disabled={!pageValue || patchMutation.isPending}
+              aria-busy={patchMutation.isPending || undefined}
               onClick={() => {
                 const page = parseInt(pageValue);
                 if (isNaN(page) || page < 1) {
@@ -551,7 +555,8 @@ function RoundAttachmentsList({
                 });
               }}
             >
-              {patchMutation.isPending ? "Saving..." : "Add to Bundle"}
+              {patchMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {patchMutation.isPending ? "Saving…" : "Add to Bundle"}
             </Button>
           </div>
         </DialogContent>

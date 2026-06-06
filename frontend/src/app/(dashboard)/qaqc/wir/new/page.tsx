@@ -58,6 +58,7 @@ import {
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { DocumentAttachments } from "@/components/document-attachments";
+import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 
 interface Discipline {
@@ -124,11 +125,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
-  const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [assetTypeFilter, setAssetTypeFilter] = useState<string>("");
-  const [assetSearch, setAssetSearch] = useState("");
-  const [assetsOpen, setAssetsOpen] = useState(false);
-  const [confirmDisableLinkage, setConfirmDisableLinkage] = useState(false);
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -144,7 +140,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     inspector2: boolean;
   }>({ inspector1: false, inspector2: false });
   const [commissioningLinkage, setCommissioningLinkage] =
-    useState<CommissioningLinkage | null>(null);
+    useState<CommissioningLinkage | null>(null); // CommissioningLinkage = CommissioningLinkageBlock[]
   const linkageDirtyRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
@@ -306,10 +302,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     ].includes(existingDoc.status);
 
   useEffect(() => {
-    if (fullyLocked && selectedAssets.length > 0) setAssetsOpen(false);
-  }, [fullyLocked, selectedAssets.length]);
-
-  useEffect(() => {
     if (existingDoc) {
       form.reset({
         subject: existingDoc.title || "",
@@ -337,12 +329,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       });
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
-
-      // Restore selected assets
-      if (existingDoc.asset_ids?.length && assets.length > 0) {
-        const ids = new Set(existingDoc.asset_ids);
-        setSelectedAssets(assets.filter((a) => ids.has(a.id)));
-      }
     }
   }, [existingDoc, assets, form]);
 
@@ -358,29 +344,37 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           requirement_work_item_id: string | null;
         }[];
         if (links.length === 0) return;
-        const firstArId = links[0].asset_requirement_id;
-        const ar = allAssetRequirements.find((r) => r.id === firstArId);
-        if (!ar) return;
-        const hasLinkedWorkItems = links.some(
-          (l) => l.requirement_work_item_id != null,
-        );
-        // Check if work items exist even if not individually linked
-        let isPartial = hasLinkedWorkItems;
-        if (!isPartial) {
-          const wiRes = await api.get("/commissioning/work-items", {
-            params: { asset_requirement_id: firstArId },
-          });
-          isPartial = wiRes.data.length > 0;
+
+        // Group links by requirement template (via asset requirement)
+        const arIdToTemplate = new Map<string, string>();
+        for (const ar of allAssetRequirements) {
+          arIdToTemplate.set(ar.id, ar.requirement_template_id);
         }
-        setCommissioningLinkage({
-          requirementTemplateId: ar.requirement_template_id,
-          isPartialScope: isPartial,
-          checkedExistingIds: links
+
+        // Group by template
+        const byTemplate = new Map<string, typeof links>();
+        for (const link of links) {
+          const tmplId = arIdToTemplate.get(link.asset_requirement_id);
+          if (!tmplId) continue;
+          if (!byTemplate.has(tmplId)) byTemplate.set(tmplId, []);
+          byTemplate.get(tmplId)!.push(link);
+        }
+
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+        for (const [tmplId, tmplLinks] of byTemplate.entries()) {
+          const checkedWiIds = tmplLinks
             .filter((l) => l.requirement_work_item_id)
-            .map((l) => l.requirement_work_item_id!),
-          deleteExistingIds: [],
-          newItems: [],
-        });
+            .map((l) => l.requirement_work_item_id!);
+          const isPartial = checkedWiIds.length > 0;
+          blocks.push({
+            id: Math.random().toString(36).slice(2),
+            requirementTemplateId: tmplId,
+            isPartialScope: isPartial,
+            assetStates: {},
+          });
+        }
+
+        if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
       .catch(() => {});
   }, [editId, allAssetRequirements, commissioningLinkage]);
@@ -431,10 +425,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         setReferenceNo(doc.reference_no || "");
         setRevisionNo(doc.revision_no + 1);
         // Restore assets
-        if (doc.asset_ids?.length && assets.length > 0) {
-          const ids = new Set(doc.asset_ids);
-          setSelectedAssets(assets.filter((a: Asset) => ids.has(a.id)));
-        }
         // Restore commissioning linkage
         const linksRes = await api.get("/commissioning/document-links", {
           params: { document_id: revisionOfId },
@@ -444,21 +434,31 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           requirement_work_item_id: string | null;
         }[];
         if (links.length > 0) {
-          const firstArId = links[0].asset_requirement_id;
-          const ar = allAssetRequirements.find((r) => r.id === firstArId);
-          if (ar) {
-            const hasWorkItems = links.some(
-              (l) => l.requirement_work_item_id != null,
-            );
-            setCommissioningLinkage({
-              requirementTemplateId: ar.requirement_template_id,
-              isPartialScope: hasWorkItems,
-              checkedExistingIds: links
-                .filter((l) => l.requirement_work_item_id)
-                .map((l) => l.requirement_work_item_id!),
-              deleteExistingIds: [],
-              newItems: [],
+          const arIdToTemplate = new Map<string, string>();
+          for (const ar of allAssetRequirements) {
+            arIdToTemplate.set(ar.id, ar.requirement_template_id);
+          }
+          const byTemplate = new Map<string, typeof links>();
+          for (const link of links) {
+            const tmplId = arIdToTemplate.get(link.asset_requirement_id);
+            if (!tmplId) continue;
+            if (!byTemplate.has(tmplId)) byTemplate.set(tmplId, []);
+            byTemplate.get(tmplId)!.push(link);
+          }
+          const blocks: CommissioningLinkage = [];
+          for (const [tmplId, tmplLinks] of byTemplate.entries()) {
+            const checkedWiIds = tmplLinks
+              .filter((l) => l.requirement_work_item_id)
+              .map((l) => l.requirement_work_item_id!);
+            blocks.push({
+              id: Math.random().toString(36).slice(2),
+              requirementTemplateId: tmplId,
+              isPartialScope: checkedWiIds.length > 0,
+              assetStates: {},
             });
+          }
+          if (blocks.length > 0) {
+            setCommissioningLinkage(blocks);
             linkageDirtyRef.current = true;
           }
         }
@@ -495,21 +495,12 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     );
   })();
 
-  // Assets applicable to the selected requirement template (exclude already achieved)
-  const selectedTemplateId2 = commissioningLinkage?.requirementTemplateId;
-  const applicableAssetIds = selectedTemplateId2
-    ? new Set(
-        allAssetRequirements
-          .filter(
-            (ar) =>
-              ar.requirement_template_id === selectedTemplateId2 &&
-              ar.status !== "achieved",
-          )
-          .map((ar) => ar.asset_id),
-      )
-    : null;
+  // applicableAssetIds removed — each block manages its own asset selection
 
   useEffect(() => {
+    // Reference number is allocated server-side at the moment of save.
+    // We no longer pre-fetch it (it could go stale). It will be populated
+    // from the POST response in onSuccess.
     if (
       !editId &&
       !revisionOfId &&
@@ -517,18 +508,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       project?.id &&
       disciplines.length > 0
     ) {
-      const disciplineCode =
-        disciplines.find((d) => d.id === disciplineId)?.code || "";
-      api
-        .get("/documents/generate-ref-number", {
-          params: {
-            project_id: project.id,
-            doc_type: "WIR",
-            discipline_code: disciplineCode,
-          },
-        })
-        .then((res) => setReferenceNo(res.data.reference_number))
-        .catch(() => toast.error("Failed to generate reference number"));
+      setReferenceNo(""); // ensure no stale value
     }
   }, [editId, revisionOfId, disciplineId, project?.id, disciplines]);
   const inspector1Id = form.watch("inspector_1_id");
@@ -553,10 +533,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     }
   };
 
-  const buildPayload = (values: FormValues, refNo?: string) => ({
+  const buildPayload = (values: FormValues) => ({
     project_id: project!.id,
     document_type: "WIR",
-    reference_no: refNo || referenceNo || "",
     title: values.subject,
     description: values.description,
     discipline_id: values.discipline_id,
@@ -573,89 +552,79 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     inspector_time_1: values.inspector_time_1 || null,
     inspector_date_2: values.inspector_date_2 || null,
     inspector_time_2: values.inspector_time_2 || null,
-    asset_ids: selectedAssets.map((a) => a.id),
+    asset_ids: commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [],
     ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
   });
 
   const saveCommissioningLinkage = async (docId: string | null) => {
-    if (!commissioningLinkage || !docId || selectedAssets.length === 0) return;
-    for (const asset of selectedAssets) {
-      const arRes = await api.get("/commissioning/asset-requirements", {
-        params: { asset_id: asset.id },
-      });
-      const assetReq = (arRes.data as any[]).find(
-        (ar: any) =>
-          ar.requirement_template_id ===
-          commissioningLinkage.requirementTemplateId,
-      );
-      if (!assetReq) continue;
+    if (!commissioningLinkage || !docId) return;
 
-      if (commissioningLinkage.isPartialScope) {
-        // Get work items for this specific asset's requirement
-        const wiRes = await api.get("/commissioning/work-items", {
-          params: { asset_requirement_id: assetReq.id },
+    for (const block of commissioningLinkage) {
+      if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
+
+      for (const assetId of block.assetIds) {
+        const arRes = await api.get("/commissioning/asset-requirements", {
+          params: { asset_id: assetId },
         });
-        const assetWiIds = new Set(
-          (wiRes.data as any[]).map((wi: any) => wi.id),
+        const assetReq = (arRes.data as any[]).find(
+          (ar: any) => ar.requirement_template_id === block.requirementTemplateId,
         );
+        if (!assetReq) continue;
 
-        for (const delId of commissioningLinkage.deleteExistingIds) {
-          if (assetWiIds.has(delId))
-            await api.delete(`/commissioning/work-items/${delId}`);
-        }
-        const createdIds: string[] = [];
-        for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-          const wiCreated = await api.post("/commissioning/work-items", {
-            asset_requirement_id: assetReq.id,
-            name: commissioningLinkage.newItems[i].name,
-            sequence_no: i + 100,
-            created_dynamically: true,
-          });
-          if (commissioningLinkage.newItems[i].checked) {
-            createdIds.push(wiCreated.data.id);
+        if (block.isPartialScope) {
+          const assetState = block.assetStates[assetId];
+
+          for (const delId of assetState?.deleteExistingIds ?? []) {
+            await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
           }
-        }
-        // Only link work items that belong to this asset's requirement
-        for (const wiId of commissioningLinkage.checkedExistingIds) {
-          if (!assetWiIds.has(wiId)) continue;
+
+          const createdLinkedIds: string[] = [];
+          for (let i = 0; i < (assetState?.newItems ?? []).length; i++) {
+            const newItem = assetState!.newItems[i];
+            const wiCreated = await api.post("/commissioning/work-items", {
+              asset_requirement_id: assetReq.id,
+              name: newItem.name,
+              sequence_no: i + 100,
+              created_dynamically: true,
+            });
+            if (newItem.checked) createdLinkedIds.push(wiCreated.data.id);
+          }
+
+          for (const wiId of assetState?.checkedExistingIds ?? []) {
+            await api.post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+              requirement_work_item_id: wiId,
+            }).catch(() => {});
+          }
+          for (const wiId of createdLinkedIds) {
+            await api.post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+              requirement_work_item_id: wiId,
+            }).catch(() => {});
+          }
+        } else {
           await api.post("/commissioning/document-links", {
             document_id: docId,
             asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
+          }).catch(() => {});
         }
-        for (const wiId of createdIds) {
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
-        }
-      } else {
-        await api.post("/commissioning/document-links", {
-          document_id: docId,
-          asset_requirement_id: assetReq.id,
-        });
       }
-    }
-    if (commissioningLinkage.gateWarningAcknowledged) {
-      for (const asset of selectedAssets) {
-        await api
-          .post("/commissioning/gate-overrides", {
-            asset_id: asset.id,
+
+      if (block.gateWarningAcknowledged) {
+        for (const assetId of block.assetIds) {
+          await api.post("/commissioning/gate-overrides", {
+            asset_id: assetId,
             document_id: docId,
-            level_code: commissioningLinkage.gateLevelCode || "L2B",
-            incomplete_requirements:
-              commissioningLinkage.incompleteRequirements || [],
-            notes: commissioningLinkage.gateOverrideNotes || null,
-          })
-          .catch(() =>
-            toast.error("Failed to record gate override acknowledgement"),
-          );
+            level_code: block.gateLevelCode || "L2B",
+            incomplete_requirements: block.incompleteRequirements || [],
+            notes: block.gateOverrideNotes || null,
+          }).catch(() => toast.error("Failed to record gate override acknowledgement"));
+        }
       }
     }
   };
-
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
       let res;
@@ -699,9 +668,11 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     },
     onSuccess: (res) => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
-      setAssetSearch("");
       setIsDirty(false);
       setRevisionOfId(null);
+      // Server returns the assigned reference number; surface it immediately
+      // so the user sees the value before the page navigates to the edit URL.
+      if (res?.data?.reference_no) setReferenceNo(res.data.reference_no);
       if (res?.data?.revision_no !== undefined)
         setRevisionNo(res.data.revision_no);
       form.reset(form.getValues());
@@ -774,19 +745,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       }
     }
     router.push("/qaqc/wir");
-  };
-
-  const addAsset = (assetId: string) => {
-    const asset = assets.find((a) => a.id === assetId);
-    if (asset && !selectedAssets.find((a) => a.id === assetId)) {
-      setSelectedAssets([...selectedAssets, asset]);
-      setIsDirty(true);
-    }
-  };
-
-  const removeAsset = (assetId: string) => {
-    setSelectedAssets(selectedAssets.filter((a) => a.id !== assetId));
-    setIsDirty(true);
   };
 
   return (
@@ -915,7 +873,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                         value={referenceNo}
                         disabled
                         className="font-mono bg-muted flex-1"
-                        placeholder="Select discipline to generate..."
+                        placeholder="Reference will be assigned on save"
                       />
                       {(revisionNo > 0 || editId) && (
                         <div className="flex items-center px-3 rounded-md border bg-muted text-sm font-mono whitespace-nowrap">
@@ -1099,200 +1057,41 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           </fieldset>
 
           {/* Commissioning Linkage */}
-          {/* Commissioning Linkage */}
           <Card>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
-                selectedAssetIds={selectedAssets.map((a) => a.id)}
-                selectedAssetLabels={Object.fromEntries(
-                  selectedAssets.map((a) => [a.id, a.tag_number]),
+                allAssetIds={assets.map((a) => a.id)}
+                allAssetLabels={Object.fromEntries(
+                  assets.map((a) => [a.id, a.tag_number || a.name]),
                 )}
+                allAssetRequirements={allAssetRequirements}
                 documentType="WIR"
                 applicableTemplateIds={applicableTemplateIds}
                 value={commissioningLinkage}
                 onChange={(linkage) => {
-                  if (!linkage && selectedAssets.length > 0) {
-                    setConfirmDisableLinkage(true);
-                    return;
-                  }
                   setCommissioningLinkage(linkage);
                   linkageDirtyRef.current = true;
                   setIsDirty(true);
                 }}
+                onRemoveBlock={async (block) => {
+                  if (!editId || !block.requirementTemplateId) return;
+                  for (const assetId of block.assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
+                onUnlinkAssets={async (tmplId, assetIds) => {
+                  if (!editId) return;
+                  for (const assetId of assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
               />
             </CardContent>
-          </Card>
-
-          {/* Assets */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer"
-              onClick={() => setAssetsOpen(!assetsOpen)}
-            >
-              <CardTitle className="text-base flex items-center justify-between">
-                Assets ({selectedAssets.length} selected)
-                <ChevronDown
-                  className={
-                    "h-4 w-4 text-muted-foreground transition-transform " +
-                    (assetsOpen ? "rotate-180" : "")
-                  }
-                />
-              </CardTitle>
-            </CardHeader>
-            {!assetsOpen && selectedAssets.length > 0 && (
-              <CardContent className="pt-0">
-                <div className="flex flex-wrap gap-2">
-                  {selectedAssets.map((asset) => (
-                    <Badge
-                      key={asset.id}
-                      variant="secondary"
-                      className="gap-1 pr-1"
-                    >
-                      {asset.tag_number}
-                      <button
-                        type="button"
-                        onClick={() => removeAsset(asset.id)}
-                        className="ml-1 hover:text-destructive"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            )}
-            {assetsOpen && (
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Select
-                    value={assetTypeFilter}
-                    onValueChange={(v: any) =>
-                      setAssetTypeFilter(v === "__all__" ? "" : v)
-                    }
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="All asset types">
-                        {assetTypeFilter
-                          ? assetTypes.find((t) => t.id === assetTypeFilter)
-                              ?.name
-                          : "All asset types"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All asset types</SelectItem>
-                      {assetTypes
-                        .filter((t) => {
-                          if (!disciplineId) return true;
-                          const svc = services.find(
-                            (s) => s.id === t.service_id,
-                          );
-                          return svc?.discipline_id === disciplineId;
-                        })
-                        .map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    placeholder="Search assets..."
-                    value={assetSearch}
-                    onChange={(e) => setAssetSearch(e.target.value)}
-                    className="flex-1"
-                  />
-                </div>
-                <div className="rounded-md border max-h-52 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
-                  {(() => {
-                    const disciplineTypeIds = disciplineId
-                      ? new Set(
-                          assetTypes
-                            .filter((t) => {
-                              const svc = services.find(
-                                (s) => s.id === t.service_id,
-                              );
-                              return svc?.discipline_id === disciplineId;
-                            })
-                            .map((t) => t.id),
-                        )
-                      : null;
-                    const filtered = assets.filter((a) => {
-                      if (applicableAssetIds && !applicableAssetIds.has(a.id))
-                        return false;
-                      if (
-                        disciplineTypeIds &&
-                        !disciplineTypeIds.has(a.asset_type_id)
-                      )
-                        return false;
-                      if (
-                        assetTypeFilter &&
-                        a.asset_type_id !== assetTypeFilter
-                      )
-                        return false;
-                      if (assetSearch) {
-                        const q = assetSearch.toLowerCase();
-                        if (
-                          !a.tag_number.toLowerCase().includes(q) &&
-                          !a.name.toLowerCase().includes(q)
-                        )
-                          return false;
-                      }
-                      return true;
-                    });
-                    if (filtered.length === 0)
-                      return (
-                        <p className="p-3 text-sm text-muted-foreground">
-                          No assets match filters.
-                        </p>
-                      );
-                    return filtered.map((a) => {
-                      const isSelected = !!selectedAssets.find(
-                        (s) => s.id === a.id,
-                      );
-                      return (
-                        <label
-                          key={a.id}
-                          className="flex items-center gap-3 px-3 py-2 hover:bg-accent/50 cursor-pointer border-b last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() =>
-                              isSelected ? removeAsset(a.id) : addAsset(a.id)
-                            }
-                            className="h-4 w-4 rounded border-input"
-                          />
-                          <span className="text-sm">
-                            {a.tag_number} - {a.name}
-                          </span>
-                        </label>
-                      );
-                    });
-                  })()}
-                </div>
-                {selectedAssets.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAssets.map((asset) => (
-                      <Badge
-                        key={asset.id}
-                        variant="secondary"
-                        className="gap-1 pr-1"
-                      >
-                        {asset.tag_number}
-                        <button
-                          type="button"
-                          onClick={() => removeAsset(asset.id)}
-                          className="ml-1 hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            )}
           </Card>
 
           {/* Inspectors & Signatures */}
@@ -1662,7 +1461,8 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                       (!isDirty && !form.formState.isDirty)
                     }
                   >
-                    {mutation.isPending ? "Saving..." : "Save as Draft"}
+                    {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+                    {mutation.isPending ? "Saving…" : "Save as Draft"}
                   </Button>
                   <Button
                     type="button"
@@ -1742,7 +1542,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 const url = URL.createObjectURL(res.data);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `${referenceNo || "document"}_${String(revisionNo || 0).padStart(2, "0")}.pdf`;
+                a.download = `${existingDoc?.reference_no || "document"}_${String(existingDoc?.revision_no ?? 0).padStart(2, "0")}.pdf`;
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
               } catch {
@@ -1770,39 +1570,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         </Card>
       )}
 
-      <Dialog
-        open={confirmDisableLinkage}
-        onOpenChange={setConfirmDisableLinkage}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Disable Commissioning Linkage?</DialogTitle>
-            <DialogDescription>
-              You have {selectedAssets.length} asset
-              {selectedAssets.length > 1 ? "s" : ""} selected. Disabling the
-              linkage will deselect all assets.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDisableLinkage(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setSelectedAssets([]);
-                setCommissioningLinkage(null);
-                setConfirmDisableLinkage(false);
-              }}
-            >
-              Disable & Clear Assets
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

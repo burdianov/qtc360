@@ -12,8 +12,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs } from "@/components/ui/tabs";
+import { Spinner } from "@/components/ui/spinner";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT"] as const;
 
@@ -57,7 +59,7 @@ export default function TemplatesPage() {
     } finally { setUploading(false); }
   };
 
-  if (userLoading) return <div className="p-6">Loading...</div>;
+  if (userLoading) return <CenteredSpinner label="Loading…" />;
   if (!isAdmin) return null;
 
   const renderTab = (docType: string) => {
@@ -77,8 +79,9 @@ export default function TemplatesPage() {
                 <input type="file" accept=".docx" onChange={(e) => setFile((prev) => ({ ...prev, [docType]: e.target.files?.[0] || null }))} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
               </div>
               <div className="pt-5">
-                <Button onClick={() => handleUpload(docType)} disabled={uploading || !file[docType] || !name[docType]}>
-                  <Upload className="h-4 w-4 mr-2" />{uploading ? "Uploading..." : "Upload"}
+                <Button onClick={() => handleUpload(docType)} disabled={uploading || !file[docType] || !name[docType]} aria-busy={uploading || undefined}>
+                  {uploading ? <Spinner size="sm" className="mr-2 text-current" /> : <Upload className="h-4 w-4 mr-2" />}
+                  {uploading ? "Uploading…" : "Upload"}
                 </Button>
               </div>
             </div>

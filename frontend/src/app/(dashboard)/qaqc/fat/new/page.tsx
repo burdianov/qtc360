@@ -35,6 +35,8 @@ import {
   type CommissioningLinkage,
 } from "@/components/commissioning-linkage";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
+import { Spinner } from "@/components/ui/spinner";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
 interface Discipline {
   id: string;
@@ -67,7 +69,7 @@ export default function NewFATPage() {
   return (
     <Suspense
       fallback={
-        <div className="p-8 text-center text-muted-foreground">Loading...</div>
+        <CenteredSpinner label="Loading document…" />
       }
     >
       <NewFATPageContent />
@@ -82,10 +84,6 @@ function NewFATPageContent() {
   const project = useSelectedProject();
   const queryClient = useQueryClient();
 
-  const [selectedAssets, setSelectedAssets] = useState<Asset[]>([]);
-  const [assetSearch, setAssetSearch] = useState("");
-  const [filterAssetTypeId, setFilterAssetTypeId] = useState("");
-  const [assetsOpen, setAssetsOpen] = useState(false);
   const [commissioningLinkage, setCommissioningLinkage] =
     useState<CommissioningLinkage | null>(null);
   const linkageDirtyRef = useRef(false);
@@ -151,36 +149,16 @@ function NewFATPageContent() {
         description: existingDoc.description || "",
         discipline_id: existingDoc.discipline_id || "",
       });
-      if (existingDoc.asset_ids?.length && assets.length > 0) {
-        const ids = new Set(existingDoc.asset_ids);
-        setSelectedAssets(assets.filter((a) => ids.has(a.id)));
-      }
     }
   }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    // Reference number is allocated server-side at the moment of save.
+    // We no longer pre-fetch it (it could go stale). For new docs the
+    // field stays empty until the save response populates it.
     if (editId) return;
     if (!project?.id || !disciplineId || disciplines.length === 0) return;
-
-    const disciplineCode =
-      disciplines.find((d) => d.id === disciplineId)?.code || "";
-
-    if (!disciplineCode) return;
-
-    api
-      .get("/documents/generate-ref-number", {
-        params: {
-          project_id: project.id,
-          doc_type: "FAT",
-          discipline_code: disciplineCode,
-        },
-      })
-      .then((res) => {
-        form.setValue("reference_no", res.data.reference_number || "");
-      })
-      .catch(() => {
-        toast.error("Failed to generate reference number");
-      });
+    form.setValue("reference_no", "");
   }, [editId, project?.id, disciplineId, disciplines, form]);
 
   // Restore commissioning linkage
@@ -190,33 +168,23 @@ function NewFATPageContent() {
     api
       .get("/commissioning/document-links", { params: { document_id: editId } })
       .then(async (res) => {
-        const links = res.data as {
-          asset_requirement_id: string;
-          requirement_work_item_id: string | null;
-        }[];
+        const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
         if (links.length === 0) return;
-        const firstArId = links[0].asset_requirement_id;
-        const ar = allAssetRequirements.find((r) => r.id === firstArId);
-        if (!ar) return;
-        const hasLinkedWorkItems = links.some(
-          (l) => l.requirement_work_item_id != null,
-        );
-        let isPartial = hasLinkedWorkItems;
-        if (!isPartial) {
-          const wiRes = await api.get("/commissioning/work-items", {
-            params: { asset_requirement_id: firstArId },
-          });
-          isPartial = wiRes.data.length > 0;
+        const arIdToTmpl = new Map<string, string>();
+        const arIdToAsset = new Map<string, string>();
+        for (const ar of allAssetRequirements) { arIdToTmpl.set(ar.id, ar.requirement_template_id); arIdToAsset.set(ar.id, ar.asset_id); }
+        const byTmpl = new Map<string, Set<string>>();
+        for (const link of links) {
+          const tmpl = arIdToTmpl.get(link.asset_requirement_id);
+          if (!tmpl) continue;
+          if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
+          byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
         }
-        setCommissioningLinkage({
-          requirementTemplateId: ar.requirement_template_id,
-          isPartialScope: isPartial,
-          checkedExistingIds: links
-            .filter((l) => l.requirement_work_item_id)
-            .map((l) => l.requirement_work_item_id!),
-          deleteExistingIds: [],
-          newItems: [],
-        });
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+        for (const [tmplId, assetSet] of byTmpl.entries()) {
+          blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: links.some((l) => l.requirement_work_item_id != null), assetStates: {} });
+        }
+        if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
       .catch(() => {});
   }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -233,92 +201,44 @@ function NewFATPageContent() {
       )
     : null;
 
-  const filteredAssets = assets.filter((a) => {
-    if (disciplineTypeIds && !disciplineTypeIds.has(a.asset_type_id))
-      return false;
-    if (filterAssetTypeId && a.asset_type_id !== filterAssetTypeId)
-      return false;
-    if (assetSearch) {
-      const q = assetSearch.toLowerCase();
-      if (
-        !a.name.toLowerCase().includes(q) &&
-        !a.tag_number.toLowerCase().includes(q)
-      )
-        return false;
-    }
-    return true;
-  });
-
-  const addAsset = (id: string) => {
-    const a = assets.find((x) => x.id === id);
-    if (a && !selectedAssets.find((x) => x.id === id)) {
-      setSelectedAssets([...selectedAssets, a]);
-    }
-  };
-  const removeAsset = (id: string) => {
-    setSelectedAssets(selectedAssets.filter((a) => a.id !== id));
-  };
-
   const saveCommissioningLinkage = async (docId: string | null) => {
-    if (!commissioningLinkage || !docId || selectedAssets.length === 0) return;
-    for (const asset of selectedAssets) {
-      const arRes = await api.get("/commissioning/asset-requirements", {
-        params: { asset_id: asset.id },
-      });
-      const assetReq = (arRes.data as any[]).find(
-        (ar: any) =>
-          ar.requirement_template_id ===
-          commissioningLinkage.requirementTemplateId,
-      );
-      if (!assetReq) continue;
-      if (commissioningLinkage.isPartialScope) {
-        for (const delId of commissioningLinkage.deleteExistingIds) {
-          await api.delete(`/commissioning/work-items/${delId}`);
+    if (!commissioningLinkage || !docId) return;
+    for (const block of commissioningLinkage) {
+      if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
+      for (const assetId of block.assetIds) {
+        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+        const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === block.requirementTemplateId);
+        if (!assetReq) continue;
+        if (block.isPartialScope) {
+          const s = block.assetStates[assetId];
+          for (const delId of s?.deleteExistingIds ?? []) await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
+          const created: string[] = [];
+          for (let i = 0; i < (s?.newItems ?? []).length; i++) {
+            const wi = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: s!.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+            if (s!.newItems[i].checked) created.push(wi.data.id);
+          }
+          for (const wiId of [...(s?.checkedExistingIds ?? []), ...created]) {
+            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }).catch(() => {});
+          }
+        } else {
+          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id }).catch(() => {});
         }
-        const createdIds: string[] = [];
-        for (let i = 0; i < commissioningLinkage.newItems.length; i++) {
-          const wiRes = await api.post("/commissioning/work-items", {
-            asset_requirement_id: assetReq.id,
-            name: commissioningLinkage.newItems[i].name,
-            sequence_no: i + 100,
-            created_dynamically: true,
-          });
-          if (commissioningLinkage.newItems[i].checked)
-            createdIds.push(wiRes.data.id);
-        }
-        for (const wiId of commissioningLinkage.checkedExistingIds) {
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
-        }
-        for (const wiId of createdIds) {
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-            requirement_work_item_id: wiId,
-          });
-        }
-      } else {
-        await api.post("/commissioning/document-links", {
-          document_id: docId,
-          asset_requirement_id: assetReq.id,
-        });
       }
     }
   };
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
+      const blockAssetIds = commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [];
       const payload = {
         project_id: project!.id,
         document_type: "FAT",
-        reference_no: values.reference_no || "",
-        title: values.reference_no || "FAT",
+        title:
+          (blockAssetIds[0] ? assets.find((a) => a.id === blockAssetIds[0])?.name : null) ||
+          "Factory Acceptance Test",
         description: values.description || null,
         discipline_id: values.discipline_id,
-        asset_ids: selectedAssets.map((a) => a.id),
+        asset_ids: blockAssetIds,
       };
       let res;
       if (editId) {
@@ -338,6 +258,10 @@ function NewFATPageContent() {
     },
     onSuccess: (res) => {
       toast.success(editId ? "FAT updated" : "FAT saved");
+      // Server returns the assigned reference number; surface it immediately
+      // so the user sees the value in the (now read-only) reference field.
+      if (res?.data?.reference_no)
+        form.setValue("reference_no", res.data.reference_no);
       queryClient.invalidateQueries({ queryKey: ["documents", "FAT"] });
       if (!editId && res?.data?.id)
         router.replace(`/qaqc/fat/new?id=${res.data.id}`);
@@ -379,7 +303,12 @@ function NewFATPageContent() {
                   <FormItem>
                     <FormLabel>Reference Number</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Reference number" />
+                      <Input
+                        {...field}
+                        disabled
+                        className="font-mono bg-muted"
+                        placeholder="Reference will be assigned on save"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -441,115 +370,33 @@ function NewFATPageContent() {
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
-                selectedAssetIds={selectedAssets.map((a) => a.id)}
+                allAssetIds={assets.map((a) => a.id)}
+                allAssetLabels={Object.fromEntries(assets.map((a) => [a.id, a.tag_number || a.name]))}
+                allAssetRequirements={allAssetRequirements}
                 documentType="FAT"
                 value={commissioningLinkage}
                 onChange={(linkage) => {
                   setCommissioningLinkage(linkage);
                   linkageDirtyRef.current = true;
                 }}
+                onRemoveBlock={async (block) => {
+                  if (!editId || !block.requirementTemplateId) return;
+                  for (const assetId of block.assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
+                onUnlinkAssets={async (tmplId, assetIds) => {
+                  if (!editId) return;
+                  for (const assetId of assetIds) {
+                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
+                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
+                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                  }
+                }}
               />
             </CardContent>
-          </Card>
-
-          {/* Assets */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer"
-              onClick={() => setAssetsOpen(!assetsOpen)}
-            >
-              <CardTitle className="text-base flex items-center justify-between">
-                Assets ({selectedAssets.length} selected)
-                <ChevronDown
-                  className={
-                    "h-4 w-4 text-muted-foreground transition-transform " +
-                    (assetsOpen ? "rotate-180" : "")
-                  }
-                />
-              </CardTitle>
-            </CardHeader>
-            {assetsOpen && (
-              <CardContent className="space-y-3">
-                {selectedAssets.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedAssets.map((a) => (
-                      <Badge
-                        key={a.id}
-                        variant="secondary"
-                        className="gap-1 pr-1"
-                      >
-                        {a.tag_number}
-                        <button
-                          type="button"
-                          onClick={() => removeAsset(a.id)}
-                          className="ml-1 hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Search assets..."
-                    value={assetSearch}
-                    onChange={(e) => setAssetSearch(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Select
-                    value={filterAssetTypeId}
-                    onValueChange={(v: any) =>
-                      setFilterAssetTypeId(v === "__all__" ? "" : v)
-                    }
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue>
-                        {filterAssetTypeId
-                          ? assetTypes.find((t) => t.id === filterAssetTypeId)
-                              ?.name
-                          : "All Types"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">All Types</SelectItem>
-                      {assetTypes
-                        .filter((t) => {
-                          if (!disciplineId) return true;
-                          const svc = services.find(
-                            (s) => s.id === t.service_id,
-                          );
-                          return svc?.discipline_id === disciplineId;
-                        })
-                        .map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
-                  {filteredAssets
-                    .filter((a) => !selectedAssets.find((s) => s.id === a.id))
-                    .map((a) => (
-                      <label
-                        key={a.id}
-                        className="flex items-center gap-3 rounded px-2 py-1.5 cursor-pointer hover:bg-accent/50"
-                      >
-                        <input
-                          type="checkbox"
-                          onChange={() => addAsset(a.id)}
-                          className="h-4 w-4"
-                        />
-                        <span className="text-sm">
-                          {a.tag_number} - {a.name}
-                        </span>
-                      </label>
-                    ))}
-                </div>
-              </CardContent>
-            )}
           </Card>
 
           {/* Actions */}
@@ -557,8 +404,9 @@ function NewFATPageContent() {
             <Button type="button" variant="outline" onClick={handleBack}>
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Saving..." : "Save"}
+            <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+              {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {mutation.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </form>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useUserProjects, useSelectedProject, useSetProject } from "@/hooks/use-project";
 import { ProjectSelectModal } from "@/components/layout/project-select-modal";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 import { STORAGE_KEYS } from "@/lib/constants";
 import type { AxiosError } from "axios";
 
@@ -41,7 +42,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [projects, user, selectedProject, setProject]);
 
-  if (!mounted || isLoading) return null;
+  if (!mounted || isLoading) {
+    return <CenteredSpinner label="Authenticating…" minHeight="min-h-screen" />;
+  }
   if (!user) {
     const status = (error as AxiosError | undefined)?.response?.status;
     if (isError && status !== 401 && status !== 403 && typeof window !== "undefined" && localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)) {

@@ -18,6 +18,7 @@ from app.models.commissioning import (
     RequirementTemplate, RequirementWorkItem,
 )
 from app.models.reference_number_config import ReferenceNumberConfig
+from app.models.reference_number_counter import ReferenceNumberCounter
 from app.services.commissioning import recalculate_requirement_status, recalculate_tag_status
 
 # --- IDs resolved dynamically at runtime ---
@@ -96,16 +97,38 @@ def _rand_date(start: date, end: date) -> date:
     return start + timedelta(days=random.randint(0, max(0, delta)))
 
 
-async def _bump_serial(db: AsyncSession, doc_type: str) -> int:
-    """Allocate next serial for a doc type."""
+async def _bump_serial(db: AsyncSession, doc_type: str, discipline_id: uuid.UUID) -> int:
+    """Allocate next serial for a (project, doc_type, discipline) triple.
+    Mirrors the live allocation path in app.api.v1.documents._allocate_serial."""
     r = await db.execute(
         select(ReferenceNumberConfig)
-        .where(ReferenceNumberConfig.project_id == PROJECT_ID, ReferenceNumberConfig.doc_type == doc_type)
+        .where(
+            ReferenceNumberConfig.project_id == PROJECT_ID,
+            ReferenceNumberConfig.doc_type == doc_type,
+        )
         .with_for_update()
     )
     config = r.scalar_one()
-    serial = config.next_serial
-    config.next_serial = serial + 1
+    counter_r = await db.execute(
+        select(ReferenceNumberCounter)
+        .where(
+            ReferenceNumberCounter.project_id == PROJECT_ID,
+            ReferenceNumberCounter.doc_type == doc_type,
+            ReferenceNumberCounter.discipline_id == discipline_id,
+        )
+        .with_for_update()
+    )
+    counter = counter_r.scalar_one_or_none()
+    if counter is None:
+        counter = ReferenceNumberCounter(
+            project_id=PROJECT_ID, doc_type=doc_type,
+            discipline_id=discipline_id,
+            next_serial=config.serial_start or 1,
+        )
+        db.add(counter)
+        await db.flush()
+    serial = counter.next_serial
+    counter.next_serial = serial + 1
     return serial
 
 
@@ -121,7 +144,7 @@ async def create_doc(
     site_signed: bool = False, qaqc_signed: bool = False,
     location: str = "", creator: uuid.UUID | None = None,
 ) -> Document:
-    serial = await _bump_serial(db, doc_type)
+    serial = await _bump_serial(db, doc_type, disc_id)
     if creator is None:
         creator = USER_SITE
     doc = Document(

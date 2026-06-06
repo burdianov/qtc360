@@ -17,8 +17,13 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
-import { Trash2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Pencil, Trash2, Plus, Check, X } from "lucide-react";
 import { ProjectApproversCard } from "./project-approvers-card";
+
+const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT", "CRS"] as const;
+const DEFAULT_PATTERN =
+  "{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}";
 
 interface RefConfig {
   id: string;
@@ -30,26 +35,43 @@ interface RefConfig {
   serial_start: number;
 }
 
-export default function SettingsPage() {
-  const qc = useQueryClient();
-  const project = useSelectedProject();
-  const projectId = project?.id;
+function previewPattern(
+  pattern: string,
+  projectCode: string,
+  contractorCode: string,
+  docType: string,
+): string {
+  return pattern
+    .replace(/{project_code}/g, projectCode || "PROJ")
+    .replace(/{contractor_code}/g, contractorCode || "CONT")
+    .replace(/{discipline_code}/g, "EL")
+    .replace(/{doc_type}/g, docType)
+    .replace(/{serial:04d}/g, "0001")
+    .replace(/{serial}/g, "1");
+}
 
-  const [docType, setDocType] = useState("WIR");
-  const [projectCode, setProjectCode] = useState("");
-  const [contractorCode, setContractorCode] = useState("");
-  const [pattern, setPattern] = useState(
-    "{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}",
+function RefConfigRow({
+  docType,
+  config,
+  projectId,
+  onSaved,
+  onDeleted,
+}: {
+  docType: string;
+  config?: RefConfig;
+  projectId: string;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const [editing, setEditing] = useState(!config);
+  const [projectCode, setProjectCode] = useState(config?.project_code ?? "");
+  const [contractorCode, setContractorCode] = useState(
+    config?.contractor_code ?? "",
   );
-  const [serialStart, setSerialStart] = useState(1);
+  const [pattern, setPattern] = useState(config?.pattern ?? DEFAULT_PATTERN);
+  const [serialStart, setSerialStart] = useState(config?.serial_start ?? 1);
 
-  const { data: configs = [] } = useQuery<RefConfig[]>({
-    queryKey: ["ref-configs", projectId],
-    queryFn: async () =>
-      (await api.get("/ref-config", { params: { project_id: projectId } }))
-        .data,
-    enabled: !!projectId,
-  });
+  const qc = useQueryClient();
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -62,26 +84,254 @@ export default function SettingsPage() {
         serial_start: serialStart,
       }),
     onSuccess: () => {
-      toast.success("Reference number config saved");
+      toast.success(`${docType} config saved`);
       qc.invalidateQueries({ queryKey: ["ref-configs", projectId] });
+      setEditing(false);
+      onSaved();
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.detail ?? "Save failed");
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/ref-config/${id}`),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["ref-configs", projectId] }),
+    mutationFn: () => api.delete(`/ref-config/${config!.id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ref-configs", projectId] });
+      onDeleted();
+    },
   });
 
-  const existing = configs.find((c) => c.doc_type === docType);
-  const loadExisting = () => {
-    if (existing) {
-      setProjectCode(existing.project_code);
-      setContractorCode(existing.contractor_code);
-      setPattern(existing.pattern);
-      setSerialStart(existing.serial_start);
-    }
-  };
+  const preview = previewPattern(pattern, projectCode, contractorCode, docType);
+  const canSave = projectCode.trim().length > 0 && !saveMutation.isPending;
+
+  if (!editing && config) {
+    return (
+      <div className="flex items-center justify-between px-4 py-3 text-sm group">
+        <div className="flex items-center gap-4 min-w-0">
+          <span className="font-medium w-10 shrink-0">{docType}</span>
+          <code className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded truncate">
+            {previewPattern(
+              config.pattern,
+              config.project_code,
+              config.contractor_code,
+              docType,
+            )}
+          </code>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3 space-y-3 bg-muted/30">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">{docType}</span>
+        {config && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => {
+              setProjectCode(config.project_code);
+              setContractorCode(config.contractor_code);
+              setPattern(config.pattern);
+              setSerialStart(config.serial_start);
+              setEditing(false);
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            Project Code
+          </label>
+          <Input
+            value={projectCode}
+            onChange={(e) => setProjectCode(e.target.value.toUpperCase())}
+            placeholder="MERC"
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            Contractor Code
+          </label>
+          <Input
+            value={contractorCode}
+            onChange={(e) => setContractorCode(e.target.value.toUpperCase())}
+            placeholder="JMJV"
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            Serial Starts At
+          </label>
+          <Input
+            type="number"
+            min={1}
+            value={serialStart}
+            onChange={(e) => setSerialStart(Number(e.target.value))}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs text-muted-foreground mb-1 block">
+            Pattern
+          </label>
+          <Input
+            value={pattern}
+            onChange={(e) => setPattern(e.target.value)}
+            className="h-8 text-sm font-mono"
+            placeholder={DEFAULT_PATTERN}
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Variables:{" "}
+            <code className="bg-muted px-0.5 rounded">{"{project_code}"}</code>{" "}
+            <code className="bg-muted px-0.5 rounded">
+              {"{contractor_code}"}
+            </code>{" "}
+            <code className="bg-muted px-0.5 rounded">
+              {"{discipline_code}"}
+            </code>{" "}
+            <code className="bg-muted px-0.5 rounded">{"{doc_type}"}</code>{" "}
+            <code className="bg-muted px-0.5 rounded">{"{serial:04d}"}</code>
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-1">
+        <div className="text-xs text-muted-foreground">
+          Preview:{" "}
+          <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">
+            {preview}
+          </code>
+        </div>
+        <Button
+          size="sm"
+          className="h-7 gap-1.5"
+          onClick={() => saveMutation.mutate()}
+          disabled={!canSave}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {saveMutation.isPending && <Spinner size="sm" className="text-current" />}
+          {saveMutation.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ReferenceNumberCard({ projectId }: { projectId?: string }) {
+  const [adding, setAdding] = useState<string | null>(null);
+
+  const { data: configs = [] } = useQuery<RefConfig[]>({
+    queryKey: ["ref-configs", projectId],
+    queryFn: async () =>
+      (await api.get("/ref-config", { params: { project_id: projectId } }))
+        .data,
+    enabled: !!projectId,
+  });
+
+  const configured = new Set(configs.map((c) => c.doc_type));
+  const unconfigured = DOC_TYPES.filter((dt) => !configured.has(dt));
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Reference Number Configuration</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          One configuration per document type. The reference number is generated
+          per discipline — e.g.{" "}
+          <code className="text-xs bg-muted px-1 py-0.5 rounded">
+            MERC-JMJV-EL-WIR-0031
+          </code>{" "}
+          where <code className="text-xs bg-muted px-1 py-0.5 rounded">EL</code>{" "}
+          is the discipline code assigned when creating the document.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0">
+        {configs.length === 0 && !adding && (
+          <div className="px-4 py-6 text-sm text-muted-foreground text-center">
+            No configurations yet. Add one for each document type you use.
+          </div>
+        )}
+
+        {configs.length > 0 && (
+          <div className="border-t divide-y">
+            {configs.map((c) => (
+              <RefConfigRow
+                key={c.id}
+                docType={c.doc_type}
+                config={c}
+                projectId={projectId!}
+                onSaved={() => {}}
+                onDeleted={() => {}}
+              />
+            ))}
+          </div>
+        )}
+
+        {adding && (
+          <div className="border-t">
+            <RefConfigRow
+              docType={adding}
+              projectId={projectId!}
+              onSaved={() => setAdding(null)}
+              onDeleted={() => setAdding(null)}
+            />
+          </div>
+        )}
+
+        {unconfigured.length > 0 && !adding && (
+          <div className="border-t px-4 py-3 flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Add config for:</span>
+            {unconfigured.map((dt) => (
+              <Button
+                key={dt}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 text-xs"
+                onClick={() => setAdding(dt)}
+              >
+                <Plus className="h-3 w-3" />
+                {dt}
+              </Button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function SettingsPage() {
+  const project = useSelectedProject();
+  const projectId = project?.id;
 
   return (
     <div className="space-y-6">
@@ -97,143 +347,7 @@ export default function SettingsPage() {
           {
             id: "reference",
             label: "Reference Numbers",
-            content: (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Reference Number Configuration
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Configure how document reference numbers are generated.
-                    Example:{" "}
-                    <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                      MERC-JMJV-EL-WIR-0031
-                    </code>
-                  </p>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1.5 block">
-                        Document Type
-                      </label>
-                      <Select
-                        value={docType}
-                        onValueChange={(v) => {
-                          setDocType(v as string);
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="WIR">WIR</SelectItem>
-                          <SelectItem value="MIR">MIR</SelectItem>
-                          <SelectItem value="CIR">CIR</SelectItem>
-                          <SelectItem value="FAT">FAT</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1.5 block">
-                        Project Code (e.g. MERC)
-                      </label>
-                      <Input
-                        value={projectCode}
-                        onChange={(e) => setProjectCode(e.target.value)}
-                        placeholder="MERC"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1.5 block">
-                        Contractor Code (e.g. JMJV)
-                      </label>
-                      <Input
-                        value={contractorCode}
-                        onChange={(e) => setContractorCode(e.target.value)}
-                        placeholder="JMJV"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1.5 block">
-                        Serial Start
-                      </label>
-                      <Input
-                        type="number"
-                        value={serialStart}
-                        onChange={(e) => setSerialStart(Number(e.target.value))}
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="text-xs text-muted-foreground mb-1.5 block">
-                        Pattern
-                      </label>
-                      <Input
-                        value={pattern}
-                        onChange={(e) => setPattern(e.target.value)}
-                        placeholder="{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Variables: {"{project_code}"}, {"{contractor_code}"},{" "}
-                        {"{discipline_code}"}, {"{doc_type}"}, {"{serial:04d}"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    {existing && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={loadExisting}
-                      >
-                        Load Existing
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={() => saveMutation.mutate()}
-                      disabled={!projectCode || saveMutation.isPending}
-                    >
-                      {saveMutation.isPending
-                        ? "Saving..."
-                        : existing
-                          ? "Update Config"
-                          : "Save Config"}
-                    </Button>
-                  </div>
-
-                  {configs.length > 0 && (
-                    <div className="border rounded-lg divide-y mt-4">
-                      {configs.map((c) => (
-                        <div
-                          key={c.id}
-                          className="flex items-center justify-between px-4 py-2 text-sm"
-                        >
-                          <div>
-                            <span className="font-medium">{c.doc_type}</span>
-                            <span className="text-muted-foreground ml-2">
-                              {c.project_code}-{c.contractor_code}-[disc]-
-                              {c.doc_type}-
-                              {String(c.serial_start).padStart(4, "0")}
-                            </span>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive"
-                            onClick={() => deleteMutation.mutate(c.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ),
+            content: <ReferenceNumberCard projectId={projectId} />,
           },
           {
             id: "approvers",
@@ -336,7 +450,8 @@ function DateFormatCard() {
             onClick={() => saveMutation.mutate()}
             disabled={saveMutation.isPending || !dateFormat}
           >
-            {saveMutation.isPending ? "Saving..." : "Save"}
+            {saveMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+            {saveMutation.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
       </CardContent>
@@ -345,69 +460,39 @@ function DateFormatCard() {
 }
 
 function RevisionSuffixCard() {
-  const qc = useQueryClient();
-  const [format, setFormat] = useState("");
-  const [loaded, setLoaded] = useState(false);
-
-  const { data } = useQuery<{ key: string; value: string }>({
-    queryKey: ["app-setting", "revision_suffix_format"],
-    queryFn: async () =>
-      (await api.get("/admin/settings/revision_suffix_format")).data,
-  });
-
-  if (data && !loaded) {
-    setFormat(data.value);
-    setLoaded(true);
-  }
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      api.put("/admin/settings/revision_suffix_format", { value: format }),
-    onSuccess: () => {
-      toast.success("Revision suffix format saved");
-      qc.invalidateQueries({
-        queryKey: ["app-setting", "revision_suffix_format"],
-      });
-    },
-  });
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Revision Suffix Format</CardTitle>
+        <CardTitle className="text-base">Document Filename Format</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Format for document filenames when revision &gt; 0. Use{" "}
-          <code className="text-xs bg-muted px-1 rounded">{"{ref}"}</code> for
-          reference number and{" "}
-          <code className="text-xs bg-muted px-1 rounded">{"{rev}"}</code> for
-          revision number.
+          Generated PDF filenames follow a fixed pattern combining the reference
+          number and zero-padded revision number.
         </p>
-        <div className="flex items-end gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">
-              Format
-            </label>
-            <Input
-              value={format}
-              onChange={(e) => setFormat(e.target.value)}
-              placeholder="{ref}-REV-{rev}"
-              className="w-64 font-mono text-sm"
-            />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || !format}
-          >
-            {saveMutation.isPending ? "Saving..." : "Save"}
-          </Button>
+        <div className="rounded-md bg-muted px-4 py-3 font-mono text-sm">
+          {"<reference_no>_<revision:02d>.pdf"}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Example:{" "}
-          <span className="font-mono">MERC-JMJV-EL-WIR-0031-REV-1.pdf</span>
-        </p>
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            Revision 0 (initial):{" "}
+            <code className="text-xs bg-muted px-1 rounded">
+              MERC-JMJV-EL-WIR-0031_00.pdf
+            </code>
+          </p>
+          <p>
+            Revision 1:{" "}
+            <code className="text-xs bg-muted px-1 rounded">
+              MERC-JMJV-EL-WIR-0031_01.pdf
+            </code>
+          </p>
+          <p>
+            Revision 2:{" "}
+            <code className="text-xs bg-muted px-1 rounded">
+              MERC-JMJV-EL-WIR-0031_02.pdf
+            </code>
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -497,7 +582,8 @@ function AssetCustomFieldsCard() {
               saveMutation.isPending || fields.some((f) => !f.label.trim())
             }
           >
-            {saveMutation.isPending ? "Saving..." : "Save"}
+            {saveMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+            {saveMutation.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
       </CardContent>
@@ -679,7 +765,8 @@ function SignatureConfigCard() {
           disabled={save.isPending}
           size="sm"
         >
-          {save.isPending ? "Saving..." : "Save"}
+          {save.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+          {save.isPending ? "Saving…" : "Save"}
         </Button>
       </CardContent>
     </Card>
@@ -765,7 +852,10 @@ function CrsHeaderCard() {
           </p>
         </div>
         {uploading && (
-          <p className="text-sm text-muted-foreground">Uploading...</p>
+          <p className="text-sm text-muted-foreground inline-flex items-center gap-2">
+            <Spinner size="sm" />
+            Uploading…
+          </p>
         )}
       </CardContent>
     </Card>

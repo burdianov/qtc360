@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface Permission {
@@ -95,7 +96,8 @@ export default function RolesPage() {
           disabled={!hasChanges || saveMutation.isPending}
         >
           <Save className="h-4 w-4 mr-2" />
-          {saveMutation.isPending ? "Saving..." : "Save Changes"}
+          {saveMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+          {saveMutation.isPending ? "Saving…" : "Save Changes"}
         </Button>
       </div>
 

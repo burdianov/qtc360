@@ -1,7 +1,6 @@
 const DOCUMENT_CREATE_ONLY_FIELDS = [
   "project_id",
   "document_type",
-  "reference_no",
 ] as const;
 
 type DocumentCreateOnlyField = (typeof DOCUMENT_CREATE_ONLY_FIELDS)[number];

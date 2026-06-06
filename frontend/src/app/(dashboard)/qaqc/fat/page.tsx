@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { statusColors } from "@/lib/constants";
 import { formatDate } from "@/lib/format-date";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface Document {
   id: string;
@@ -152,7 +153,7 @@ export default function FATPage() {
     },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">

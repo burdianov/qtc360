@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction, type EditableColumn } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { Spinner } from "@/components/ui/spinner";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface Designation { id: string; name: string; created_at: string; }
 
@@ -65,7 +67,7 @@ export default function DesignationsPage() {
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -103,7 +105,10 @@ export default function DesignationsPage() {
               <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} placeholder="e.g. QA/QC Engineer" /></FormControl><FormMessage /></FormItem>)} />
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
+                <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="text-current" />}
+                  {mutation.isPending ? "Saving…" : editing ? "Update" : "Create"}
+                </Button>
               </div>
             </form>
           </Form>

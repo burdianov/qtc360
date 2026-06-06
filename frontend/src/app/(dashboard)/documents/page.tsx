@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { statusColors } from "@/lib/constants";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface Document {
   id: string;
@@ -137,7 +138,7 @@ export default function DocumentsPage() {
     },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6">

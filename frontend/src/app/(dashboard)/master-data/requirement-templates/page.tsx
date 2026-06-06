@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable, DataTableColumnHeader, DataTableRowActions, type RowAction } from "@/components/data-table";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/form";
+import { Spinner } from "@/components/ui/spinner";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface RequirementTemplate {
   id: string;
@@ -120,7 +122,7 @@ export default function RequirementTemplatesPage() {
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
-  if (isLoading) return <div className="p-6">Loading...</div>;
+  if (isLoading) return <TableSkeleton />;
 
   return (
     <div className="space-y-6 min-w-0">
@@ -176,7 +178,10 @@ export default function RequirementTemplatesPage() {
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={closeDialog}>Cancel</Button>
-                <Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? "Saving..." : editing ? "Update" : "Create"}</Button>
+                <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="text-current" />}
+                  {mutation.isPending ? "Saving…" : editing ? "Update" : "Create"}
+                </Button>
               </div>
             </form>
           </Form>

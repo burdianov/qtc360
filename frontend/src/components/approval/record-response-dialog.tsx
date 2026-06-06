@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -323,8 +324,10 @@ export function RecordResponseDialog({
                 submitMutation.mutate();
               }}
               disabled={submitMutation.isPending}
+              aria-busy={submitMutation.isPending || undefined}
             >
-              {submitMutation.isPending ? "Saving..." : "Save response"}
+              {submitMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {submitMutation.isPending ? "Saving…" : "Save response"}
             </Button>
           </div>
         </div>

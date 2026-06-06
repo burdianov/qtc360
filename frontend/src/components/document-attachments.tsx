@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -327,8 +328,10 @@ export function DocumentAttachments({
             <Button
               onClick={handleSavePagePosition}
               disabled={savePagePositionMutation.isPending}
+              aria-busy={savePagePositionMutation.isPending || undefined}
             >
-              {savePagePositionMutation.isPending ? "Saving..." : "Save"}
+              {savePagePositionMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {savePagePositionMutation.isPending ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

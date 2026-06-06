@@ -49,9 +49,15 @@ VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
 # --- Document ---
 
 class DocumentCreate(BaseModel):
+    # Strict: reject any field not listed below. This is how we enforce
+    # that the client cannot smuggle a reference_no into a POST.
+    model_config = {"extra": "forbid"}
+
     project_id: UUID
     document_type: DOCUMENT_TYPES
-    reference_no: str = ""
+    # reference_no is intentionally NOT here. It is allocated server-side at
+    # the moment of save so the per-(project, doc_type, discipline) counter
+    # can be locked atomically. The client never sends or previews a ref.
     title: str
     description: str | None = None
     discipline_id: UUID | None = None

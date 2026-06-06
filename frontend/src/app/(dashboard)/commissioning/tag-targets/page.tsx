@@ -14,6 +14,7 @@ import { tagColors } from "@/lib/constants";
 import { useSelectedProject } from "@/hooks/use-project";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -357,9 +358,10 @@ export default function TagTargetsPage() {
                 <Button type="button" variant="outline" onClick={closeDialog}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={mutation.isPending}>
+                <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
+                  {mutation.isPending && <Spinner size="sm" className="text-current" />}
                   {mutation.isPending
-                    ? "Saving..."
+                    ? "Saving…"
                     : editing
                       ? "Update"
                       : "Create"}
@@ -442,8 +444,10 @@ function BulkTagTargets({
         <Button
           disabled={!tagCode || !targetDate || loading}
           onClick={handleBulkAssign}
+          aria-busy={loading || undefined}
         >
-          {loading ? "Assigning..." : `Assign to All ${assets.length} Assets`}
+          {loading && <Spinner size="sm" className="mr-1 text-current" />}
+          {loading ? "Assigning…" : `Assign to All ${assets.length} Assets`}
         </Button>
       </div>
     </div>

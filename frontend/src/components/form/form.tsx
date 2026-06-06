@@ -45,8 +45,24 @@ function FormItem({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
   return <div className={cn("space-y-2", className)} {...props} />;
 }
 
-function FormLabel({ className, ...props }: React.ComponentProps<typeof Label>) {
-  return <Label className={className} {...props} />;
+const REQUIRED_MARK = /^(.*?)\s*\*\s*$/;
+
+function FormLabel({ className, children, ...props }: React.ComponentProps<typeof Label>) {
+  if (typeof children === "string") {
+    const match = REQUIRED_MARK.exec(children);
+    if (match) {
+      const labelText = match[1];
+      return (
+        <Label className={className} {...props}>
+          {labelText}{" "}
+          <span className="text-destructive" aria-hidden="true">
+            *
+          </span>
+        </Label>
+      );
+    }
+  }
+  return <Label className={className} {...props}>{children}</Label>;
 }
 
 function FormControl({ ...props }: React.HTMLAttributes<HTMLDivElement>) {

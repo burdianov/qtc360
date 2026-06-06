@@ -117,72 +117,31 @@ def _format_reference(
     )
 
 
-@router.get("/generate-ref-number")
-async def generate_ref_number(
-    project_id: UUID = Query(...),
-    doc_type: str = Query(...),
-    discipline_code: str = Query(""),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_project_access()),
-):
-    from app.models.discipline import Discipline
-
-    doc_type = doc_type.upper()
-
-    config_result = await db.execute(
-        select(ReferenceNumberConfig).where(
-            ReferenceNumberConfig.project_id == project_id,
-            ReferenceNumberConfig.doc_type == doc_type,
-            ReferenceNumberConfig.is_deleted == False,
-        )
+async def _auto_create_ref_config(
+    db: AsyncSession,
+    *,
+    project_id: UUID,
+    doc_type: str,
+) -> ReferenceNumberConfig:
+    """Create a default ReferenceNumberConfig for (project, doc_type) when
+    none exists. Lets the discipline-scoped counter have a starting point
+    even for a project's very first document of a given type."""
+    from app.models.project import Project
+    project = (await db.execute(
+        select(Project).where(Project.id == project_id)
+    )).scalar_one()
+    code = (getattr(project, "code", None) or "PROJ")[:50]
+    config = ReferenceNumberConfig(
+        project_id=project_id,
+        doc_type=doc_type,
+        pattern="{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}",
+        project_code=code,
+        contractor_code="",
+        serial_start=1,
     )
-    config = config_result.scalar_one_or_none()
-
-    disc_id = None
-    if discipline_code:
-        disc_result = await db.execute(
-            select(Discipline).where(
-                Discipline.project_id == project_id,
-                Discipline.code == discipline_code,
-                Discipline.is_deleted == False,
-            )
-        )
-        disc = disc_result.scalar_one_or_none()
-        if not disc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Discipline '{discipline_code}' not found in project",
-            )
-        disc_id = disc.id
-
-    if config and disc_id:
-        counter_result = await db.execute(
-            select(ReferenceNumberCounter).where(
-                ReferenceNumberCounter.project_id == project_id,
-                ReferenceNumberCounter.doc_type == doc_type,
-                ReferenceNumberCounter.discipline_id == disc_id,
-            )
-        )
-        counter = counter_result.scalar_one_or_none()
-        next_serial = counter.next_serial if counter else config.serial_start
-
-        ref = _format_reference(
-            config,
-            doc_type=doc_type,
-            discipline_code=discipline_code,
-            serial=next_serial,
-        )
-    elif config:
-        ref = _format_reference(
-            config,
-            doc_type=doc_type,
-            discipline_code=discipline_code,
-            serial=config.serial_start or 1,
-        )
-    else:
-        ref = f"{doc_type}-0001"
-
-    return {"reference_number": ref}
+    db.add(config)
+    await db.flush()
+    return config
 
 
 @router.get("/rejected-for-revision")
@@ -307,68 +266,83 @@ async def create_document(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.submit")),
 ):
+    """Create a document. The reference number is allocated server-side,
+    under a row lock on the per-(project, doc_type, discipline) counter.
+    The client never sends a reference_no."""
     await assert_user_in_project(user, body.project_id)
 
     data = body.model_dump(exclude={"asset_ids", "revision_of_id"})
 
-    # Handle revision workflow: copy reference_no, set revision_no, mark old as superseded
+    # Discipline is mandatory — we need it to allocate the right counter.
+    if not body.discipline_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Discipline is required.",
+        )
+
+    from app.models.discipline import Discipline
+    disc = (await db.execute(
+        select(Discipline).where(
+            Discipline.id == body.discipline_id,
+            Discipline.project_id == body.project_id,
+            Discipline.is_deleted == False,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    if not disc:
+        raise HTTPException(
+            status_code=400, detail="Discipline not found in this project",
+        )
+
+    # Allocate a serial atomically. For revisions we still use the allocator
+    # to bump the discipline counter (it locks the row), then *discard* the
+    # formatted reference and copy the parent's reference instead. This
+    # keeps the count of WIRs in a discipline consistent with reality.
+    config, serial = await _allocate_serial(
+        db,
+        project_id=body.project_id,
+        doc_type=body.document_type,
+        discipline_id=body.discipline_id,
+    )
+    if config is None:
+        # No config for (project, doc_type) — auto-create one with defaults
+        # so the discipline counter has a starting point.
+        config = await _auto_create_ref_config(
+            db, project_id=body.project_id, doc_type=body.document_type,
+        )
+
+    data["reference_no"] = _format_reference(
+        config,
+        doc_type=body.document_type,
+        discipline_code=disc.code,
+        serial=serial,
+    )
+    data["revision_no"] = 0
+
+    # Revision: discard the freshly-allocated reference, inherit the
+    # parent's reference, increment revision_no. The parent's reference
+    # is taken from a server-side lookup, not from the client.
     if body.revision_of_id:
         old_doc = (await db.execute(
-            select(Document).where(Document.id == body.revision_of_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+            select(Document)
+            .where(
+                Document.id == body.revision_of_id,
+                Document.is_deleted == False,  # noqa: E712
+            )
+            .with_for_update()
         )).scalar_one_or_none()
         if not old_doc:
-            raise HTTPException(status_code=404, detail="Source document for revision not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Source document for revision not found",
+            )
         if old_doc.status != "rejected":
-            raise HTTPException(status_code=400, detail="Can only create revision of a rejected document")
+            raise HTTPException(
+                status_code=400,
+                detail="Can only create revision of a rejected document",
+            )
         data["reference_no"] = old_doc.reference_no
         data["revision_no"] = old_doc.revision_no + 1
         old_doc.status = "superseded"
-
-    # Server-side ref number generation if not provided (new submission only)
-    if not data.get("reference_no"):
-        disc_code = ""
-        if body.discipline_id:
-            from app.models.discipline import Discipline
-            disc_result = await db.execute(
-                select(Discipline).where(
-                    Discipline.id == body.discipline_id,
-                    Discipline.project_id == body.project_id,
-                    Discipline.is_deleted == False,
-                )
-            )
-            disc = disc_result.scalar_one_or_none()
-            if not disc:
-                raise HTTPException(status_code=400, detail="Discipline not found in this project")
-            disc_code = disc.code
-        if not body.discipline_id:
-            raise HTTPException(status_code=400, detail="Discipline is required for automatic reference numbering")
-
-        config, serial = await _allocate_serial(
-            db,
-            project_id=body.project_id,
-            doc_type=body.document_type,
-            discipline_id=body.discipline_id,
-        )
-        if config is None:
-            count_q = select(func.count()).select_from(Document).where(
-                Document.project_id == body.project_id,
-                Document.document_type == body.document_type,
-            )
-            fallback = (await db.execute(count_q)).scalar() or 0
-            data["reference_no"] = _format_reference(
-                None,
-                doc_type=body.document_type,
-                discipline_code=disc_code,
-                serial=fallback + 1,
-                fallback_serial=fallback + 1,
-            )
-        else:
-            data["reference_no"] = _format_reference(
-                config,
-                doc_type=body.document_type,
-                discipline_code=disc_code,
-                serial=serial,
-            )
 
     doc = Document(**data, created_by=user.id)
 
