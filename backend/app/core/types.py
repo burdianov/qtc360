@@ -69,7 +69,9 @@ DEFAULT_SIGNATURE_COLOR = "#1a237e"
 FONTS_DIR = Path(__file__).parent.parent / "fonts"
 
 # ─── Attachment Limits ───────────────────────────────────────────────────────
-MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 20 MB
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024  # 50 MB per file
+MAX_BUNDLE_BYTES = 50 * 1024 * 1024  # 50 MB total bundle cap (sum of all files in a merge)
+MAX_HEADER_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB CRS header image
 MAX_ATTACHMENTS_PER_DOC = 200
 ALLOWED_ATTACHMENT_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".docx"}
 ALLOWED_ATTACHMENT_MIMES = {
@@ -78,6 +80,11 @@ ALLOWED_ATTACHMENT_MIMES = {
     "image/jpeg",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
+
+
+def _mb(n: int) -> int:
+    """Convert a byte count to its integer MB value for human-readable messages."""
+    return n // (1024 * 1024)
 
 # ─── Pagination ──────────────────────────────────────────────────────────────
 DEFAULT_PAGE_LIMIT = 100

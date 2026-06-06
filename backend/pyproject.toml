@@ -30,4 +30,21 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pytest>=8.0.0",
 ]
+
+[tool.pytest.ini_options]
+# Discovery: only look inside tests/. Use `uv run pytest tests/e2e` etc.
+# to scope further. CI runs `pytest -v --tb=short` from backend/ which
+# picks up everything discoverable below.
+testpaths = ["tests"]
+# pytest-asyncio 1.x defaults to "strict" — async tests must be marked
+# with @pytest.mark.asyncio. Both existing e2e files do this.
+asyncio_mode = "strict"
+# Fail fast on collection errors so a typo in a fixture doesn't get
+# silently masked.
+strict = true
+# Short traceback in CI keeps logs readable; show the slowest 10 tests
+# at the end (useful for catching accidental full-DB-roundtrip tests
+# inside unit suites).
+addopts = ["-ra", "--durations=10", "--tb=short"]

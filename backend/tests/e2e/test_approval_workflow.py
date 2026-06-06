@@ -12,10 +12,9 @@ import asyncio
 import pytest
 from uuid import uuid4
 
-from tests._cleanup import hard_delete_documents
+from tests.e2e._config import BASE
+from tests.helpers.cleanup import hard_delete_documents
 
-
-BASE = "http://localhost:8000/api/v1"
 
 # --- Test Data ---
 PROJECT_ID = "61de59c0-eb71-42ad-90f4-81f561c80ac1"
@@ -132,8 +131,11 @@ async def test_wir_e2e(client: httpx.AsyncClient):
             "aconex_submitted_date": "2026-05-28",
         }, headers=site_headers)
         assert r.status_code == 201, f"Submit to approver 1 failed: {r.text}"
-        round1_id = r.json()["id"]
-        print(f"     Submitted (round_id={round1_id})")
+        rnd = r.json()
+        round1_id = rnd["id"]
+        assert rnd["submitted_file_path"] == f"responses/{doc_id}/S1.pdf"
+        assert rnd["submitted_file_size"] > 0
+        print(f"     Submitted (round_id={round1_id}, size={rnd['submitted_file_size']})")
 
         # Verify doc status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
@@ -156,6 +158,9 @@ async def test_wir_e2e(client: httpx.AsyncClient):
             headers=site_headers,
         )
         assert r.status_code == 201, f"Record response failed: {r.text}"
+        rnd = r.json()
+        assert rnd["returned_file_path"] == f"responses/{doc_id}/R1.pdf"
+        assert rnd["returned_file_locked"] is False
         print(f"     Recorded (status now: approver_1_returned)")
 
         # Verify doc status
@@ -169,7 +174,10 @@ async def test_wir_e2e(client: httpx.AsyncClient):
             "aconex_submitted_date": "2026-05-29",
         }, headers=site_headers)
         assert r.status_code == 201, f"Submit to approver 2 failed: {r.text}"
-        print(f"     Submitted")
+        rnd = r.json()
+        assert rnd["submitted_file_path"] == f"responses/{doc_id}/S2.pdf"
+        assert rnd["submitted_file_size"] > 0
+        print(f"     Submitted (size={rnd['submitted_file_size']})")
 
         # Verify doc status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)

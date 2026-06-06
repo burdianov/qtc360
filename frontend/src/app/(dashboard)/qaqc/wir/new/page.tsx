@@ -9,15 +9,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
-import {
-  ArrowLeft,
-  Loader2,
-  X,
-  Send,
-  PenLine,
-  Download,
-  ChevronDown,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Send, PenLine, Download } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -35,15 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import {
   Form,
   FormField,
@@ -107,8 +91,6 @@ const schema = z.object({
   remarks_2: z.string().optional(),
   inspector_date_1: z.string().optional(),
   inspector_time_1: z.string().optional(),
-  inspector_date_2: z.string().optional(),
-  inspector_time_2: z.string().optional(),
   date: z.string().optional(),
 });
 
@@ -142,6 +124,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const [commissioningLinkage, setCommissioningLinkage] =
     useState<CommissioningLinkage | null>(null); // CommissioningLinkage = CommissioningLinkageBlock[]
   const linkageDirtyRef = useRef(false);
+  const restoringLinkageRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -265,8 +248,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       remarks_2: "",
       inspector_date_1: "",
       inspector_time_1: "",
-      inspector_date_2: "",
-      inspector_time_2: "",
       date: new Date().toISOString().split("T")[0],
     },
   });
@@ -279,17 +260,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   });
 
   const formLocked =
-    !!existingDoc &&
-    [
-      "with_approver_1",
-      "approver_1_returned",
-      "with_approver_2",
-      "approved",
-      "approved_with_comments",
-      "rejected",
-      "superseded",
-    ].includes(existingDoc.status);
-  const fullyLocked =
     !!existingDoc &&
     [
       "with_approver_1",
@@ -317,8 +287,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         remarks_2: existingDoc.remarks_2 || "",
         inspector_date_1: existingDoc.inspector_date_1 || "",
         inspector_time_1: existingDoc.inspector_time_1 || "",
-        inspector_date_2: existingDoc.inspector_date_2 || "",
-        inspector_time_2: existingDoc.inspector_time_2 || "",
         date: existingDoc.inspection_date
           ? existingDoc.inspection_date.split("T")[0]
           : "",
@@ -345,36 +313,68 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         }[];
         if (links.length === 0) return;
 
-        // Group links by requirement template (via asset requirement)
-        const arIdToTemplate = new Map<string, string>();
+        const arIdToTmpl = new Map<string, string>();
+        const arIdToAsset = new Map<string, string>();
         for (const ar of allAssetRequirements) {
-          arIdToTemplate.set(ar.id, ar.requirement_template_id);
+          arIdToTmpl.set(ar.id, ar.requirement_template_id);
+          arIdToAsset.set(ar.id, ar.asset_id);
         }
 
-        // Group by template
-        const byTemplate = new Map<string, typeof links>();
+        const byTmpl = new Map<string, Set<string>>();
+        // Track checked work-item IDs per (template, asset)
+        const checkedByTmplAsset = new Map<string, Set<string>>();
         for (const link of links) {
-          const tmplId = arIdToTemplate.get(link.asset_requirement_id);
-          if (!tmplId) continue;
-          if (!byTemplate.has(tmplId)) byTemplate.set(tmplId, []);
-          byTemplate.get(tmplId)!.push(link);
+          const tmpl = arIdToTmpl.get(link.asset_requirement_id);
+          const asset = arIdToAsset.get(link.asset_requirement_id);
+          if (!tmpl || !asset) continue;
+          if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
+          byTmpl.get(tmpl)!.add(asset);
+          if (link.requirement_work_item_id) {
+            const key = `${tmpl}|${asset}`;
+            if (!checkedByTmplAsset.has(key)) checkedByTmplAsset.set(key, new Set());
+            checkedByTmplAsset.get(key)!.add(link.requirement_work_item_id);
+          }
         }
 
-        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
-        for (const [tmplId, tmplLinks] of byTemplate.entries()) {
-          const checkedWiIds = tmplLinks
-            .filter((l) => l.requirement_work_item_id)
-            .map((l) => l.requirement_work_item_id!);
-          const isPartial = checkedWiIds.length > 0;
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] =
+          [];
+        for (const [tmplId, assetSet] of byTmpl.entries()) {
+          const assetIds = [...assetSet];
+          const hasWorkItems = assetIds.some(
+            (a) => (checkedByTmplAsset.get(`${tmplId}|${a}`)?.size ?? 0) > 0,
+          );
+          const assetStates: Record<string, any> = {};
+          if (hasWorkItems) {
+            for (const assetId of assetIds) {
+              const checked = checkedByTmplAsset.get(`${tmplId}|${assetId}`);
+              if (checked && checked.size > 0) {
+                const ar = allAssetRequirements.find(
+                  (a) => a.asset_id === assetId && a.requirement_template_id === tmplId,
+                );
+                assetStates[assetId] = {
+                  assetRequirementId: ar?.id,
+                  existingItems: [],
+                  checkedExistingIds: [...checked],
+                  deleteExistingIds: [],
+                  newItems: [],
+                };
+              }
+            }
+          }
           blocks.push({
             id: Math.random().toString(36).slice(2),
             requirementTemplateId: tmplId,
-            isPartialScope: isPartial,
-            assetStates: {},
+            assetIds,
+            isPartialScope: hasWorkItems,
+            assetStates,
           });
         }
 
-        if (blocks.length > 0) setCommissioningLinkage(blocks);
+        if (blocks.length > 0) {
+          restoringLinkageRef.current = true;
+          setCommissioningLinkage(blocks);
+          setTimeout(() => { restoringLinkageRef.current = false; }, 500);
+        }
       })
       .catch(() => {});
   }, [editId, allAssetRequirements, commissioningLinkage]);
@@ -418,8 +418,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           remarks_2: doc.remarks_2 || "",
           inspector_date_1: doc.inspector_date_1 || "",
           inspector_time_1: doc.inspector_time_1 || "",
-          inspector_date_2: doc.inspector_date_2 || "",
-          inspector_time_2: doc.inspector_time_2 || "",
           date: new Date().toISOString().split("T")[0],
         });
         setReferenceNo(doc.reference_no || "");
@@ -447,13 +445,11 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           }
           const blocks: CommissioningLinkage = [];
           for (const [tmplId, tmplLinks] of byTemplate.entries()) {
-            const checkedWiIds = tmplLinks
-              .filter((l) => l.requirement_work_item_id)
-              .map((l) => l.requirement_work_item_id!);
             blocks.push({
               id: Math.random().toString(36).slice(2),
               requirementTemplateId: tmplId,
-              isPartialScope: checkedWiIds.length > 0,
+              assetIds: [],
+              isPartialScope: true,
               assetStates: {},
             });
           }
@@ -550,9 +546,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     remarks_2: values.remarks_2 || null,
     inspector_date_1: values.inspector_date_1 || null,
     inspector_time_1: values.inspector_time_1 || null,
-    inspector_date_2: values.inspector_date_2 || null,
-    inspector_time_2: values.inspector_time_2 || null,
-    asset_ids: commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [],
+    asset_ids: commissioningLinkage
+      ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
+      : [],
     ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
   });
 
@@ -567,7 +563,8 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           params: { asset_id: assetId },
         });
         const assetReq = (arRes.data as any[]).find(
-          (ar: any) => ar.requirement_template_id === block.requirementTemplateId,
+          (ar: any) =>
+            ar.requirement_template_id === block.requirementTemplateId,
         );
         if (!assetReq) continue;
 
@@ -575,7 +572,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           const assetState = block.assetStates[assetId];
 
           for (const delId of assetState?.deleteExistingIds ?? []) {
-            await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
+            await api
+              .delete(`/commissioning/work-items/${delId}`)
+              .catch(() => {});
           }
 
           const createdLinkedIds: string[] = [];
@@ -591,36 +590,46 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           }
 
           for (const wiId of assetState?.checkedExistingIds ?? []) {
-            await api.post("/commissioning/document-links", {
-              document_id: docId,
-              asset_requirement_id: assetReq.id,
-              requirement_work_item_id: wiId,
-            }).catch(() => {});
+            await api
+              .post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiId,
+              })
+              .catch(() => {});
           }
           for (const wiId of createdLinkedIds) {
-            await api.post("/commissioning/document-links", {
-              document_id: docId,
-              asset_requirement_id: assetReq.id,
-              requirement_work_item_id: wiId,
-            }).catch(() => {});
+            await api
+              .post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiId,
+              })
+              .catch(() => {});
           }
         } else {
-          await api.post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-          }).catch(() => {});
+          await api
+            .post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+            })
+            .catch(() => {});
         }
       }
 
       if (block.gateWarningAcknowledged) {
         for (const assetId of block.assetIds) {
-          await api.post("/commissioning/gate-overrides", {
-            asset_id: assetId,
-            document_id: docId,
-            level_code: block.gateLevelCode || "L2B",
-            incomplete_requirements: block.incompleteRequirements || [],
-            notes: block.gateOverrideNotes || null,
-          }).catch(() => toast.error("Failed to record gate override acknowledgement"));
+          await api
+            .post("/commissioning/gate-overrides", {
+              asset_id: assetId,
+              document_id: docId,
+              level_code: block.gateLevelCode || "L2B",
+              incomplete_requirements: block.incompleteRequirements || [],
+              notes: block.gateOverrideNotes || null,
+            })
+            .catch(() =>
+              toast.error("Failed to record gate override acknowledgement"),
+            );
         }
       }
     }
@@ -1071,23 +1080,53 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 value={commissioningLinkage}
                 onChange={(linkage) => {
                   setCommissioningLinkage(linkage);
-                  linkageDirtyRef.current = true;
-                  setIsDirty(true);
+                  if (!restoringLinkageRef.current) {
+                    linkageDirtyRef.current = true;
+                    setIsDirty(true);
+                  }
                 }}
                 onRemoveBlock={async (block) => {
                   if (!editId || !block.requirementTemplateId) return;
                   for (const assetId of block.assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) =>
+                        r.requirement_template_id ===
+                        block.requirementTemplateId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
                   if (!editId) return;
                   for (const assetId of assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) => r.requirement_template_id === tmplId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
               />
@@ -1299,18 +1338,15 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                     </div>
                   </div>
 
-                  {/* Row 3: Date & Time */}
-                  <fieldset
-                    disabled={currentUser?.id !== inspector1Id}
-                    className="disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* Row 3: Inspection Date & Time (shared, editable by either signatory) */}
+                  <div className="sm:col-span-2">
+                    <div className="grid grid-cols-2 gap-3">
                       <FormField
                         control={form.control}
                         name="inspector_date_1"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Date</FormLabel>
+                            <FormLabel>Inspection Date</FormLabel>
                             <FormControl>
                               <DatePicker
                                 value={field.value}
@@ -1326,7 +1362,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                         name="inspector_time_1"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Time</FormLabel>
+                            <FormLabel>Inspection Time</FormLabel>
                             <FormControl>
                               <TimePicker
                                 value={field.value}
@@ -1338,46 +1374,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                         )}
                       />
                     </div>
-                  </fieldset>
-                  <fieldset
-                    disabled={currentUser?.id !== inspector2Id}
-                    className="disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    <div className="grid grid-cols-2 gap-2">
-                      <FormField
-                        control={form.control}
-                        name="inspector_date_2"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date</FormLabel>
-                            <FormControl>
-                              <DatePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select date"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="inspector_time_2"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time</FormLabel>
-                            <FormControl>
-                              <TimePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                                placeholder="Select time"
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </fieldset>
+                  </div>
 
                   {/* Row 4: Remarks */}
                   <fieldset
@@ -1461,7 +1458,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                       (!isDirty && !form.formState.isDirty)
                     }
                   >
-                    {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+                    {mutation.isPending && (
+                      <Spinner size="sm" className="mr-1 text-current" />
+                    )}
                     {mutation.isPending ? "Saving…" : "Save as Draft"}
                   </Button>
                   <Button
@@ -1569,7 +1568,6 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           </CardContent>
         </Card>
       )}
-
     </div>
   );
 }

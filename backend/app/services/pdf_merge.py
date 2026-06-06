@@ -10,6 +10,8 @@ from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
 
+from app.core.types import MAX_BUNDLE_BYTES, _mb
+
 
 def _bytes_to_pdf_reader(data: bytes) -> PdfReader:
     """Convert bytes to a PdfReader. If the bytes are an image, convert to PDF first."""
@@ -41,7 +43,18 @@ def merge_pdf_bundle(
 
     Returns:
         Merged PDF as bytes
+
+    Raises:
+        ValueError: if the total input size exceeds MAX_BUNDLE_BYTES.
+            Callers should translate this into HTTP 413.
     """
+    total_bytes = len(returned_pdf_bytes) + sum(len(a[0]) for a in attachments)
+    if total_bytes > MAX_BUNDLE_BYTES:
+        raise ValueError(
+            f"Bundle too large ({_mb(total_bytes)}MB > {_mb(MAX_BUNDLE_BYTES)}MB limit). "
+            "Reduce the number or size of attachments."
+        )
+
     main_reader = PdfReader(io.BytesIO(returned_pdf_bytes))
     writer = PdfWriter()
 

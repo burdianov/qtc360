@@ -91,8 +91,6 @@ const schema = z.object({
   remarks_2: z.string().optional(),
   inspector_date_1: z.string().optional(),
   inspector_time_1: z.string().optional(),
-  inspector_date_2: z.string().optional(),
-  inspector_time_2: z.string().optional(),
   date: z.string().optional(),
 });
 
@@ -138,6 +136,7 @@ function NewMIRPageContent() {
   const [commissioningLinkage, setCommissioningLinkage] =
     useState<CommissioningLinkage | null>(null);
   const linkageDirtyRef = useRef(false);
+  const restoringLinkageRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -253,8 +252,6 @@ function NewMIRPageContent() {
       remarks_2: "",
       inspector_date_1: "",
       inspector_time_1: "",
-      inspector_date_2: "",
-      inspector_time_2: "",
       date: new Date().toISOString().split("T")[0],
     },
   });
@@ -303,8 +300,6 @@ function NewMIRPageContent() {
         remarks_2: existingDoc.remarks_2 || "",
         inspector_date_1: existingDoc.inspector_date_1 || "",
         inspector_time_1: existingDoc.inspector_time_1 || "",
-        inspector_date_2: existingDoc.inspector_date_2 || "",
-        inspector_time_2: existingDoc.inspector_time_2 || "",
         date: existingDoc.inspection_date
           ? existingDoc.inspection_date.split("T")[0]
           : "",
@@ -330,36 +325,63 @@ function NewMIRPageContent() {
         }[];
         if (links.length === 0) return;
         const arIdToTmpl = new Map<string, string>();
-        for (const ar of allAssetRequirements)
-          arIdToTmpl.set(ar.id, ar.requirement_template_id);
         const arIdToAsset = new Map<string, string>();
-        for (const ar of allAssetRequirements)
+        for (const ar of allAssetRequirements) {
+          arIdToTmpl.set(ar.id, ar.requirement_template_id);
           arIdToAsset.set(ar.id, ar.asset_id);
+        }
         const byTmpl = new Map<string, Set<string>>();
-        const wiByTmpl = new Map<string, string[]>();
+        const checkedByTmplAsset = new Map<string, Set<string>>();
         for (const link of links) {
           const tmpl = arIdToTmpl.get(link.asset_requirement_id);
-          if (!tmpl) continue;
-          if (!byTmpl.has(tmpl)) {
-            byTmpl.set(tmpl, new Set());
-            wiByTmpl.set(tmpl, []);
+          const asset = arIdToAsset.get(link.asset_requirement_id);
+          if (!tmpl || !asset) continue;
+          if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
+          byTmpl.get(tmpl)!.add(asset);
+          if (link.requirement_work_item_id) {
+            const key = `${tmpl}|${asset}`;
+            if (!checkedByTmplAsset.has(key)) checkedByTmplAsset.set(key, new Set());
+            checkedByTmplAsset.get(key)!.add(link.requirement_work_item_id);
           }
-          byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
-          if (link.requirement_work_item_id)
-            wiByTmpl.get(tmpl)!.push(link.requirement_work_item_id);
         }
         const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] =
           [];
         for (const [tmplId, assetSet] of byTmpl.entries()) {
+          const assetIds = [...assetSet];
+          const hasWorkItems = assetIds.some(
+            (a) => (checkedByTmplAsset.get(`${tmplId}|${a}`)?.size ?? 0) > 0,
+          );
+          const assetStates: Record<string, any> = {};
+          if (hasWorkItems) {
+            for (const assetId of assetIds) {
+              const checked = checkedByTmplAsset.get(`${tmplId}|${assetId}`);
+              if (checked && checked.size > 0) {
+                const ar = allAssetRequirements.find(
+                  (a) => a.asset_id === assetId && a.requirement_template_id === tmplId,
+                );
+                assetStates[assetId] = {
+                  assetRequirementId: ar?.id,
+                  existingItems: [],
+                  checkedExistingIds: [...checked],
+                  deleteExistingIds: [],
+                  newItems: [],
+                };
+              }
+            }
+          }
           blocks.push({
             id: Math.random().toString(36).slice(2),
             requirementTemplateId: tmplId,
-            assetIds: [...assetSet],
-            isPartialScope: (wiByTmpl.get(tmplId)?.length ?? 0) > 0,
-            assetStates: {},
+            assetIds,
+            isPartialScope: hasWorkItems,
+            assetStates,
           });
         }
-        if (blocks.length > 0) setCommissioningLinkage(blocks);
+        if (blocks.length > 0) {
+          restoringLinkageRef.current = true;
+          setCommissioningLinkage(blocks);
+          setTimeout(() => { restoringLinkageRef.current = false; }, 500);
+        }
       })
       .catch(() => {});
   }, [editId, allAssetRequirements, commissioningLinkage]);
@@ -402,8 +424,6 @@ function NewMIRPageContent() {
           remarks_2: doc.remarks_2 || "",
           inspector_date_1: doc.inspector_date_1 || "",
           inspector_time_1: doc.inspector_time_1 || "",
-          inspector_date_2: doc.inspector_date_2 || "",
-          inspector_time_2: doc.inspector_time_2 || "",
           date: new Date().toISOString().split("T")[0],
         });
         setReferenceNo(doc.reference_no || "");
@@ -528,8 +548,6 @@ function NewMIRPageContent() {
     remarks_2: values.remarks_2 || null,
     inspector_date_1: values.inspector_date_1 || null,
     inspector_time_1: values.inspector_time_1 || null,
-    inspector_date_2: values.inspector_date_2 || null,
-    inspector_time_2: values.inspector_time_2 || null,
     asset_ids: commissioningLinkage
       ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
       : [],
@@ -1002,8 +1020,10 @@ function NewMIRPageContent() {
                 value={commissioningLinkage}
                 onChange={(linkage) => {
                   setCommissioningLinkage(linkage);
-                  linkageDirtyRef.current = true;
-                  setIsDirty(true);
+                  if (!restoringLinkageRef.current) {
+                    linkageDirtyRef.current = true;
+                    setIsDirty(true);
+                  }
                 }}
                 onRemoveBlock={async (block) => {
                   if (!editId || !block.requirementTemplateId) return;
@@ -1151,17 +1171,14 @@ function NewMIRPageContent() {
                       )}
                     </div>
                   </div>
-                  <fieldset
-                    disabled={currentUser?.id !== inspector1Id}
-                    className="disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="sm:col-span-2">
+                    <div className="grid grid-cols-2 gap-3">
                       <FormField
                         control={form.control}
                         name="inspector_date_1"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Date</FormLabel>
+                            <FormLabel>Inspection Date</FormLabel>
                             <FormControl>
                               <DatePicker
                                 value={field.value}
@@ -1177,7 +1194,7 @@ function NewMIRPageContent() {
                         name="inspector_time_1"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Time</FormLabel>
+                            <FormLabel>Inspection Time</FormLabel>
                             <FormControl>
                               <TimePicker
                                 value={field.value}
@@ -1189,7 +1206,7 @@ function NewMIRPageContent() {
                         )}
                       />
                     </div>
-                  </fieldset>
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -3,7 +3,9 @@ from typing import Literal
 from uuid import UUID
 from pydantic import computed_field
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.core.types import MAX_APPROVERS
 
 DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR", "CRS"]
 DOCUMENT_STATUSES = Literal[
@@ -177,8 +179,14 @@ class DocumentApprovalRoundResponse(BaseModel):
     returned_at: datetime | None
     response_date: datetime | None
     response_time: str | None
-    returned_file_name: str | None
-    remarks_file_name: str | None
+    # PR2: per-stage file metadata
+    submitted_file_path: str | None = None
+    submitted_file_size: int | None = None
+    returned_file_path: str | None = None
+    returned_file_name: str | None = None
+    returned_file_locked: bool = False
+    remarks_file_path: str | None = None
+    remarks_file_name: str | None = None
     aconex_submitted_date: date | None = None
     aconex_received_date: date | None = None
     created_at: datetime
@@ -187,10 +195,13 @@ class DocumentApprovalRoundResponse(BaseModel):
 
 
 class SubmitToApproverRequest(BaseModel):
-    approver_order: int
-    submitted_at: datetime | None = None  # defaults to now() server-side
+    approver_order: int = Field(..., ge=1, le=MAX_APPROVERS)
     aconex_submitted_date: str | None = None  # ISO date yyyy-MM-dd
-    notes: str | None = None
+    password: str | None = Field(
+        None,
+        max_length=255,
+        description="Required only for round >= 2 when the previous R is password-protected",
+    )
 
 
 class RecordApprovalResponseRequest(BaseModel):

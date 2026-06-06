@@ -67,11 +67,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function NewFATPage() {
   return (
-    <Suspense
-      fallback={
-        <CenteredSpinner label="Loading document…" />
-      }
-    >
+    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
       <NewFATPageContent />
     </Suspense>
   );
@@ -116,7 +112,12 @@ function NewFATPageContent() {
   });
 
   const { data: allAssetRequirements = [] } = useQuery<
-    { id: string; asset_id: string; requirement_template_id: string }[]
+    {
+      id: string;
+      asset_id: string;
+      requirement_template_id: string;
+      status: string;
+    }[]
   >({
     queryKey: ["asset-requirements-all", project?.id],
     queryFn: async () =>
@@ -168,11 +169,17 @@ function NewFATPageContent() {
     api
       .get("/commissioning/document-links", { params: { document_id: editId } })
       .then(async (res) => {
-        const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+        const links = res.data as {
+          asset_requirement_id: string;
+          requirement_work_item_id: string | null;
+        }[];
         if (links.length === 0) return;
         const arIdToTmpl = new Map<string, string>();
         const arIdToAsset = new Map<string, string>();
-        for (const ar of allAssetRequirements) { arIdToTmpl.set(ar.id, ar.requirement_template_id); arIdToAsset.set(ar.id, ar.asset_id); }
+        for (const ar of allAssetRequirements) {
+          arIdToTmpl.set(ar.id, ar.requirement_template_id);
+          arIdToAsset.set(ar.id, ar.asset_id);
+        }
         const byTmpl = new Map<string, Set<string>>();
         for (const link of links) {
           const tmpl = arIdToTmpl.get(link.asset_requirement_id);
@@ -180,9 +187,18 @@ function NewFATPageContent() {
           if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
           byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
         }
-        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] =
+          [];
         for (const [tmplId, assetSet] of byTmpl.entries()) {
-          blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: links.some((l) => l.requirement_work_item_id != null), assetStates: {} });
+          blocks.push({
+            id: Math.random().toString(36).slice(2),
+            requirementTemplateId: tmplId,
+            assetIds: [...assetSet],
+            isPartialScope: links.some(
+              (l) => l.requirement_work_item_id != null,
+            ),
+            assetStates: {},
+          });
         }
         if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
@@ -206,22 +222,46 @@ function NewFATPageContent() {
     for (const block of commissioningLinkage) {
       if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
       for (const assetId of block.assetIds) {
-        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-        const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === block.requirementTemplateId);
+        const arRes = await api.get("/commissioning/asset-requirements", {
+          params: { asset_id: assetId },
+        });
+        const assetReq = (arRes.data as any[]).find(
+          (ar: any) =>
+            ar.requirement_template_id === block.requirementTemplateId,
+        );
         if (!assetReq) continue;
         if (block.isPartialScope) {
           const s = block.assetStates[assetId];
-          for (const delId of s?.deleteExistingIds ?? []) await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
+          for (const delId of s?.deleteExistingIds ?? [])
+            await api
+              .delete(`/commissioning/work-items/${delId}`)
+              .catch(() => {});
           const created: string[] = [];
           for (let i = 0; i < (s?.newItems ?? []).length; i++) {
-            const wi = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: s!.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+            const wi = await api.post("/commissioning/work-items", {
+              asset_requirement_id: assetReq.id,
+              name: s!.newItems[i].name,
+              sequence_no: i + 100,
+              created_dynamically: true,
+            });
             if (s!.newItems[i].checked) created.push(wi.data.id);
           }
           for (const wiId of [...(s?.checkedExistingIds ?? []), ...created]) {
-            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }).catch(() => {});
+            await api
+              .post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiId,
+              })
+              .catch(() => {});
           }
         } else {
-          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id }).catch(() => {});
+          await api
+            .post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+            })
+            .catch(() => {});
         }
       }
     }
@@ -229,13 +269,16 @@ function NewFATPageContent() {
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const blockAssetIds = commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [];
+      const blockAssetIds = commissioningLinkage
+        ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
+        : [];
       const payload = {
         project_id: project!.id,
         document_type: "FAT",
         title:
-          (blockAssetIds[0] ? assets.find((a) => a.id === blockAssetIds[0])?.name : null) ||
-          "Factory Acceptance Test",
+          (blockAssetIds[0]
+            ? assets.find((a) => a.id === blockAssetIds[0])?.name
+            : null) || "Factory Acceptance Test",
         description: values.description || null,
         discipline_id: values.discipline_id,
         asset_ids: blockAssetIds,
@@ -371,7 +414,9 @@ function NewFATPageContent() {
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
                 allAssetIds={assets.map((a) => a.id)}
-                allAssetLabels={Object.fromEntries(assets.map((a) => [a.id, a.tag_number || a.name]))}
+                allAssetLabels={Object.fromEntries(
+                  assets.map((a) => [a.id, a.tag_number || a.name]),
+                )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="FAT"
                 value={commissioningLinkage}
@@ -382,17 +427,45 @@ function NewFATPageContent() {
                 onRemoveBlock={async (block) => {
                   if (!editId || !block.requirementTemplateId) return;
                   for (const assetId of block.assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) =>
+                        r.requirement_template_id ===
+                        block.requirementTemplateId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
                   if (!editId) return;
                   for (const assetId of assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) => r.requirement_template_id === tmplId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
               />
@@ -404,8 +477,14 @@ function NewFATPageContent() {
             <Button type="button" variant="outline" onClick={handleBack}>
               Cancel
             </Button>
-            <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending || undefined}>
-              {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+            <Button
+              type="submit"
+              disabled={mutation.isPending}
+              aria-busy={mutation.isPending || undefined}
+            >
+              {mutation.isPending && (
+                <Spinner size="sm" className="mr-1 text-current" />
+              )}
               {mutation.isPending ? "Saving…" : "Save"}
             </Button>
           </div>

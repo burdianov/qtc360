@@ -24,10 +24,9 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 
-from tests._cleanup import hard_delete_documents
+from tests.e2e._config import BASE
+from tests.helpers.cleanup import hard_delete_documents
 
-
-BASE = "http://localhost:8000/api/v1"
 
 # Test IDs from the running dev environment (matches test_e2e_approval.py)
 PROJECT_ID = "61de59c0-eb71-42ad-90f4-81f561c80ac1"

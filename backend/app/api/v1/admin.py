@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin, require_superuser
 from app.core.security import hash_password, validate_password
-from app.core.types import DEFAULT_DATE_FORMAT
+from app.core.types import DEFAULT_DATE_FORMAT, MAX_HEADER_IMAGE_BYTES, _mb
 from app.models.user import User
 from app.models.rbac import Role, Permission, user_roles, role_permissions
 from app.models.audit_log import AuditLog
@@ -295,8 +295,11 @@ async def upload_crs_header(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
     data = await file.read()
-    if len(data) > 2 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image must be under 2MB")
+    if len(data) > MAX_HEADER_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image must be under {_mb(MAX_HEADER_IMAGE_BYTES)}MB",
+        )
     encoded = base64.b64encode(data).decode()
     key = f"crs_header_image_{project_id}"
     result = await db.execute(select(AppSetting).where(AppSetting.key == key))

@@ -34,6 +34,16 @@ export const tagColors: Record<string, string> = {
   blue: "bg-blue-500/15 text-blue-500",
 };
 
+// ─── Level Colors (commissioning levels → tag color mapping) ────────────────
+export const levelColors: Record<string, string> = {
+  L1: "bg-red-100 dark:bg-red-900",
+  L2A: "bg-red-100 dark:bg-red-900",
+  L2B: "bg-yellow-100 dark:bg-yellow-900",
+  L3: "bg-emerald-100 dark:bg-emerald-900",
+  L4: "bg-blue-100 dark:bg-blue-900",
+  L5: "bg-purple-100 dark:bg-purple-900",
+};
+
 // ─── Requirement Statuses ───────────────────────────────────────────────────
 export const reqStatusColors: Record<string, string> = {
   not_started: "bg-muted text-muted-foreground",
@@ -55,3 +65,9 @@ export const STORAGE_KEYS = {
 
 // ─── Pagination ─────────────────────────────────────────────────────────────
 export const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100] as const;
+
+// ─── Upload Limits ──────────────────────────────────────────────────────────
+// Mirrors backend/app/core/types.py. Keep these in sync.
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50 MB per file
+export const MAX_BUNDLE_BYTES = 50 * 1024 * 1024; // 50 MB total bundle cap
+export const MAX_HEADER_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB CRS header image

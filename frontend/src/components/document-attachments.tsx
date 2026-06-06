@@ -16,6 +16,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import api from "@/lib/api";
+import { MAX_ATTACHMENT_BYTES } from "@/lib/constants";
+import { filterBySize, formatSizeCap } from "@/lib/upload";
 
 interface Attachment {
   id?: string;
@@ -58,17 +60,18 @@ export function DocumentAttachments({
     input.accept = ".pdf,.png,.jpg,.jpeg";
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
-      if (files) {
-        onAttachmentsChange([
-          ...attachments,
-          ...Array.from(files).map((f) => ({
-            file: f,
-            name: f.name,
-            size: f.size,
-          })),
-        ]);
-        onDirtyChange?.();
-      }
+      if (!files || files.length === 0) return;
+      const accepted = filterBySize(Array.from(files), MAX_ATTACHMENT_BYTES, "Attachment");
+      if (accepted.length === 0) return;
+      onAttachmentsChange([
+        ...attachments,
+        ...accepted.map((f) => ({
+          file: f,
+          name: f.name,
+          size: f.size,
+        })),
+      ]);
+      onDirtyChange?.();
     };
     input.click();
   };
@@ -199,7 +202,9 @@ export function DocumentAttachments({
         <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
           No attachments. Click "Add Files" to upload.
           <br />
-          <span className="text-xs">Accepted formats: PDF, PNG, JPG</span>
+          <span className="text-xs">
+            Accepted formats: PDF, PNG, JPG. Max {formatSizeCap(MAX_ATTACHMENT_BYTES)} per file.
+          </span>
         </div>
       ) : (
         <div

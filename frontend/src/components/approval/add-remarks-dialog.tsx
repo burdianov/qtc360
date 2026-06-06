@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ApprovalRound } from "./approval-action-panel";
+import { MAX_ATTACHMENT_BYTES } from "@/lib/constants";
+import { formatSizeCap, validateFileSize } from "@/lib/upload";
 
 interface Props {
   open: boolean;
@@ -81,10 +83,21 @@ function Input({ file, onFile }: { file: File | null; onFile: (f: File | null) =
       <input
         type="file"
         accept="application/pdf"
-        onChange={(e) => onFile(e.target.files?.[0] || null)}
+        onChange={(e) => {
+          const f = e.target.files?.[0] || null;
+          if (f && !validateFileSize(f, MAX_ATTACHMENT_BYTES, "Remarks PDF")) {
+            e.target.value = "";
+            return;
+          }
+          onFile(f);
+        }}
         className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-transparent file:px-3 file:py-1.5 file:text-sm hover:file:bg-accent"
       />
-      <p className="text-xs text-muted-foreground">{file ? `Selected: ${file.name}` : "Accepted format: PDF"}</p>
+      <p className="text-xs text-muted-foreground">
+        {file
+          ? `Selected: ${file.name}`
+          : `Accepted format: PDF. Max ${formatSizeCap(MAX_ATTACHMENT_BYTES)}.`}
+      </p>
     </div>
   );
 }

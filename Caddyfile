@@ -3,5 +3,10 @@ qtc360.com {
 }
 
 api.qtc360.com {
+	# Per-file cap is 50MB on the backend; 60MB here leaves headroom for
+	# multipart overhead. Caddy's default of 1MB would silently reject uploads.
+	request_body {
+		max_size 60MB
+	}
 	reverse_proxy backend:8000
 }

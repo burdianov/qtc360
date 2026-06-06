@@ -43,6 +43,8 @@ from app.schemas.commissioning import (
     RequirementWorkItemOut,
     RequirementWorkItemUpdate,
     AssetRequirementUpdate,
+    AssetCommissioningProgress,
+    AssetRequirementDetail,
 )
 from app.services.audit import record_audit
 from app.services.commissioning import recalculate_requirement_status
@@ -571,7 +573,7 @@ async def update_tag_target(
 
 # --- Commissioning Progress ---
 
-@router.get("/progress", response_model=list["AssetCommissioningProgress"])
+@router.get("/progress", response_model=list[AssetCommissioningProgress])
 async def get_commissioning_progress(
     project_id: uuid.UUID = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -579,7 +581,6 @@ async def get_commissioning_progress(
 ):
     """Return commissioning progress for assets in a project."""
     from app.models.asset import Asset
-    from app.schemas.commissioning import AssetCommissioningProgress, AssetRequirementDetail
 
     assets_result = await db.execute(
         select(Asset).where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
@@ -762,3 +763,149 @@ async def list_gate_overrides(
         )
     result = await db.execute(query)
     return result.scalars().all()
+
+
+
+# ─── Matrix endpoint ─────────────────────────────────────────────────────────
+
+
+@router.get("/matrix")
+async def get_commissioning_matrix(
+    project_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_project_access()),
+):
+    """Return the full requirements achievement matrix for a project.
+
+    Shape optimized for a virtualized grid:
+    - columns: ordered requirement templates with level grouping
+    - rows: one per asset with frozen fields + cell statuses
+    """
+    from app.models.asset import Asset
+    from app.models.document import Document
+
+    # 1. Load requirement templates for project
+    tmpl_result = await db.execute(
+        select(RequirementTemplate).where(
+            RequirementTemplate.is_deleted == False,  # noqa: E712
+            RequirementTemplate.is_active == True,  # noqa: E712
+            (RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None),  # noqa: E711
+        ).order_by(RequirementTemplate.sort_order, RequirementTemplate.level_code)
+    )
+    templates = tmpl_result.scalars().all()
+    tmpl_by_id = {t.id: t for t in templates}
+
+    # 2. Load assets
+    assets_result = await db.execute(
+        select(Asset).where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
+        .options(selectinload(Asset.asset_type))
+    )
+    assets = assets_result.scalars().all()
+    if not assets:
+        return {"columns": [], "rows": []}
+
+    asset_ids = [a.id for a in assets]
+
+    # 3. Load all asset requirements
+    reqs_result = await db.execute(
+        select(AssetRequirement)
+        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(asset_ids))  # noqa: E712
+    )
+    all_reqs = reqs_result.scalars().all()
+
+    # 4. Load document links with document info for cell references
+    links_result = await db.execute(
+        select(DocumentRequirementLink)
+        .where(
+            DocumentRequirementLink.is_deleted == False,  # noqa: E712
+            DocumentRequirementLink.asset_requirement_id.in_([r.id for r in all_reqs]),
+        )
+        .options(selectinload(DocumentRequirementLink.document))
+    )
+    all_links = links_result.scalars().all()
+
+    # Group links by asset_requirement_id
+    links_by_ar: dict[uuid.UUID, list] = {}
+    for link in all_links:
+        links_by_ar.setdefault(link.asset_requirement_id, []).append(link)
+
+    # Group requirements by asset
+    reqs_by_asset: dict[uuid.UUID, dict[uuid.UUID, AssetRequirement]] = {}
+    for req in all_reqs:
+        reqs_by_asset.setdefault(req.asset_id, {})[req.requirement_template_id] = req
+
+    # 5. Build columns (requirement templates grouped by level)
+    level_order = ["L1", "L2A", "L2B", "L3", "L4", "L5"]
+    columns = []
+    for tmpl in sorted(templates, key=lambda t: (level_order.index(t.level_code) if t.level_code in level_order else 99, t.sort_order)):
+        columns.append({
+            "id": str(tmpl.id),
+            "name": tmpl.name,
+            "code": tmpl.code,
+            "level_code": tmpl.level_code,
+            "doc_type": tmpl.evidence_document_type,
+            "sort_order": tmpl.sort_order,
+        })
+
+    # 6. Build rows
+    rows = []
+    for asset in assets:
+        asset_reqs = reqs_by_asset.get(asset.id, {})
+
+        # Calculate progress
+        total = len(asset_reqs)
+        achieved = sum(1 for r in asset_reqs.values() if r.status == "achieved")
+        progress = achieved / total if total > 0 else 0
+
+        # Calculate blocker: first unmet non-optional requirement in sort order
+        blocker = None
+        for tmpl in sorted(templates, key=lambda t: (level_order.index(t.level_code) if t.level_code in level_order else 99, t.sort_order)):
+            if tmpl.is_optional:
+                continue
+            req = asset_reqs.get(tmpl.id)
+            if req and req.status not in ("achieved", "not_applicable"):
+                blocker = {"template_name": tmpl.name, "level_code": tmpl.level_code, "status": req.status}
+                break
+
+        # Build cells keyed by template_id
+        cells = {}
+        for tmpl_id, req in asset_reqs.items():
+            links = links_by_ar.get(req.id, [])
+            doc_refs = []
+            for link in links:
+                doc = link.document
+                if doc and not doc.is_deleted:
+                    doc_refs.append({
+                        "id": str(doc.id),
+                        "reference_no": doc.reference_no,
+                        "status": doc.status,
+                    })
+            cells[str(tmpl_id)] = {
+                "status": req.status,
+                "progress": req.progress_percent,
+                "docs": doc_refs,
+            }
+
+        # Determine achieved levels
+        achieved_levels = []
+        for level in level_order:
+            level_reqs = [r for tid, r in asset_reqs.items() if tmpl_by_id.get(tid) and tmpl_by_id[tid].level_code == level and not tmpl_by_id[tid].is_optional]
+            if level_reqs and all(r.status == "achieved" for r in level_reqs):
+                achieved_levels.append(level)
+
+        rows.append({
+            "asset_id": str(asset.id),
+            "asset_name": asset.name,
+            "tag_number": asset.tag_number,
+            "asset_type": asset.asset_type.name if asset.asset_type else None,
+            "pod": (asset.custom_fields or {}).get("field_1", ""),
+            "location": asset.location,
+            "progress": progress,
+            "achieved_count": achieved,
+            "total_count": total,
+            "blocker": blocker,
+            "achieved_levels": achieved_levels,
+            "cells": cells,
+        })
+
+    return {"columns": columns, "rows": rows}

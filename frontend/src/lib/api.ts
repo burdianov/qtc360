@@ -4,6 +4,11 @@ import { STORAGE_KEYS } from "./constants";
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
   headers: { "Content-Type": "application/json" },
+  // Per-file upload cap is enforced by the backend (and pre-checked in
+  // lib/upload.ts). Disable Axios' own soft caps so it never silently
+  // truncates a 50 MB PDF.
+  maxBodyLength: Infinity,
+  maxContentLength: Infinity,
 });
 
 api.interceptors.request.use((config) => {

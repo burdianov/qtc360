@@ -110,6 +110,25 @@ async def hard_delete_documents(doc_ids: Iterable[str]) -> int:
             )
             deleted = result.rowcount or 0
 
+            # Best-effort: also wipe the per-doc response files
+            # (responses/{doc_id}/S1.pdf, R1.pdf, ...) that the test may
+            # have written. The DB column was already cleared by the
+            # DELETE above, but the bytes on disk are not cascaded.
+            try:
+                from app.services.approval_files import purge_doc_responses
+                from app.services.storage import storage
+                for did in ids:
+                    purge_doc_responses(did)
+                    # Also clean up any per-doc attachments the API
+                    # wrote but didn't link through DocumentAttachment.
+                    for sub in ("attachments", "approval-rounds"):
+                        root = storage._root / sub / str(did)  # noqa: SLF001
+                        if root.exists():
+                            import shutil
+                            shutil.rmtree(root, ignore_errors=True)
+            except Exception:
+                pass
+
             # Roll back the discipline counters we captured above. Clamp to
             # the (project, doc_type) config's serial_start so we never go
             # below the configured floor.

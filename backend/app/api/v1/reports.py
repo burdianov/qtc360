@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.types import DEFAULT_SIGNATURE_FONT, DEFAULT_SIGNATURE_COLOR, FONTS_DIR, LIBREOFFICE_TIMEOUT, GOTENBERG_TIMEOUT, DEFAULT_DATE_FORMAT
+from app.core.types import DEFAULT_SIGNATURE_FONT, DEFAULT_SIGNATURE_COLOR, FONTS_DIR, LIBREOFFICE_TIMEOUT, GOTENBERG_TIMEOUT, DEFAULT_DATE_FORMAT, MAX_BUNDLE_BYTES, _mb
 from app.services.storage import storage
 from app.core.deps import (
     assert_user_in_project,
@@ -348,7 +348,10 @@ async def generate_report(
     pdf_filename = f"{ref}_{rev:02d}.pdf"
 
     if attachments:
-        pdf_bytes, missing = _merge_attachments_with_status(pdf_bytes, attachments)
+        try:
+            pdf_bytes, missing = _merge_attachments_with_status(pdf_bytes, attachments)
+        except ValueError as e:
+            raise HTTPException(status_code=413, detail=str(e))
         if missing:
             # Sanitize each missing filename so it can't break the response header.
             safe_missing = [m.replace("\r", " ").replace("\n", " ") for m in missing]
@@ -569,8 +572,8 @@ def _build_context(document: Document) -> dict:
         else:
             ctx[f"inspected_by_{i}"] = ""
             ctx[f"designation_{i}"] = ""
-        ctx[f"date_{i}"] = _format_date(getattr(document, f"inspector_date_{i}", None))
-        ctx[f"time_{i}"] = getattr(document, f"inspector_time_{i}", "") or ""
+        ctx[f"date_{i}"] = _format_date(document.inspector_date_1)
+        ctx[f"time_{i}"] = document.inspector_time_1 or ""
 
     if document.project:
         ctx["prj_no"] = document.project.code or ""
@@ -854,11 +857,18 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
 
 
 def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes, list[str]]:
-    """Merge attachment files from web server storage into the main PDF."""
+    """Merge attachment files from web server storage into the main PDF.
+
+    Raises:
+        ValueError: if the total input size (main + all attachments) exceeds
+            MAX_BUNDLE_BYTES. Callers should translate this into HTTP 413.
+    """
     try:
         from pypdf import PdfReader, PdfWriter
     except ImportError:
         return main_pdf, []
+
+    running_total = len(main_pdf)
 
     writer = PdfWriter()
     reader = PdfReader(io.BytesIO(main_pdf))
@@ -872,6 +882,12 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
             continue
 
         att_bytes = storage.read(att.storage_path)
+        running_total += len(att_bytes)
+        if running_total > MAX_BUNDLE_BYTES:
+            raise ValueError(
+                f"Bundle too large (>{_mb(MAX_BUNDLE_BYTES)}MB limit). "
+                "Reduce the number or size of attachments."
+            )
         suffix = Path(att.storage_path).suffix.lower()
         if suffix == ".pdf":
             try:

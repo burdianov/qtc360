@@ -17,6 +17,57 @@ from app.models.document import Document
 from app.core.types import TAG_LEVEL_MAP
 
 
+async def _validate_work_item_approval(
+    db: AsyncSession, wi: RequirementWorkItem
+) -> bool:
+    """Verify a work item's 'approved' status is still backed by a live, approved
+    document AND an active link. Resets the work item back to 'not_started' if
+    the backing evidence has gone away (document hard/soft-deleted, document
+    status dropped off the approved list, or the linking row was soft-deleted).
+
+    Work items that have ``linked_document_id IS NULL`` are treated as
+    manually-approved and always considered valid — they carry no document
+    dependency.
+
+    Returns True when the work item's cached status is still accurate.
+    """
+    if wi.status != "approved":
+        return True
+
+    if wi.linked_document_id is None:
+        return True  # manual approval, no doc to validate against
+
+    doc = await db.get(Document, wi.linked_document_id)
+    if doc is None or doc.is_deleted:
+        wi.status = "not_started"
+        wi.approved_date = None
+        wi.linked_document_id = None
+        return False
+
+    if doc.status not in ("approved", "approved_with_comments"):
+        wi.status = "not_started"
+        wi.approved_date = None
+        wi.linked_document_id = None
+        return False
+
+    link_result = await db.execute(
+        select(DocumentRequirementLink.id).where(
+            DocumentRequirementLink.document_id == wi.linked_document_id,
+            DocumentRequirementLink.asset_requirement_id == wi.asset_requirement_id,
+            DocumentRequirementLink.requirement_work_item_id == wi.id,
+            DocumentRequirementLink.is_deleted == False,  # noqa: E712
+        )
+    )
+    if link_result.scalar_one_or_none() is None:
+        # The link that originally drove this approval was soft-deleted.
+        wi.status = "not_started"
+        wi.approved_date = None
+        wi.linked_document_id = None
+        return False
+
+    return True
+
+
 async def recalculate_requirement_status(
     db: AsyncSession, asset_requirement_id: uuid.UUID
 ) -> str:
@@ -34,6 +85,17 @@ async def recalculate_requirement_status(
     work_items = [wi for wi in req.work_items if not wi.is_deleted]
 
     if work_items:
+        # First pass: drop any work item whose 'approved' status is no longer
+        # backed by a live, approved document + an active link. Without this,
+        # a soft-deleted DocumentRequirementLink would leave a work item stuck
+        # in 'approved' forever and the requirement would show a green/yellow
+        # dot for evidence that no longer exists.
+        for wi in work_items:
+            await _validate_work_item_approval(db, wi)
+
+        # Work breakdown mode: status derived from work item completion
+        approved_count = sum(1 for wi in work_items if wi.status == "approved")
+        total = len(work_items)
         # Work breakdown mode: status derived from work item completion
         approved_count = sum(1 for wi in work_items if wi.status == "approved")
         total = len(work_items)
@@ -56,10 +118,14 @@ async def recalculate_requirement_status(
             new_status = "not_started"
             progress = 0.0
         else:
-            # Check document statuses
+            # Check document statuses (only live docs — soft-deleted/superseded ones must not
+            # keep a requirement green just because their cached status is still "approved").
             doc_ids = [lnk.document_id for lnk in links]
             doc_result = await db.execute(
-                select(Document.status).where(Document.id.in_(doc_ids))
+                select(Document.status).where(
+                    Document.id.in_(doc_ids),
+                    Document.is_deleted == False,  # noqa: E712
+                )
             )
             doc_statuses = [row[0] for row in doc_result.all()]
 

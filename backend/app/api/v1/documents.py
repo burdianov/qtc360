@@ -1,9 +1,9 @@
 import uuid as uuid_mod
 from datetime import datetime, timezone
 from uuid import UUID
-from pathlib import Path
+from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,8 +23,8 @@ from app.models.user import User
 from app.schemas.document import (
     DocumentCreate, DocumentUpdate, DocumentResponse,
     DocumentApprovalRoundResponse,
-    SubmitToApproverRequest,
     OCRExtractRequest, OCRExtractResponse,
+    SubmitToApproverRequest,
 )
 from app.services.commissioning import recalculate_requirements_for_document
 from app.services.audit import record_audit
@@ -40,6 +40,7 @@ from app.core.types import (
     ALLOWED_ATTACHMENT_SUFFIXES, ALLOWED_ATTACHMENT_MIMES,
     MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_DOC,
     DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, MAX_APPROVERS,
+    _mb,
 )
 
 
@@ -48,6 +49,58 @@ async def _build_download_filename(db: AsyncSession, doc: "Document") -> str:
     ref = doc.reference_no or "document"
     rev = int(doc.revision_no or 0)
     return f"{ref}_{rev:02d}.pdf"
+
+
+async def _purge_document_storage(db: AsyncSession, doc_id: UUID) -> int:
+    """Best-effort delete every file on disk that belongs to this document.
+
+    Covers:
+    - All DocumentAttachment rows (doc-level, round-level, returned_pdf)
+    - Approval round files that are NOT in DocumentAttachment
+      (remarks.pdf, plus returned_file_path if no DocumentAttachment row exists)
+    - The entire ``responses/{doc_id}/`` folder (S1, R1, S2, R2, ...)
+
+    Returns the number of files we attempted to unlink. Each unlink is
+    wrapped in try/except — we never want storage cleanup to abort a delete.
+    """
+    keys: set[str] = set()
+
+    att_result = await db.execute(
+        select(DocumentAttachment).where(DocumentAttachment.document_id == doc_id)
+    )
+    for att in att_result.scalars().all():
+        if att.storage_path:
+            keys.add(att.storage_path)
+
+    rounds_result = await db.execute(
+        select(DocumentApprovalRound).where(
+            DocumentApprovalRound.document_id == doc_id,
+        )
+    )
+    for round_ in rounds_result.scalars().all():
+        if round_.returned_file_path:
+            keys.add(round_.returned_file_path)
+        if round_.remarks_file_path:
+            keys.add(round_.remarks_file_path)
+        if round_.submitted_file_path:
+            keys.add(round_.submitted_file_path)
+
+    for key in keys:
+        try:
+            storage.delete(key)
+        except Exception:
+            pass  # Best-effort; missing file is acceptable
+
+    # PR2: also wipe responses/{doc_id}/ (catches the case where a
+    # round was created but the doc was deleted before the S or R
+    # file was recorded in the column — unlikely but possible).
+    from app.services.approval_files import purge_doc_responses
+    try:
+        purge_doc_responses(str(doc_id))
+    except Exception:
+        pass
+
+    return len(keys)
 
 
 async def _allocate_serial(
@@ -258,6 +311,64 @@ async def get_document(
     resp = DocumentResponse.model_validate(doc)
     resp.asset_ids = [a.id for a in doc.assets] if doc.assets else []
     return resp
+
+
+# ─── PR2: per-stage file download ────────────────────────────────────────
+#
+# Stage name is exactly the file name on disk: S1, R1, S2, R2, ...
+# Exposed as a single path-param endpoint so the frontend can build the
+# URL with one string substitution.
+
+_STAGE_PATTERN = r"^S[1-9]\d*$|^R[1-9]\d*$"
+
+
+@router.get("/{doc_id}/files/{stage}")
+async def download_stage_file(
+    doc_id: UUID,
+    stage: str = Path(..., pattern=_STAGE_PATTERN, description="S1, R1, S2, R2, ..."),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a per-stage file for this document's approval cycle.
+
+    ``stage`` is the literal file name without the ``.pdf`` extension:
+    ``S1`` for the first submission, ``R1`` for the first response, etc.
+
+    Returns the PDF bytes. 404 if the document doesn't exist, 403 if
+    the user isn't in the project, 404 again if the stage file is
+    missing (e.g. S2 on a 1-approver cycle, or R2 not yet recorded).
+    """
+    from fastapi.responses import Response
+    from app.services.approval_files import (
+        submitted_path, returned_path,
+    )
+
+    doc = (await db.execute(
+        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+    )).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    if stage.startswith("S"):
+        key = submitted_path(str(doc.id), int(stage[1:]))
+    else:
+        key = returned_path(str(doc.id), int(stage[1:]))
+
+    if not storage.exists(key):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Stage file {stage!r} is not available for this document yet",
+        )
+
+    return Response(
+        content=storage.read(key),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{stage}.pdf"',
+            "Cache-Control": "private, no-cache",
+        },
+    )
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -548,7 +659,10 @@ async def delete_document(
     is_submitted = has_been_submitted or doc.status in submitted_statuses
 
     if is_submitted:
-        # SUPERSEDE: mark as superseded (preserve serial number)
+        # SUPERSEDE: mark as superseded (preserve serial number).
+        # Free disk: all response/remarks/attachment files are no longer reachable
+        # from the working state, so we best-effort unlink them.
+        await _purge_document_storage(db, doc.id)
         doc.status = "superseded"
         doc.is_deleted = True
         await recalculate_requirements_for_document(db, doc_id)
@@ -557,20 +671,32 @@ async def delete_document(
             summary=f"Superseded {doc.document_type} '{doc.reference_no}' (was submitted to approver)"
         )
     else:
-        # HARD DELETE: remove document and attachments; serial is not reused
+        # HARD DELETE: remove document and attachments; serial is not reused.
+        #
+        # Order matters: we must NOT call recalculate_requirements_for_document
+        # before the link + document are gone — that path would otherwise see a
+        # still-present, still-"approved" document and stamp the requirement
+        # "achieved", which then survives the link/doc deletion as a stale
+        # green dot in the matrix with no evidence behind it. Snapshot the
+        # affected requirement ids first, wipe the FK chain, then recalc each
+        # requirement on its own (the doc row no longer exists, so the
+        # document-scoped recalc helper would short-circuit).
 
-        # Delete attachment files
-        attachments_result = await db.execute(
-            select(DocumentAttachment).where(
-                DocumentAttachment.document_id == doc.id,
+        # Delete every owned file on disk before purging DB rows.
+        await _purge_document_storage(db, doc.id)
+
+        # Snapshot the asset_requirement ids we will need to recalc after the
+        # links are gone.
+        from app.models.commissioning import DocumentRequirementLink
+        ar_ids_result = await db.execute(
+            select(DocumentRequirementLink.asset_requirement_id)
+            .where(
+                DocumentRequirementLink.document_id == doc.id,
+                DocumentRequirementLink.is_deleted == False,  # noqa: E712
             )
+            .distinct()
         )
-        attachments = attachments_result.scalars().all()
-        for att in attachments:
-            try:
-                storage.delete(att.storage_path)
-            except Exception:
-                pass  # Best-effort file cleanup
+        affected_ar_ids = [row[0] for row in ar_ids_result.all()]
 
         # Hard delete attachments from DB
         from sqlalchemy import delete as sa_delete
@@ -587,21 +713,30 @@ async def delete_document(
             )
         )
 
-        await recalculate_requirements_for_document(db, doc_id)
-        await record_audit(
-            db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id,
-            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted; serial preserved)"
-        )
-
-        # Hard delete the document itself
-        from app.models.commissioning import DocumentRequirementLink
+        # Hard delete the document-requirement links (live and previously
+        # soft-deleted) — once the doc is gone these have nothing to point at.
         await db.execute(
             sa_delete(DocumentRequirementLink).where(
                 DocumentRequirementLink.document_id == doc.id,
             )
         )
+
+        # Hard delete the document itself
         await db.execute(
             sa_delete(Document).where(Document.id == doc.id)
+        )
+
+        # Recalculate every affected requirement now that the doc + links are
+        # truly gone. recalculate_requirements_for_document() would no-op here
+        # (it short-circuits when the doc is missing), so we call the
+        # per-requirement helper directly.
+        from app.services.commissioning import recalculate_requirement_status
+        for ar_id in affected_ar_ids:
+            await recalculate_requirement_status(db, ar_id)
+
+        await record_audit(
+            db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id,
+            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted; serial preserved)"
         )
 
     try:
@@ -802,12 +937,12 @@ async def extract_preview_region(
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -832,12 +967,32 @@ async def extract_preview_region(
 )
 async def submit_to_approver_endpoint(
     doc_id: UUID,
-    body: SubmitToApproverRequest,
+    payload: SubmitToApproverRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
-    """Mirror an Aconex submission for the document to Approver N."""
+    """Mirror an Aconex submission for the document to Approver N.
+
+    Side effects:
+    * Creates the round row (state-machine transition handled in service layer)
+    * Assembles the S-round bundle (template + attachments for S1, or
+      R{prev} + extras for S{N>=2}) and saves it to
+      ``responses/{doc_id}/S{N}.pdf``
+    * Stores the storage key on ``round.submitted_file_path`` + size
+
+    If a previous round's response is password-protected and no
+    usable password was supplied, returns 400 with
+    ``detail.code == "PDF_PASSWORD_REQUIRED"`` so the frontend can
+    render the password field.
+    """
     from app.services.approval import submit_to_approver
+    from app.services.approval_files import (
+        assemble_submission_for_round, save_submission,
+    )
+
+    approver_order = payload.approver_order
+    aconex_submitted_date = payload.aconex_submitted_date
+    password = payload.password
 
     doc = (await db.execute(
         select(Document)
@@ -848,21 +1003,32 @@ async def submit_to_approver_endpoint(
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = await submit_to_approver(db, doc, body.approver_order, body.submitted_at)
+    round_ = await submit_to_approver(db, doc, approver_order, None)
 
     # Save Aconex submission date if provided
-    if body.aconex_submitted_date:
+    if aconex_submitted_date:
         from datetime import date as date_cls
         try:
-            round_.aconex_submitted_date = date_cls.fromisoformat(body.aconex_submitted_date)
+            round_.aconex_submitted_date = date_cls.fromisoformat(aconex_submitted_date)
         except ValueError:
             pass
+
+    # Assemble the S-round bundle. This may raise 400 with
+    # PDF_PASSWORD_REQUIRED; the round row is already created (state
+    # machine has advanced) so the user can retry without losing
+    # progress.
+    bundle_bytes = await assemble_submission_for_round(
+        db, doc, approver_order, password=password,
+    )
+    key, size = save_submission(str(doc.id), approver_order, bundle_bytes)
+    round_.submitted_file_path = key
+    round_.submitted_file_size = size
 
     await record_audit(
         db, user_id=user.id, action="submit", entity_type="document", entity_id=doc.id,
         summary=(
             f"Submitted {doc.document_type} '{doc.reference_no}' rev {doc.revision_no} "
-            f"to approver {body.approver_order}"
+            f"to approver {approver_order} ({size} bytes)"
         ),
     )
     try:
@@ -898,7 +1064,7 @@ async def record_response_endpoint(
     from app.services.approval import record_response
     from app.models.document_attachment import DocumentAttachment
 
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="Returned file must be a PDF")
     declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
@@ -907,7 +1073,7 @@ async def record_response_endpoint(
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -933,10 +1099,15 @@ async def record_response_endpoint(
     )
     await db.flush()
 
-    storage_key = f"approval-rounds/{round_.id}/returned.pdf"
-    storage.save(storage_key, data)
+    # PR2: write the R-round PDF to responses/{doc_id}/R{N}.pdf (one
+    # file per stage, name maps directly to "which file is which stage").
+    from app.services.approval_files import save_response
+    storage_key, file_size, requires_password = save_response(
+        str(doc.id), approver_order, data,
+    )
     round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
+    round_.returned_file_locked = requires_password
     round_.response_time = response_time
 
     # Save Aconex received date
@@ -947,7 +1118,8 @@ async def record_response_endpoint(
         except ValueError:
             pass
 
-    # Save the returned PDF as a single attachment
+    # Save the returned PDF as a single attachment (so the existing UI
+    # which lists DocumentAttachment rows continues to work).
     db.add(DocumentAttachment(
         document_id=doc.id,
         document_approval_round_id=round_.id,
@@ -955,7 +1127,7 @@ async def record_response_endpoint(
         filename=f"Approver {approver_order} — Returned.pdf",
         storage_path=storage_key,
         content_type="application/pdf",
-        size=len(data),
+        size=file_size,
         sort_order=0,
     ))
 
@@ -1033,12 +1205,12 @@ async def replace_round_file(
     from datetime import date as date_cls
     from app.models.document_attachment import DocumentAttachment
 
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="File must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1058,10 +1230,13 @@ async def replace_round_file(
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
-    storage_key = f"approval-rounds/{round_.id}/returned.pdf"
-    storage.save(storage_key, data)
+    from app.services.approval_files import save_response
+    storage_key, file_size, requires_password = save_response(
+        str(doc.id), round_.approver_order, data,
+    )
     round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
+    round_.returned_file_locked = requires_password
 
     # Always overwrite metadata (None/empty = clear)
     round_.signatory_name = signatory_name or None
@@ -1180,12 +1355,12 @@ async def upload_round_remarks(
     that returned status B."""
     from app.services.approval import attach_remarks
 
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail="Remarks file must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1244,7 +1419,7 @@ async def upload_round_attachment(
     """
     from app.models.document_attachment import DocumentAttachment
 
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix not in (".pdf", ".png", ".jpg", ".jpeg"):
         raise HTTPException(status_code=400, detail="Attachment must be a PDF or image (PNG, JPG)")
     allowed_mimes = {"application/pdf", "image/png", "image/jpeg"}
@@ -1254,7 +1429,7 @@ async def upload_round_attachment(
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1472,7 +1647,10 @@ async def download_round_bundle(
         attachment_data.append((att_bytes, att.insert_after_page or 0))
 
     # Merge PDFs
-    merged_pdf = merge_pdf_bundle(returned_pdf_bytes, attachment_data)
+    try:
+        merged_pdf = merge_pdf_bundle(returned_pdf_bytes, attachment_data)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e))
 
     fname = await _build_download_filename(db, doc)
     return Response(
@@ -1592,7 +1770,7 @@ async def upload_attachment(
     await _load_doc_for_attachment(db, doc_id, user)
 
     # Validate suffix and MIME up front; both must be in the allow-list.
-    suffix = Path(file.filename or "").suffix.lower()
+    suffix = FilePath(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_ATTACHMENT_SUFFIXES:
         raise HTTPException(
             status_code=400,
@@ -1604,7 +1782,7 @@ async def upload_attachment(
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1654,8 +1832,17 @@ async def delete_attachment(
     att = result.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
+    storage_path = att.storage_path
     att.is_deleted = True
     await db.commit()
+    # Free disk after the row is marked deleted — we don't want a half-deleted
+    # attachment re-appearing if the commit fails. The soft-delete keeps the
+    # history in the DB; the file is unlinked best-effort.
+    if storage_path:
+        try:
+            storage.delete(storage_path)
+        except Exception:
+            pass
 
 
 @router.patch("/{doc_id}/attachments/reorder")
@@ -1772,7 +1959,10 @@ async def download_document_bundle(
 
     # Merge all attachments (PDFs appended, images converted to PDF pages)
     from app.api.v1.reports import _merge_attachments_with_status
-    merged_pdf, _ = _merge_attachments_with_status(main_pdf_bytes, attachments)
+    try:
+        merged_pdf, _ = _merge_attachments_with_status(main_pdf_bytes, attachments)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e))
 
     fname = await _build_download_filename(db, doc)
     return Response(

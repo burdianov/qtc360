@@ -12,19 +12,24 @@ interface DatePickerProps {
   value?: string; // ISO date string (YYYY-MM-DD)
   onChange?: (value: string) => void;
   placeholder?: string;
+  invalid?: boolean;
 }
 
-export function DatePicker({ value, onChange, placeholder = "Select a date" }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = "Select a date", invalid }: DatePickerProps) {
   const [open, setOpen] = React.useState(false);
   const selected = value ? new Date(value + "T00:00:00") : undefined;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className={cn(
-        "flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors",
-        "hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        !value && "text-muted-foreground"
-      )}>
+      <PopoverTrigger
+        aria-invalid={invalid || undefined}
+        className={cn(
+          "flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors",
+          "hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          !value && "text-muted-foreground",
+          invalid && "border-destructive ring-3 ring-destructive/20 aria-invalid:border-destructive"
+        )}
+      >
         <CalendarIcon className="h-4 w-4 text-muted-foreground" />
         {value ? formatDate(value) : placeholder}
       </PopoverTrigger>

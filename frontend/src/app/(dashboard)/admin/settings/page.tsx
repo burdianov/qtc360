@@ -20,6 +20,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { Spinner } from "@/components/ui/spinner";
 import { Pencil, Trash2, Plus, Check, X } from "lucide-react";
 import { ProjectApproversCard } from "./project-approvers-card";
+import { MAX_HEADER_IMAGE_BYTES } from "@/lib/constants";
+import { formatSizeCap } from "@/lib/upload";
 
 const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT", "CRS"] as const;
 const DEFAULT_PATTERN =
@@ -796,10 +798,14 @@ function CrsHeaderCard() {
     if (!file || !project?.id) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Please select an image file");
+      e.target.value = "";
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Image must be under 2MB");
+    if (file.size > MAX_HEADER_IMAGE_BYTES) {
+      toast.error(
+        `Image must be under ${formatSizeCap(MAX_HEADER_IMAGE_BYTES)} (was ${(file.size / 1024 / 1024).toFixed(1)}MB)`,
+      );
+      e.target.value = "";
       return;
     }
     setUploading(true);
@@ -848,7 +854,7 @@ function CrsHeaderCard() {
             className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Accepted: PNG or JPEG, max 2MB. Will be scaled to fit A4 width.
+            Accepted: PNG or JPEG, max {formatSizeCap(MAX_HEADER_IMAGE_BYTES)}. Will be scaled to fit A4 width.
           </p>
         </div>
         {uploading && (

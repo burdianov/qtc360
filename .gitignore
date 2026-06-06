@@ -34,6 +34,7 @@ venv/
 
 NEXT_SESSION_PROMPT.md
 domain/
+.claude/
 
 # Docker
 docker/postgres_data/
@@ -43,9 +44,13 @@ coverage/
 .coverage
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Misc
 *.log
+*.tsbuildinfo
+next-env.d.ts
 
 dump.sql
 *.sql
@@ -53,3 +58,11 @@ dump.sql
 data/
 .env.prod
 .env.prod.backup
+
+# Stray backup/duplicate files (e.g. from editors or accidental renames)
+*~
+*.bak
+*.tmp
+*.orig
+*.rej
+*.dump

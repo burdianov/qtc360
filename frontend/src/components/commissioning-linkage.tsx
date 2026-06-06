@@ -232,11 +232,6 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
       ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === templateId && ar.status !== "achieved").map((ar) => ar.asset_id))
       : null;
     const retainedAssetIds = validAssetIds ? block.assetIds.filter((id) => validAssetIds.has(id)) : [];
-    // Clean up DB links for removed assets under the OLD requirement
-    const droppedAssetIds = block.assetIds.filter((id) => !retainedAssetIds.includes(id));
-    if (droppedAssetIds.length > 0 && block.requirementTemplateId) {
-      onUnlinkAssets?.(block.requirementTemplateId, droppedAssetIds);
-    }
     onChange({ requirementTemplateId: templateId, assetIds: retainedAssetIds, isPartialScope: false, assetStates: {}, gateWarningAcknowledged: undefined, gateOverrideNotes: undefined, gateLevelCode: undefined, incompleteRequirements: undefined });
   };
 
@@ -248,7 +243,6 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
     const assetStates = { ...block.assetStates };
     if (removing) {
       delete assetStates[assetId];
-      if (block.requirementTemplateId) onUnlinkAssets?.(block.requirementTemplateId, [assetId]);
     }
     onChange({ assetIds: ids, assetStates });
   };
@@ -428,9 +422,12 @@ function AssetPicker({ allAssetIds, allAssetLabels, selectedIds, onToggle }: {
       {selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selectedIds.map((id) => (
-            <button key={id} type="button" onClick={() => onToggle(id)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border bg-primary/10 border-primary/50 text-primary">
-              <X className="h-2.5 w-2.5" />{allAssetLabels?.[id] ?? id.slice(0, 8)}
-            </button>
+            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border bg-primary/10 border-primary/50 text-primary">
+              {allAssetLabels?.[id] ?? id.slice(0, 8)}
+              <button type="button" onClick={() => onToggle(id)} className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors" aria-label={`Remove ${allAssetLabels?.[id] ?? id}`}>
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
           ))}
         </div>
       )}
@@ -487,7 +484,10 @@ function AssetWorkItemSection({ assetId, assetLabel, requirementTemplateId, stat
   useEffect(() => {
     if (!assetReq || workItems.length === 0) return;
     if (state?.assetRequirementId === assetReq.id && state.existingItems.length > 0) return;
-    onStateChange({ assetRequirementId: assetReq.id, existingItems: workItems, checkedExistingIds: state?.checkedExistingIds ?? [], deleteExistingIds: state?.deleteExistingIds ?? [], newItems: state?.newItems ?? [] });
+    // Deduplicate by id in case backend returns duplicates
+    const seen = new Set<string>();
+    const unique = workItems.filter((w) => { if (seen.has(w.id)) return false; seen.add(w.id); return true; });
+    onStateChange({ assetRequirementId: assetReq.id, existingItems: unique, checkedExistingIds: state?.checkedExistingIds ?? [], deleteExistingIds: state?.deleteExistingIds ?? [], newItems: state?.newItems ?? [] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetReq?.id, workItems.length]);
 

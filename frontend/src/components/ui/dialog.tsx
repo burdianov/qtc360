@@ -39,13 +39,27 @@ function DialogOverlay({
   )
 }
 
+export type DialogSize =
+  | "sm"
+  | "md"
+  | "lg"
+  | "xl"
+  | "2xl"
+  | "3xl"
+  | "4xl"
+  | "5xl"
+  | "6xl"
+  | "wide";
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size = "sm",
   ...props
 }: DialogPrimitive.Popup.Props & {
-  showCloseButton?: boolean
+  showCloseButton?: boolean;
+  size?: DialogSize;
 }) {
   return (
     <DialogPortal>
@@ -53,7 +67,19 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          {
+            "sm:max-w-sm": size === "sm",
+            "sm:max-w-md": size === "md",
+            "sm:max-w-lg": size === "lg",
+            "sm:max-w-xl": size === "xl",
+            "sm:max-w-2xl": size === "2xl",
+            "sm:max-w-3xl": size === "3xl",
+            "sm:max-w-4xl": size === "4xl",
+            "sm:max-w-5xl": size === "5xl",
+            "sm:max-w-6xl": size === "6xl",
+            "sm:max-w-[min(96rem,calc(100vw-2rem))]": size === "wide",
+          },
           className
         )}
         {...props}
