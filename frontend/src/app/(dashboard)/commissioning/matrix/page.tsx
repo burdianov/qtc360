@@ -130,7 +130,7 @@ export default function MatrixPage() {
     const startWidth = colWidths[key];
     const onMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
-      setColWidths((prev) => {
+      setColWidths((prev: typeof DEFAULT_FROZEN_COLS) => {
         const next = { ...prev, [key]: Math.max(40, startWidth + delta) };
         localStorage.setItem("matrix-col-widths", JSON.stringify(next));
         return next;
@@ -534,22 +534,25 @@ function MatrixCell({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          onClick={onClick}
-          className="flex items-center justify-center border-r cursor-pointer hover:ring-1 hover:ring-primary/40 hover:z-10 transition-shadow"
-          style={{ width: COL_WIDTH, height: ROW_HEIGHT }}
-        >
-          <div className="flex flex-col items-center gap-0.5">
-            <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
-            {docRef && (
-              <span className="text-[9px] text-muted-foreground truncate max-w-[76px]">
-                {docRef.replace(/^MERC-JMJV-\w+-/, "")}
-              </span>
-            )}
+      <TooltipTrigger
+        render={(triggerProps) => (
+          <div
+            {...triggerProps}
+            onClick={onClick}
+            className="flex items-center justify-center border-r cursor-pointer hover:ring-1 hover:ring-primary/40 hover:z-10 transition-shadow"
+            style={{ width: COL_WIDTH, height: ROW_HEIGHT }}
+          >
+            <div className="flex flex-col items-center gap-0.5">
+              <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
+              {docRef && (
+                <span className="text-[9px] text-muted-foreground truncate max-w-[76px]">
+                  {docRef.replace(/^MERC-JMJV-\w+-/, "")}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      </TooltipTrigger>
+        )}
+      />
       <TooltipContent side="top" className="!block w-max p-3 space-y-2 bg-popover text-popover-foreground border shadow-md">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm font-semibold leading-tight">{colName}</span>
