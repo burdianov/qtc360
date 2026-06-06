@@ -9,15 +9,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
-import {
-  ArrowLeft,
-  Loader2,
-  X,
-  Send,
-  PenLine,
-  Download,
-  ChevronDown,
-} from "lucide-react";
+import { ArrowLeft, Loader2, X, Send, PenLine, Download } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -35,15 +27,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Form,
   FormField,
@@ -117,11 +100,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function NewMIRPage() {
   return (
-    <Suspense
-      fallback={
-        <CenteredSpinner label="Loading document…" />
-      }
-    >
+    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
       <NewMIRPageInner />
     </Suspense>
   );
@@ -345,24 +324,40 @@ function NewMIRPageContent() {
     api
       .get("/commissioning/document-links", { params: { document_id: editId } })
       .then(async (res) => {
-        const links = res.data as { asset_requirement_id: string; requirement_work_item_id: string | null }[];
+        const links = res.data as {
+          asset_requirement_id: string;
+          requirement_work_item_id: string | null;
+        }[];
         if (links.length === 0) return;
         const arIdToTmpl = new Map<string, string>();
-        for (const ar of allAssetRequirements) arIdToTmpl.set(ar.id, ar.requirement_template_id);
+        for (const ar of allAssetRequirements)
+          arIdToTmpl.set(ar.id, ar.requirement_template_id);
         const arIdToAsset = new Map<string, string>();
-        for (const ar of allAssetRequirements) arIdToAsset.set(ar.id, ar.asset_id);
+        for (const ar of allAssetRequirements)
+          arIdToAsset.set(ar.id, ar.asset_id);
         const byTmpl = new Map<string, Set<string>>();
         const wiByTmpl = new Map<string, string[]>();
         for (const link of links) {
           const tmpl = arIdToTmpl.get(link.asset_requirement_id);
           if (!tmpl) continue;
-          if (!byTmpl.has(tmpl)) { byTmpl.set(tmpl, new Set()); wiByTmpl.set(tmpl, []); }
+          if (!byTmpl.has(tmpl)) {
+            byTmpl.set(tmpl, new Set());
+            wiByTmpl.set(tmpl, []);
+          }
           byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
-          if (link.requirement_work_item_id) wiByTmpl.get(tmpl)!.push(link.requirement_work_item_id);
+          if (link.requirement_work_item_id)
+            wiByTmpl.get(tmpl)!.push(link.requirement_work_item_id);
         }
-        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+        const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] =
+          [];
         for (const [tmplId, assetSet] of byTmpl.entries()) {
-          blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: (wiByTmpl.get(tmplId)?.length ?? 0) > 0, assetStates: {} });
+          blocks.push({
+            id: Math.random().toString(36).slice(2),
+            requirementTemplateId: tmplId,
+            assetIds: [...assetSet],
+            isPartialScope: (wiByTmpl.get(tmplId)?.length ?? 0) > 0,
+            assetStates: {},
+          });
         }
         if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
@@ -423,7 +418,10 @@ function NewMIRPageContent() {
         if (links.length > 0) {
           const arIdToTmpl = new Map<string, string>();
           const arIdToAsset = new Map<string, string>();
-          for (const ar of allAssetRequirements) { arIdToTmpl.set(ar.id, ar.requirement_template_id); arIdToAsset.set(ar.id, ar.asset_id); }
+          for (const ar of allAssetRequirements) {
+            arIdToTmpl.set(ar.id, ar.requirement_template_id);
+            arIdToAsset.set(ar.id, ar.asset_id);
+          }
           const byTmpl = new Map<string, Set<string>>();
           for (const link of links) {
             const tmpl = arIdToTmpl.get(link.asset_requirement_id);
@@ -431,11 +429,23 @@ function NewMIRPageContent() {
             if (!byTmpl.has(tmpl)) byTmpl.set(tmpl, new Set());
             byTmpl.get(tmpl)!.add(arIdToAsset.get(link.asset_requirement_id)!);
           }
-          const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] = [];
+          const blocks: import("@/components/commissioning-linkage").CommissioningLinkageBlock[] =
+            [];
           for (const [tmplId, assetSet] of byTmpl.entries()) {
-            blocks.push({ id: Math.random().toString(36).slice(2), requirementTemplateId: tmplId, assetIds: [...assetSet], isPartialScope: links.some((l) => l.requirement_work_item_id != null), assetStates: {} });
+            blocks.push({
+              id: Math.random().toString(36).slice(2),
+              requirementTemplateId: tmplId,
+              assetIds: [...assetSet],
+              isPartialScope: links.some(
+                (l) => l.requirement_work_item_id != null,
+              ),
+              assetStates: {},
+            });
           }
-          if (blocks.length > 0) { setCommissioningLinkage(blocks); linkageDirtyRef.current = true; }
+          if (blocks.length > 0) {
+            setCommissioningLinkage(blocks);
+            linkageDirtyRef.current = true;
+          }
         }
         setIsDirty(true);
       } catch {
@@ -520,7 +530,9 @@ function NewMIRPageContent() {
     inspector_time_1: values.inspector_time_1 || null,
     inspector_date_2: values.inspector_date_2 || null,
     inspector_time_2: values.inspector_time_2 || null,
-    asset_ids: commissioningLinkage ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))] : [],
+    asset_ids: commissioningLinkage
+      ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
+      : [],
     ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
   });
 
@@ -529,27 +541,59 @@ function NewMIRPageContent() {
     for (const block of commissioningLinkage) {
       if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
       for (const assetId of block.assetIds) {
-        const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-        const assetReq = (arRes.data as any[]).find((ar: any) => ar.requirement_template_id === block.requirementTemplateId);
+        const arRes = await api.get("/commissioning/asset-requirements", {
+          params: { asset_id: assetId },
+        });
+        const assetReq = (arRes.data as any[]).find(
+          (ar: any) =>
+            ar.requirement_template_id === block.requirementTemplateId,
+        );
         if (!assetReq) continue;
         if (block.isPartialScope) {
           const s = block.assetStates[assetId];
-          for (const delId of s?.deleteExistingIds ?? []) await api.delete(`/commissioning/work-items/${delId}`).catch(() => {});
+          for (const delId of s?.deleteExistingIds ?? [])
+            await api
+              .delete(`/commissioning/work-items/${delId}`)
+              .catch(() => {});
           const created: string[] = [];
           for (let i = 0; i < (s?.newItems ?? []).length; i++) {
-            const wi = await api.post("/commissioning/work-items", { asset_requirement_id: assetReq.id, name: s!.newItems[i].name, sequence_no: i + 100, created_dynamically: true });
+            const wi = await api.post("/commissioning/work-items", {
+              asset_requirement_id: assetReq.id,
+              name: s!.newItems[i].name,
+              sequence_no: i + 100,
+              created_dynamically: true,
+            });
             if (s!.newItems[i].checked) created.push(wi.data.id);
           }
           for (const wiId of [...(s?.checkedExistingIds ?? []), ...created]) {
-            await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id, requirement_work_item_id: wiId }).catch(() => {});
+            await api
+              .post("/commissioning/document-links", {
+                document_id: docId,
+                asset_requirement_id: assetReq.id,
+                requirement_work_item_id: wiId,
+              })
+              .catch(() => {});
           }
         } else {
-          await api.post("/commissioning/document-links", { document_id: docId, asset_requirement_id: assetReq.id }).catch(() => {});
+          await api
+            .post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+            })
+            .catch(() => {});
         }
       }
       if (block.gateWarningAcknowledged) {
         for (const assetId of block.assetIds) {
-          await api.post("/commissioning/gate-overrides", { asset_id: assetId, document_id: docId, level_code: block.gateLevelCode || "L2B", incomplete_requirements: block.incompleteRequirements || [], notes: block.gateOverrideNotes || null }).catch(() => {});
+          await api
+            .post("/commissioning/gate-overrides", {
+              asset_id: assetId,
+              document_id: docId,
+              level_code: block.gateLevelCode || "L2B",
+              incomplete_requirements: block.incompleteRequirements || [],
+              notes: block.gateOverrideNotes || null,
+            })
+            .catch(() => {});
         }
       }
     }
@@ -949,7 +993,9 @@ function NewMIRPageContent() {
               <CommissioningLinkagePanel
                 projectId={project?.id || ""}
                 allAssetIds={assets.map((a) => a.id)}
-                allAssetLabels={Object.fromEntries(assets.map((a) => [a.id, a.tag_number || a.name]))}
+                allAssetLabels={Object.fromEntries(
+                  assets.map((a) => [a.id, a.tag_number || a.name]),
+                )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="MIR"
                 applicableTemplateIds={applicableTemplateIds}
@@ -962,26 +1008,49 @@ function NewMIRPageContent() {
                 onRemoveBlock={async (block) => {
                   if (!editId || !block.requirementTemplateId) return;
                   for (const assetId of block.assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === block.requirementTemplateId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) =>
+                        r.requirement_template_id ===
+                        block.requirementTemplateId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
                   if (!editId) return;
                   for (const assetId of assetIds) {
-                    const arRes = await api.get("/commissioning/asset-requirements", { params: { asset_id: assetId } });
-                    const ar = (arRes.data as any[]).find((r: any) => r.requirement_template_id === tmplId);
-                    if (ar) await api.delete("/commissioning/document-links", { params: { document_id: editId, asset_requirement_id: ar.id } }).catch(() => {});
+                    const arRes = await api.get(
+                      "/commissioning/asset-requirements",
+                      { params: { asset_id: assetId } },
+                    );
+                    const ar = (arRes.data as any[]).find(
+                      (r: any) => r.requirement_template_id === tmplId,
+                    );
+                    if (ar)
+                      await api
+                        .delete("/commissioning/document-links", {
+                          params: {
+                            document_id: editId,
+                            asset_requirement_id: ar.id,
+                          },
+                        })
+                        .catch(() => {});
                   }
                 }}
               />
             </CardContent>
-          </Card>
-
-          <fieldset
-            disabled={formLocked}
-            )}
           </Card>
 
           <fieldset
@@ -1156,7 +1225,9 @@ function NewMIRPageContent() {
                       (!isDirty && !form.formState.isDirty)
                     }
                   >
-                    {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+                    {mutation.isPending && (
+                      <Spinner size="sm" className="mr-1 text-current" />
+                    )}
                     {mutation.isPending ? "Saving…" : "Save as Draft"}
                   </Button>
                   <Button
@@ -1263,7 +1334,6 @@ function NewMIRPageContent() {
           </CardContent>
         </Card>
       )}
-
     </div>
   );
 }
