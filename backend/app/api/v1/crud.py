@@ -175,8 +175,8 @@ def create_crud_router(
         user: User = Depends(require_permission(write_permission)),
     ):
         result = await db.execute(
-            select(model).where(model.id == item_id, not model.is_deleted)
-        )  # noqa: E712
+            select(model).where(model.id == item_id, model.is_deleted == False)  # noqa: E712
+        )
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(

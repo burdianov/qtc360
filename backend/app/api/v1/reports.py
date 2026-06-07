@@ -244,8 +244,8 @@ async def download_template(
     """Download the original DOCX template."""
     result = await db.execute(
         select(DocTemplate).where(
-            DocTemplate.id == template_id, not DocTemplate.is_deleted
-        )  # noqa: E712
+            DocTemplate.id == template_id, DocTemplate.is_deleted == False  # noqa: E712
+        )
     )
     template = result.scalar_one_or_none()
     if not template:
@@ -269,8 +269,8 @@ async def delete_template(
     """Delete a template (hard delete)."""
     result = await db.execute(
         select(DocTemplate).where(
-            DocTemplate.id == template_id, not DocTemplate.is_deleted
-        )  # noqa: E712
+            DocTemplate.id == template_id, DocTemplate.is_deleted == False  # noqa: E712
+        )
     )
     template = result.scalar_one_or_none()
     if not template:
@@ -329,8 +329,8 @@ async def generate_report(
     if body.template_id:
         result = await db.execute(
             select(DocTemplate).where(
-                DocTemplate.id == body.template_id, not DocTemplate.is_deleted
-            )  # noqa: E712
+                DocTemplate.id == body.template_id, DocTemplate.is_deleted == False  # noqa: E712
+            )
         )
     else:
         result = await db.execute(
@@ -421,8 +421,7 @@ async def generate_report(
         .where(
             DocumentAttachment.document_id == body.document_id,
             DocumentAttachment.kind.in_(["user", "checklist"]),
-            not DocumentAttachment.is_deleted,
-        )  # noqa: E712
+            DocumentAttachment.is_deleted == False, )  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     attachments = att_result.scalars().all()

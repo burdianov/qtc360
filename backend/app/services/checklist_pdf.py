@@ -40,7 +40,7 @@ async def generate_checklist_pdf(db: AsyncSession, document, checklist) -> bytes
     contractor = (
         await db.execute(
             select(Contractor)
-            .where(Contractor.project_id == project.id, not Contractor.is_deleted)
+            .where(Contractor.project_id == project.id, Contractor.is_deleted == False)  # noqa: E712
             .limit(1)
         )
     ).scalar_one_or_none()

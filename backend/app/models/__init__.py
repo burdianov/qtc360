@@ -35,6 +35,9 @@ from app.models.gate_override import GateOverrideAcknowledgement
 from app.models.designation import Designation
 from app.models.user_preference import UserPreference
 from app.models.reference_number_counter import ReferenceNumberCounter
+from app.models.signature_delegation import SignatureDelegation
+from app.models.app_setting import AppSetting
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "Base",
@@ -76,4 +79,7 @@ __all__ = [
     "Designation",
     "UserPreference",
     "ReferenceNumberCounter",
+    "SignatureDelegation",
+    "AppSetting",
+    "AuditLog",
 ]

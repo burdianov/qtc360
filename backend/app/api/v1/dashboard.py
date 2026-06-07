@@ -82,7 +82,7 @@ async def get_dashboard_analytics(
         await db.execute(
             select(func.count())
             .select_from(Document)
-            .where(Document.project_id == project_id, not Document.is_deleted)
+            .where(Document.project_id == project_id, Document.is_deleted == False)  # noqa: E712
         )
     ).scalar() or 0
 
@@ -92,7 +92,7 @@ async def get_dashboard_analytics(
             .select_from(Document)
             .where(
                 Document.project_id == project_id,
-                not Document.is_deleted,
+                Document.is_deleted == False,  # noqa: E712
                 Document.status.in_(["approved", "approved_with_comments"]),
             )
         )
@@ -104,7 +104,7 @@ async def get_dashboard_analytics(
             .select_from(Document)
             .where(
                 Document.project_id == project_id,
-                not Document.is_deleted,
+                Document.is_deleted == False,  # noqa: E712
                 Document.status.in_(["with_approver_1", "with_approver_2"]),
             )
         )
@@ -116,7 +116,7 @@ async def get_dashboard_analytics(
             .select_from(Document)
             .where(
                 Document.project_id == project_id,
-                not Document.is_deleted,
+                Document.is_deleted == False,  # noqa: E712
                 Document.status == "rejected",
             )
         )
@@ -127,7 +127,7 @@ async def get_dashboard_analytics(
             select(func.count())
             .select_from(AssetRequirement)
             .join(Asset, AssetRequirement.asset_id == Asset.id)
-            .where(Asset.project_id == project_id, not AssetRequirement.is_deleted)
+            .where(Asset.project_id == project_id, AssetRequirement.is_deleted == False)  # noqa: E712
         )
     ).scalar() or 0
 
@@ -138,7 +138,7 @@ async def get_dashboard_analytics(
             .join(Asset, AssetRequirement.asset_id == Asset.id)
             .where(
                 Asset.project_id == project_id,
-                not AssetRequirement.is_deleted,
+                AssetRequirement.is_deleted == False,  # noqa: E712
                 AssetRequirement.status == "achieved",
             )
         )

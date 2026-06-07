@@ -45,9 +45,9 @@ def _is_super(user: User) -> bool:
 async def list_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User)
-        .where(not User.is_deleted)
+        .where(User.is_deleted == False)  # noqa: E712
         .options(selectinload(User.roles), selectinload(User.designation))
-    )  # noqa: E712
+    )
     return result.scalars().all()
 
 
@@ -67,7 +67,7 @@ async def create_user(
         roles = (
             (
                 await db.execute(
-                    select(Role).where(Role.id.in_(body.role_ids), not Role.is_deleted)
+                    select(Role).where(Role.id.in_(body.role_ids), Role.is_deleted == False)  # noqa: E712
                 )
             )
             .scalars()
@@ -125,7 +125,7 @@ async def update_user(
     user = (
         await db.execute(
             select(User)
-            .where(User.id == user_id, not User.is_deleted)
+            .where(User.id == user_id, User.is_deleted == False)  # noqa: E712
             .options(selectinload(User.roles), selectinload(User.designation))
         )
     ).scalar_one_or_none()  # noqa: E712
@@ -159,7 +159,7 @@ async def update_user(
         roles = (
             (
                 await db.execute(
-                    select(Role).where(Role.id.in_(body.role_ids), not Role.is_deleted)
+                    select(Role).where(Role.id.in_(body.role_ids), Role.is_deleted == False)  # noqa: E712
                 )
             )
             .scalars()
@@ -193,7 +193,7 @@ async def delete_user(
     user = (
         await db.execute(
             select(User)
-            .where(User.id == user_id, not User.is_deleted)
+            .where(User.id == user_id, User.is_deleted == False)  # noqa: E712
             .options(selectinload(User.roles))
         )
     ).scalar_one_or_none()  # noqa: E712
@@ -231,8 +231,8 @@ async def delete_user(
 @router.get("/roles", response_model=list[RoleAdminResponse])
 async def list_roles(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Role).where(not Role.is_deleted).options(selectinload(Role.permissions))
-    )  # noqa: E712
+        select(Role).where(Role.is_deleted == False).options(selectinload(Role.permissions))  # noqa: E712
+    )
     return result.scalars().all()
 
 
@@ -251,7 +251,7 @@ async def create_role(
                 await db.execute(
                     select(Permission).where(
                         Permission.id.in_(body.permission_ids),
-                        not Permission.is_deleted,
+                        Permission.is_deleted == False,  # noqa: E712
                     )
                 )
             )
@@ -286,8 +286,8 @@ async def update_role(
     current_user: User = Depends(get_current_user),
 ):
     role = (
-        await db.execute(select(Role).where(Role.id == role_id, not Role.is_deleted))
-    ).scalar_one_or_none()  # noqa: E712
+        await db.execute(select(Role).where(Role.id == role_id, Role.is_deleted == False))  # noqa: E712
+    ).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     if role.name == "super_admin" and not _is_super(current_user):
@@ -304,7 +304,7 @@ async def update_role(
                 await db.execute(
                     select(Permission).where(
                         Permission.id.in_(body.permission_ids),
-                        not Permission.is_deleted,
+                        Permission.is_deleted == False,  # noqa: E712
                     )
                 )
             )
@@ -328,8 +328,8 @@ async def delete_role(
     current_user: User = Depends(get_current_user),
 ):
     role = (
-        await db.execute(select(Role).where(Role.id == role_id, not Role.is_deleted))
-    ).scalar_one_or_none()  # noqa: E712
+        await db.execute(select(Role).where(Role.id == role_id, Role.is_deleted == False))  # noqa: E712
+    ).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     if role.name in {"super_admin", "admin"}:
@@ -391,7 +391,7 @@ async def update_permission(
     perm = (
         await db.execute(
             select(Permission).where(
-                Permission.id == perm_id, not Permission.is_deleted
+                Permission.id == perm_id, Permission.is_deleted == False  # noqa: E712
             )
         )
     ).scalar_one_or_none()  # noqa: E712
@@ -419,7 +419,7 @@ async def delete_permission(
     perm = (
         await db.execute(
             select(Permission).where(
-                Permission.id == perm_id, not Permission.is_deleted
+                Permission.id == perm_id, Permission.is_deleted == False  # noqa: E712
             )
         )
     ).scalar_one_or_none()  # noqa: E712
@@ -467,8 +467,8 @@ async def get_setting(
     _: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(AppSetting).where(AppSetting.key == key, not AppSetting.is_deleted)
-    )  # noqa: E712
+        select(AppSetting).where(AppSetting.key == key, AppSetting.is_deleted == False)  # noqa: E712
+    )
     item = result.scalar_one_or_none()
     if not item:
         # Return defaults

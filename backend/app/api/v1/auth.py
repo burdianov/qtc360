@@ -304,8 +304,7 @@ async def list_delegations(
         select(SignatureDelegation)
         .where(
             SignatureDelegation.grantor_id == user.id,
-            not SignatureDelegation.is_deleted,
-        )  # noqa: E712
+            SignatureDelegation.is_deleted == False, )  # noqa: E712
         .options(selectinload(SignatureDelegation.delegate))
     )
     return [
@@ -389,8 +388,7 @@ async def list_delegated_by(
         select(SignatureDelegation)
         .where(
             SignatureDelegation.delegate_id == user.id,
-            not SignatureDelegation.is_deleted,
-        )  # noqa: E712
+            SignatureDelegation.is_deleted == False, )  # noqa: E712
         .options(selectinload(SignatureDelegation.grantor))
     )
     return [
@@ -415,8 +413,8 @@ async def get_preferences(
 
     result = await db.execute(
         select(UserPreference).where(
-            UserPreference.user_id == user.id, not UserPreference.is_deleted
-        )  # noqa: E712
+            UserPreference.user_id == user.id, UserPreference.is_deleted == False  # noqa: E712
+        )
     )
     return {p.key: p.value for p in result.scalars().all()}
 

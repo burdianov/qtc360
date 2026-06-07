@@ -103,8 +103,8 @@ async def list_requirement_templates(
     if project_id:
         query = query.where(
             (RequirementTemplate.project_id == project_id)
-            | (RequirementTemplate.project_id is None)
-        )  # noqa: E711
+            | (RequirementTemplate.project_id == None)  # noqa: E711
+        )
     elif not user.is_superuser:
         # Without project_id: show global + projects the user belongs to.
         my_project_ids = [p.id for p in user.projects]
@@ -205,8 +205,8 @@ async def list_asset_requirements(
     if project_id:
         await assert_user_in_project(user, project_id)
         query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
-            not Asset.is_deleted,
-            Asset.project_id == project_id,  # noqa: E712
+            Asset.is_deleted == False,  # noqa: E712
+            Asset.project_id == project_id,
         )
     elif not asset_id and not user.is_superuser:
         # No filter at all: scope to the user's projects.
@@ -214,8 +214,8 @@ async def list_asset_requirements(
         if not my_project_ids:
             return []
         query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
-            not Asset.is_deleted,
-            Asset.project_id.in_(my_project_ids),  # noqa: E712
+            Asset.is_deleted == False,  # noqa: E712
+            Asset.project_id.in_(my_project_ids),
         )
     if required_for_tag:
         query = query.where(AssetRequirement.required_for_tag == required_for_tag)
@@ -400,8 +400,8 @@ async def bulk_assign_by_asset_type(
     type_ids.extend([row[0] for row in subtypes.all()])
 
     asset_q = select(Asset).where(
-        Asset.asset_type_id.in_(type_ids), not Asset.is_deleted
-    )  # noqa: E712
+        Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False  # noqa: E712
+    )
     if not user.is_superuser:
         my_project_ids = [p.id for p in user.projects]
         if not my_project_ids:
@@ -451,8 +451,7 @@ async def list_work_items(
         select(RequirementWorkItem)
         .where(
             RequirementWorkItem.asset_requirement_id == asset_requirement_id,
-            not RequirementWorkItem.is_deleted,
-        )  # noqa: E712
+            RequirementWorkItem.is_deleted == False, )  # noqa: E712
         .order_by(RequirementWorkItem.sequence_no, RequirementWorkItem.id)
     )
     return result.scalars().all()
@@ -598,8 +597,8 @@ async def list_document_links(
             user, await _project_id_for_asset_requirement(db, asset_requirement_id)
         )
     query = select(DocumentRequirementLink).where(
-        not DocumentRequirementLink.is_deleted
-    )  # noqa: E712
+        DocumentRequirementLink.is_deleted == False  # noqa: E712
+    )
     if document_id:
         query = query.where(DocumentRequirementLink.document_id == document_id)
     if asset_requirement_id:
@@ -703,9 +702,9 @@ async def get_commissioning_progress(
     reqs_result = await db.execute(
         select(AssetRequirement)
         .where(
-            not AssetRequirement.is_deleted,
+            AssetRequirement.is_deleted == False,  # noqa: E712
             AssetRequirement.asset_id.in_(asset_ids),
-        )  # noqa: E712
+        )
         .options(selectinload(AssetRequirement.work_items))
     )
     all_reqs = reqs_result.scalars().all()
@@ -849,8 +848,8 @@ async def check_gate_requirements(
 
     result = await db.execute(
         select(AssetRequirement).where(
-            AssetRequirement.asset_id == asset_id, not AssetRequirement.is_deleted
-        )  # noqa: E712
+            AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False  # noqa: E712
+        )
     )
     reqs = result.scalars().all()
 
@@ -894,8 +893,8 @@ async def list_gate_overrides(
     if asset_id:
         await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
     query = select(GateOverrideAcknowledgement).where(
-        not GateOverrideAcknowledgement.is_deleted
-    )  # noqa: E712
+        GateOverrideAcknowledgement.is_deleted == False  # noqa: E712
+    )
     if asset_id:
         query = query.where(GateOverrideAcknowledgement.asset_id == asset_id)
     elif not user.is_superuser:
@@ -928,11 +927,11 @@ async def recalculate_all_requirements(
         select(
             AssetRequirement.id, AssetRequirement.asset_id, AssetRequirement.status
         ).where(
-            not AssetRequirement.is_deleted,
-            AssetRequirement.asset_id.in_(  # noqa: E712
+            AssetRequirement.is_deleted == False,  # noqa: E712
+            AssetRequirement.asset_id.in_(
                 select(Asset.id).where(
-                    Asset.project_id == project_id, not Asset.is_deleted
-                )  # noqa: E712
+                    Asset.project_id == project_id, Asset.is_deleted == False  # noqa: E712
+                )
             ),
         )
     )
@@ -1003,9 +1002,10 @@ async def get_inspection_tracker(
     # 3. Load all asset requirements
     reqs_result = await db.execute(
         select(AssetRequirement).where(
-            not AssetRequirement.is_deleted,
+            AssetRequirement.is_deleted == False,  # noqa: E712
             AssetRequirement.asset_id.in_(asset_ids),
-        )  # noqa: E712
+        )
+
     )
     all_reqs = reqs_result.scalars().all()
 

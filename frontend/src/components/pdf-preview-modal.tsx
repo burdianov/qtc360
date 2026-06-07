@@ -45,7 +45,12 @@ export function PdfPreviewModal({ open, onOpenChange, pdfUrl, title }: Props) {
   };
 
   // Ctrl+scroll zoom - use native event to preventDefault
+  const wheelHandlerRef = useRef<((e: WheelEvent) => void) | null>(null);
   const handleWheelRef = useCallback((container: HTMLDivElement | null) => {
+    if (containerRef.current && wheelHandlerRef.current) {
+      containerRef.current.removeEventListener("wheel", wheelHandlerRef.current);
+      wheelHandlerRef.current = null;
+    }
     containerRef.current = container;
     if (!container) return;
     const handler = (e: WheelEvent) => {
@@ -53,8 +58,8 @@ export function PdfPreviewModal({ open, onOpenChange, pdfUrl, title }: Props) {
       e.preventDefault();
       setZoom((z) => clampZoom(z + (e.deltaY < 0 ? 0.1 : -0.1)));
     };
+    wheelHandlerRef.current = handler;
     container.addEventListener("wheel", handler, { passive: false });
-    return () => container.removeEventListener("wheel", handler);
   }, []);
 
   // Pan with mouse drag (grab cursor)
@@ -167,7 +172,7 @@ export function usePdfPreview() {
   const [previewTitle, setPreviewTitle] = useState<string>("");
 
   const openPreview = useCallback((url: string, title?: string) => {
-    setPreviewUrl(url);
+    setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
     setPreviewTitle(title || "PDF Preview");
   }, []);
 

@@ -103,8 +103,7 @@ async def list_checklist_items(
         select(ChecklistItem)
         .where(
             ChecklistItem.requirement_template_id == template_id,
-            not ChecklistItem.is_deleted,
-        )
+            ChecklistItem.is_deleted == False, )  # noqa: E712
         .order_by(ChecklistItem.sort_order)
     )
     return result.scalars().all()
@@ -198,8 +197,7 @@ async def list_document_checklists(
         select(DocumentChecklist)
         .where(
             DocumentChecklist.document_id == document_id,
-            not DocumentChecklist.is_deleted,
-        )
+            DocumentChecklist.is_deleted == False, )  # noqa: E712
         .options(selectinload(DocumentChecklist.responses))
         .order_by(DocumentChecklist.sort_order)
     )
@@ -225,8 +223,7 @@ async def save_document_checklist(
                 DocumentChecklist.document_id == body.document_id,
                 DocumentChecklist.requirement_template_id
                 == body.requirement_template_id,
-                not DocumentChecklist.is_deleted,
-            )
+                DocumentChecklist.is_deleted == False, )  # noqa: E712
         )
     ).scalar_one_or_none()
 
@@ -246,8 +243,7 @@ async def save_document_checklist(
             .select_from(DocumentChecklist)
             .where(
                 DocumentChecklist.document_id == body.document_id,
-                not DocumentChecklist.is_deleted,
-            )
+                DocumentChecklist.is_deleted == False, )  # noqa: E712
         )
         sort_order = count_res.scalar() or 0
         checklist = DocumentChecklist(
@@ -297,8 +293,7 @@ async def remove_document_checklist(
             select(DocumentChecklist).where(
                 DocumentChecklist.document_id == document_id,
                 DocumentChecklist.requirement_template_id == requirement_template_id,
-                not DocumentChecklist.is_deleted,
-            )
+                DocumentChecklist.is_deleted == False, )  # noqa: E712
         )
     ).scalar_one_or_none()
     if not checklist:
@@ -329,8 +324,7 @@ async def download_checklist_pdf(
             select(DocumentChecklist).where(
                 DocumentChecklist.document_id == document_id,
                 DocumentChecklist.requirement_template_id == requirement_template_id,
-                not DocumentChecklist.is_deleted,
-            )
+                DocumentChecklist.is_deleted == False, )  # noqa: E712
         )
     ).scalar_one_or_none()
     if not checklist or not checklist.attachment_id:
@@ -429,8 +423,7 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
             sa_update(DocumentAttachment)
             .where(
                 DocumentAttachment.document_id == doc.id,
-                not DocumentAttachment.is_deleted,
-            )
+                DocumentAttachment.is_deleted == False, )  # noqa: E712
             .values(sort_order=DocumentAttachment.sort_order + 1)
         )
         att = DocumentAttachment(

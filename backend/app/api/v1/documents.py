@@ -136,8 +136,7 @@ async def _allocate_serial(
         .where(
             ReferenceNumberConfig.project_id == project_id,
             ReferenceNumberConfig.doc_type == doc_type,
-            not ReferenceNumberConfig.is_deleted,
-        )
+            ReferenceNumberConfig.is_deleted == False, )  # noqa: E712
         .with_for_update()
     )
     config = config_result.scalar_one_or_none()
@@ -293,8 +292,9 @@ async def list_documents(
     _: User = Depends(require_project_access()),
 ):
     stmt = select(Document).where(
-        not Document.is_deleted, Document.project_id == project_id
-    )  # noqa: E712
+        Document.is_deleted == False,  # noqa: E712
+        Document.project_id == project_id
+    )
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
     if status_filter:
@@ -550,7 +550,7 @@ async def update_document(
 ):
     result = await db.execute(
         select(Document)
-        .where(Document.id == doc_id, not Document.is_deleted)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
@@ -626,7 +626,7 @@ async def resubmit_document(
     """Resubmit a rejected document with incremented revision."""
     result = await db.execute(
         select(Document)
-        .where(Document.id == doc_id, not Document.is_deleted)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
@@ -957,7 +957,7 @@ async def sign_document(
     # Lock the row so two concurrent signers can't race past the "already signed" check.
     result = await db.execute(
         select(Document)
-        .where(Document.id == doc_id, not Document.is_deleted)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
@@ -1057,7 +1057,7 @@ async def unsign_document(
 ):
     result = await db.execute(
         select(Document)
-        .where(Document.id == doc_id, not Document.is_deleted)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
@@ -2129,7 +2129,7 @@ async def _load_doc_for_attachment(
 ) -> Document:
     doc = (
         await db.execute(
-            select(Document).where(Document.id == doc_id, not Document.is_deleted)
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         )
     ).scalar_one_or_none()  # noqa: E712
     if not doc:

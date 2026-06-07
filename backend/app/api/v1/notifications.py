@@ -23,8 +23,8 @@ async def list_notifications(
 ):
     """Get current user's notifications, optionally filtered by project."""
     query = select(Notification).where(
-        Notification.user_id == user.id, not Notification.is_deleted
-    )  # noqa: E712
+        Notification.user_id == user.id, Notification.is_deleted == False  # noqa: E712
+    )
     if project_id:
         query = query.where(Notification.project_id == project_id)
     result = await db.execute(

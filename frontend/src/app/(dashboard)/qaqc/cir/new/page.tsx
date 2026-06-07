@@ -1544,10 +1544,11 @@ function SignatureImage({ userId }: { userId: string | undefined }) {
   useEffect(() => {
     if (!userId) return;
     let active = true;
+    let objectUrl: string | null = null;
     api.get(`/auth/users/${userId}/signature`, { responseType: "blob" })
-      .then((res) => { if (active) setSrc(URL.createObjectURL(res.data)); })
+      .then((res) => { if (active) { objectUrl = URL.createObjectURL(res.data); setSrc(objectUrl); } })
       .catch(() => {});
-    return () => { active = false; };
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [userId]);
   if (!src) return <span className="text-xs text-muted-foreground">Signed</span>;
   // eslint-disable-next-line @next/next/no-img-element
