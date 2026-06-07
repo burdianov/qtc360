@@ -47,7 +47,7 @@ async def register(
 ):
     validate_password(body.password)
     existing = await db.execute(
-        select(User).where(User.email == body.email, not User.is_deleted)
+        select(User).where(User.email == body.email, User.is_deleted.is_(False))
     )  # noqa: E712
     if existing.scalar_one_or_none():
         raise HTTPException(
@@ -67,7 +67,7 @@ async def register(
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(User).where(User.email == body.email, not User.is_deleted)
+        select(User).where(User.email == body.email, User.is_deleted.is_(False))
     )  # noqa: E712
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
@@ -99,7 +99,7 @@ async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         )
     result = await db.execute(
-        select(User).where(User.id == payload["sub"], not User.is_deleted)
+        select(User).where(User.id == payload["sub"], User.is_deleted.is_(False))
     )  # noqa: E712
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
@@ -179,7 +179,7 @@ async def list_users_basic(
 
     base = (
         select(User)
-        .where(not User.is_deleted, User.is_active)
+        .where(User.is_deleted.is_(False), User.is_active)
         .options(  # noqa: E712
             selectinload(User.designation), selectinload(User.projects)
         )
