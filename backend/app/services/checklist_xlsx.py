@@ -3,6 +3,7 @@
 Fills an XLSX template with checklist data (placeholders like {{ sn_1 }}, {{ item_1 }},
 {{ yes_1 }}, {{ no_1 }}, {{ na_1 }}, {{ display_name }}) then converts to PDF via Gotenberg.
 """
+
 import io
 import re
 
@@ -48,11 +49,18 @@ async def convert_xlsx_to_pdf(xlsx_bytes: bytes) -> bytes:
     async with httpx.AsyncClient(timeout=GOTENBERG_TIMEOUT) as client:
         resp = await client.post(
             url,
-            files={"files": ("spreadsheet.xlsx", xlsx_bytes,
-                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            files={
+                "files": (
+                    "spreadsheet.xlsx",
+                    xlsx_bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
         )
         if resp.status_code != 200:
-            raise RuntimeError(f"Gotenberg XLSX->PDF conversion failed: {resp.status_code}")
+            raise RuntimeError(
+                f"Gotenberg XLSX->PDF conversion failed: {resp.status_code}"
+            )
         return resp.content
 
 

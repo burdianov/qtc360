@@ -15,10 +15,14 @@ class Project(BaseModel):
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     external_code: Mapped[str | None] = mapped_column(String(50))
     description: Mapped[str | None] = mapped_column(String(1000))
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active, completed, on_hold
+    status: Mapped[str] = mapped_column(
+        String(20), default="active"
+    )  # active, completed, on_hold
     start_date: Mapped[date | None] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date)
-    client_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("clients.id"))
+    client_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("clients.id")
+    )
 
     client: Mapped["Client"] = relationship()  # noqa: F821
     approvers: Mapped[list["ProjectApprover"]] = relationship(back_populates="project")  # noqa: F821

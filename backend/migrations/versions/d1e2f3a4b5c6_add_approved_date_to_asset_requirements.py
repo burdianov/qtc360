@@ -4,6 +4,7 @@ Revision ID: d1e2f3a4b5c6
 Revises: c0d1e2f3a4b5
 Create Date: 2026-05-29
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -14,7 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("asset_requirements", sa.Column("approved_date", sa.Date(), nullable=True))
+    op.add_column(
+        "asset_requirements", sa.Column("approved_date", sa.Date(), nullable=True)
+    )
 
 
 def downgrade() -> None:

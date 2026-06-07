@@ -217,7 +217,7 @@ interface BlockProps {
   documentId?: string;
 }
 
-function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetNames, allAssetRequirements, onChange, onRemove, onUnlinkAssets, documentId }: BlockProps) {
+function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetNames, allAssetRequirements, onChange, onRemove, onUnlinkAssets: _onUnlinkAssets, documentId }: BlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");

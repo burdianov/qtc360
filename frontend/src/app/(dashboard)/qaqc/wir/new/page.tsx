@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import Image from "next/image";
-import { ArrowLeft, Loader2, Send, PenLine, Download, X } from "lucide-react";
+import { ArrowLeft, Loader2, Send, Download, X } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -107,7 +105,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const project = useSelectedProject();
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
-  const { resolvedTheme } = useTheme();
+  const _resolvedTheme = useTheme().resolvedTheme;
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -455,7 +453,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
             byTemplate.get(tmplId)!.push(link);
           }
           const blocks: CommissioningLinkage = [];
-          for (const [tmplId, tmplLinks] of byTemplate.entries()) {
+          for (const [tmplId, _tmplLinks] of byTemplate.entries()) {
             blocks.push({
               id: Math.random().toString(36).slice(2),
               requirementTemplateId: tmplId,

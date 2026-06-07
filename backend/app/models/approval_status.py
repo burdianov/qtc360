@@ -10,7 +10,9 @@ from app.models.base import BaseModel
 class ApprovalStatus(BaseModel):
     __tablename__ = "approval_statuses"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id")
+    )
     letter: Mapped[str] = mapped_column(String(5))
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(255))

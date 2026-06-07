@@ -19,7 +19,13 @@ class ReferenceNumberCounter(BaseModel):
         ),
     )
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False
+    )
     doc_type: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
-    discipline_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("disciplines.id"), nullable=False)
-    next_serial: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    discipline_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("disciplines.id"), nullable=False
+    )
+    next_serial: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )

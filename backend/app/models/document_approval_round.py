@@ -2,8 +2,16 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text,
-    UniqueConstraint, func, text,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -45,7 +53,9 @@ class DocumentApprovalRound(BaseModel):
     submitted_file_size: Mapped[int | None] = mapped_column(BigInteger)
     returned_file_path: Mapped[str | None] = mapped_column(String(1000))
     returned_file_name: Mapped[str | None] = mapped_column(String(255))
-    returned_file_locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    returned_file_locked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     remarks_file_path: Mapped[str | None] = mapped_column(String(1000))
     remarks_file_name: Mapped[str | None] = mapped_column(String(255))
 

@@ -21,8 +21,12 @@ DOCUMENT_STATUSES = Literal[
     "superseded",
 ]
 APPROVAL_ACTIONS = Literal["approved", "approved_with_comments", "rejected"]
-REQUIREMENT_STATUSES = Literal["not_started", "submitted", "partial", "achieved", "rejected", "not_applicable"]
-TAG_TARGET_STATUSES = Literal["not_started", "in_progress", "achieved", "delayed", "at_risk"]
+REQUIREMENT_STATUSES = Literal[
+    "not_started", "submitted", "partial", "achieved", "rejected", "not_applicable"
+]
+TAG_TARGET_STATUSES = Literal[
+    "not_started", "in_progress", "achieved", "delayed", "at_risk"
+]
 TAG_CODES = Literal["red", "yellow", "green", "blue"]
 
 # State machine for the external approval workflow.
@@ -49,6 +53,7 @@ VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
 
 
 # --- Document ---
+
 
 class DocumentCreate(BaseModel):
     # Strict: reject any field not listed below. This is how we enforce
@@ -165,6 +170,7 @@ class DocumentResponse(BaseModel):
 
 
 # --- Document Approval Round ---
+
 
 class DocumentApprovalRoundResponse(BaseModel):
     id: UUID

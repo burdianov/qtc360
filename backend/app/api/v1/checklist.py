@@ -1,8 +1,8 @@
 """Checklist API endpoints — master items CRUD + document checklist operations."""
-import io
+
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel as PydanticBase
 from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import assert_user_in_project, get_current_user, require_permission
-from app.models.checklist import ChecklistItem, DocumentChecklist, DocumentChecklistResponse
+from app.models.checklist import (
+    ChecklistItem,
+    DocumentChecklist,
+    DocumentChecklistResponse,
+)
 from app.models.commissioning import RequirementTemplate
 from app.models.document import Document
 from app.models.document_attachment import DocumentAttachment
@@ -21,6 +25,7 @@ router = APIRouter(prefix="/checklists", tags=["checklists"])
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
+
 
 class ChecklistItemOut(PydanticBase):
     id: uuid.UUID
@@ -87,6 +92,7 @@ class DocumentChecklistOut(PydanticBase):
 
 # ─── Master Checklist Items (per RequirementTemplate) ────────────────────────
 
+
 @router.get("/templates/{template_id}/items", response_model=list[ChecklistItemOut])
 async def list_checklist_items(
     template_id: uuid.UUID,
@@ -95,13 +101,20 @@ async def list_checklist_items(
 ):
     result = await db.execute(
         select(ChecklistItem)
-        .where(ChecklistItem.requirement_template_id == template_id, ChecklistItem.is_deleted == False)
+        .where(
+            ChecklistItem.requirement_template_id == template_id,
+            not ChecklistItem.is_deleted,
+        )
         .order_by(ChecklistItem.sort_order)
     )
     return result.scalars().all()
 
 
-@router.post("/templates/{template_id}/items", response_model=list[ChecklistItemOut], status_code=201)
+@router.post(
+    "/templates/{template_id}/items",
+    response_model=list[ChecklistItemOut],
+    status_code=201,
+)
 async def bulk_create_checklist_items(
     template_id: uuid.UUID,
     body: ChecklistItemBulk,
@@ -174,6 +187,7 @@ async def reorder_checklist_items(
 
 # ─── Document Checklist (filled per document) ────────────────────────────────
 
+
 @router.get("/documents/{document_id}", response_model=list[DocumentChecklistOut])
 async def list_document_checklists(
     document_id: uuid.UUID,
@@ -182,7 +196,10 @@ async def list_document_checklists(
 ):
     result = await db.execute(
         select(DocumentChecklist)
-        .where(DocumentChecklist.document_id == document_id, DocumentChecklist.is_deleted == False)
+        .where(
+            DocumentChecklist.document_id == document_id,
+            not DocumentChecklist.is_deleted,
+        )
         .options(selectinload(DocumentChecklist.responses))
         .order_by(DocumentChecklist.sort_order)
     )
@@ -202,13 +219,16 @@ async def save_document_checklist(
     await assert_user_in_project(user, doc.project_id)
 
     # Check if checklist already exists for this doc+requirement
-    existing = (await db.execute(
-        select(DocumentChecklist).where(
-            DocumentChecklist.document_id == body.document_id,
-            DocumentChecklist.requirement_template_id == body.requirement_template_id,
-            DocumentChecklist.is_deleted == False,
+    existing = (
+        await db.execute(
+            select(DocumentChecklist).where(
+                DocumentChecklist.document_id == body.document_id,
+                DocumentChecklist.requirement_template_id
+                == body.requirement_template_id,
+                not DocumentChecklist.is_deleted,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
 
     if existing:
         # Delete old responses and update
@@ -222,9 +242,11 @@ async def save_document_checklist(
     else:
         # Determine sort_order (next position)
         count_res = await db.execute(
-            select(func.count()).select_from(DocumentChecklist).where(
+            select(func.count())
+            .select_from(DocumentChecklist)
+            .where(
                 DocumentChecklist.document_id == body.document_id,
-                DocumentChecklist.is_deleted == False,
+                not DocumentChecklist.is_deleted,
             )
         )
         sort_order = count_res.scalar() or 0
@@ -270,13 +292,15 @@ async def remove_document_checklist(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
-    checklist = (await db.execute(
-        select(DocumentChecklist).where(
-            DocumentChecklist.document_id == document_id,
-            DocumentChecklist.requirement_template_id == requirement_template_id,
-            DocumentChecklist.is_deleted == False,
+    checklist = (
+        await db.execute(
+            select(DocumentChecklist).where(
+                DocumentChecklist.document_id == document_id,
+                DocumentChecklist.requirement_template_id == requirement_template_id,
+                not DocumentChecklist.is_deleted,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not checklist:
         raise HTTPException(status_code=404, detail="Checklist not found")
 
@@ -300,13 +324,15 @@ async def download_checklist_pdf(
 ):
     from fastapi.responses import Response
 
-    checklist = (await db.execute(
-        select(DocumentChecklist).where(
-            DocumentChecklist.document_id == document_id,
-            DocumentChecklist.requirement_template_id == requirement_template_id,
-            DocumentChecklist.is_deleted == False,
+    checklist = (
+        await db.execute(
+            select(DocumentChecklist).where(
+                DocumentChecklist.document_id == document_id,
+                DocumentChecklist.requirement_template_id == requirement_template_id,
+                not DocumentChecklist.is_deleted,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not checklist or not checklist.attachment_id:
         raise HTTPException(status_code=404, detail="Checklist PDF not found")
 
@@ -324,25 +350,34 @@ async def download_checklist_pdf(
 
 # ─── Internal helpers ────────────────────────────────────────────────────────
 
+
 async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uuid.UUID):
     """Generate checklist PDF and create/update DocumentAttachment."""
     from app.models.doc_template import DocTemplate
-    from app.services.checklist_xlsx import build_checklist_context, convert_xlsx_to_pdf, fill_xlsx_template
+    from app.services.checklist_xlsx import (
+        build_checklist_context,
+        convert_xlsx_to_pdf,
+        fill_xlsx_template,
+    )
 
-    checklist = (await db.execute(
-        select(DocumentChecklist)
-        .where(DocumentChecklist.id == checklist_id)
-        .options(
-            selectinload(DocumentChecklist.responses),
-            selectinload(DocumentChecklist.requirement_template),
+    checklist = (
+        await db.execute(
+            select(DocumentChecklist)
+            .where(DocumentChecklist.id == checklist_id)
+            .options(
+                selectinload(DocumentChecklist.responses),
+                selectinload(DocumentChecklist.requirement_template),
+            )
         )
-    )).scalar_one()
+    ).scalar_one()
 
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == checklist.document_id)
-        .options(selectinload(Document.project))
-    )).scalar_one()
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == checklist.document_id)
+            .options(selectinload(Document.project))
+        )
+    ).scalar_one()
 
     # Try XLSX template (CHECKLIST type for the project)
     tmpl_result = await db.execute(
@@ -361,7 +396,9 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
         tmpl = checklist.requirement_template
         display_name = tmpl.display_name or tmpl.name if tmpl else ""
         responses = sorted(checklist.responses, key=lambda r: r.display_order)
-        response_data = [{"item_text": r.item_text, "response": r.response} for r in responses]
+        response_data = [
+            {"item_text": r.item_text, "response": r.response} for r in responses
+        ]
         ctx = build_checklist_context(display_name, response_data)
         ctx["wir_no"] = doc.reference_no or ""
         filled_xlsx = fill_xlsx_template(xlsx_template.file, ctx)
@@ -369,6 +406,7 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
     else:
         # Fallback to reportlab
         from app.services.checklist_pdf import generate_checklist_pdf
+
         pdf_bytes = await generate_checklist_pdf(db, doc, checklist)
 
     filename = f"Checklist - {checklist.requirement_template.name}.pdf"
@@ -386,9 +424,13 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
     else:
         # Place new checklist as first attachment; bump existing ones down
         from sqlalchemy import update as sa_update
+
         await db.execute(
             sa_update(DocumentAttachment)
-            .where(DocumentAttachment.document_id == doc.id, DocumentAttachment.is_deleted == False)
+            .where(
+                DocumentAttachment.document_id == doc.id,
+                not DocumentAttachment.is_deleted,
+            )
             .values(sort_order=DocumentAttachment.sort_order + 1)
         )
         att = DocumentAttachment(

@@ -4,6 +4,7 @@ Revision ID: c0d1e2f3a4b5
 Revises: b9c0d1e2f3a4
 Create Date: 2026-05-29
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -14,7 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("document_approval_rounds", sa.Column("response_time", sa.String(10), nullable=True))
+    op.add_column(
+        "document_approval_rounds",
+        sa.Column("response_time", sa.String(10), nullable=True),
+    )
 
 
 def downgrade() -> None:

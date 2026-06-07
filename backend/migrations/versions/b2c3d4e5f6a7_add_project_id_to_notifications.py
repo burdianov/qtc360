@@ -5,6 +5,7 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-05-28
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -18,7 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("notifications", sa.Column("project_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("projects.id"), nullable=True))
+    op.add_column(
+        "notifications",
+        sa.Column(
+            "project_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("projects.id"),
+            nullable=True,
+        ),
+    )
     op.create_index("ix_notifications_project_id", "notifications", ["project_id"])
 
 

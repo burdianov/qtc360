@@ -6,11 +6,10 @@ Each test creates exactly one document. To keep the dev DB clean across
 re-runs, every test hard-deletes its document (and any work items it
 created) in a finally block, bypassing the API's soft-delete behaviour.
 """
-import io
+
 import httpx
 import asyncio
 import pytest
-from uuid import uuid4
 
 from tests.e2e._config import BASE
 from tests.helpers.cleanup import hard_delete_documents
@@ -23,7 +22,9 @@ ASSET_GEN1 = "36cbe2c9-1c0e-4ff9-91a0-24d34d4d12c3"
 ASSET_GEN2 = "1858d0ee-2378-43a0-ae4c-434373a6bd2d"
 
 # Asset requirements
-AR_WIR_WB = "bd38f69e-5810-48dc-98ad-e9aad837a754"  # Power Cable Installation (work breakdown)
+AR_WIR_WB = (
+    "bd38f69e-5810-48dc-98ad-e9aad837a754"  # Power Cable Installation (work breakdown)
+)
 AR_WIR_NO_WB = "ac5ec2da-6cb2-44fb-902f-2d7b1d82b94b"  # Equipment Placement & Anchoring
 AR_MIR = "746de3bf-424e-443e-9cd2-0be704d56d26"  # Equipment Delivery
 AR_CIR = "4a64ebd9-4867-4d0f-adeb-9467d1a4df34"  # Insulation Resistance Test
@@ -45,7 +46,9 @@ MINIMAL_PDF = (
 
 
 async def login(client: httpx.AsyncClient, email: str, password: str) -> str:
-    r = await client.post(f"{BASE}/auth/login", json={"email": email, "password": password})
+    r = await client.post(
+        f"{BASE}/auth/login", json={"email": email, "password": password}
+    )
     assert r.status_code == 200, f"Login failed for {email}: {r.text}"
     return r.json()["access_token"]
 
@@ -70,14 +73,18 @@ async def test_wir_e2e(client: httpx.AsyncClient):
     try:
         # 1. Create WIR
         print("  1. Creating WIR...")
-        r = await client.post(f"{BASE}/documents", json={
-            "project_id": PROJECT_ID,
-            "document_type": "WIR",
-            "title": "Power Cable Installation - Generator 1 to MDB-1",
-            "discipline_id": DISCIPLINE_ID,
-            "location": "POD 3, Level 1",
-            "asset_ids": [ASSET_GEN1],
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents",
+            json={
+                "project_id": PROJECT_ID,
+                "document_type": "WIR",
+                "title": "Power Cable Installation - Generator 1 to MDB-1",
+                "discipline_id": DISCIPLINE_ID,
+                "location": "POD 3, Level 1",
+                "asset_ids": [ASSET_GEN1],
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create WIR failed: {r.text}"
         doc = r.json()
         doc_id = doc["id"]
@@ -87,12 +94,16 @@ async def test_wir_e2e(client: httpx.AsyncClient):
         # 2. Create work items for the work-breakdown requirement
         print("  2. Creating work items...")
         for i, name in enumerate(["Gen1 to MDB-1A", "Gen1 to MDB-1B"], 1):
-            r = await client.post(f"{BASE}/commissioning/work-items", json={
-                "asset_requirement_id": AR_WIR_WB,
-                "name": name,
-                "sequence_no": i,
-                "created_dynamically": True,
-            }, headers=site_headers)
+            r = await client.post(
+                f"{BASE}/commissioning/work-items",
+                json={
+                    "asset_requirement_id": AR_WIR_WB,
+                    "name": name,
+                    "sequence_no": i,
+                    "created_dynamically": True,
+                },
+                headers=site_headers,
+            )
             assert r.status_code == 201, f"Create work item failed: {r.text}"
             wi_ids.append(r.json()["id"])
         print(f"     Created {len(wi_ids)} work items")
@@ -100,17 +111,23 @@ async def test_wir_e2e(client: httpx.AsyncClient):
         # 3. Create document-requirement links (with work items)
         print("  3. Linking document to requirements...")
         for wi_id in wi_ids:
-            r = await client.post(f"{BASE}/commissioning/document-links", json={
-                "document_id": doc_id,
-                "asset_requirement_id": AR_WIR_WB,
-                "requirement_work_item_id": wi_id,
-            }, headers=site_headers)
+            r = await client.post(
+                f"{BASE}/commissioning/document-links",
+                json={
+                    "document_id": doc_id,
+                    "asset_requirement_id": AR_WIR_WB,
+                    "requirement_work_item_id": wi_id,
+                },
+                headers=site_headers,
+            )
             assert r.status_code == 201, f"Create link failed: {r.text}"
         print(f"     Linked to {len(wi_ids)} work items")
 
         # 4. Sign as site engineer
         print("  4. Signing as site_engineer...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers
+        )
         assert r.status_code == 200, f"Sign failed: {r.text}"
         assert r.json()["site_engineer_signed"] is True
         assert r.json()["status"] == "draft"  # Still draft, needs qaqc sig
@@ -118,7 +135,9 @@ async def test_wir_e2e(client: httpx.AsyncClient):
 
         # 5. Sign as qaqc engineer
         print("  5. Signing as qaqc_engineer...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/sign?role=qaqc_engineer", headers=qaqc_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/sign?role=qaqc_engineer", headers=qaqc_headers
+        )
         assert r.status_code == 200, f"Sign failed: {r.text}"
         assert r.json()["qaqc_engineer_signed"] is True
         assert r.json()["status"] == "internally_signed"
@@ -126,16 +145,22 @@ async def test_wir_e2e(client: httpx.AsyncClient):
 
         # 6. Submit to Approver 1
         print("  6. Submitting to Approver 1 (RED Engineering)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 1,
-            "aconex_submitted_date": "2026-05-28",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 1,
+                "aconex_submitted_date": "2026-05-28",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit to approver 1 failed: {r.text}"
         rnd = r.json()
         round1_id = rnd["id"]
         assert rnd["submitted_file_path"] == f"responses/{doc_id}/S1.pdf"
         assert rnd["submitted_file_size"] > 0
-        print(f"     Submitted (round_id={round1_id}, size={rnd['submitted_file_size']})")
+        print(
+            f"     Submitted (round_id={round1_id}, size={rnd['submitted_file_size']})"
+        )
 
         # Verify doc status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
@@ -161,7 +186,7 @@ async def test_wir_e2e(client: httpx.AsyncClient):
         rnd = r.json()
         assert rnd["returned_file_path"] == f"responses/{doc_id}/R1.pdf"
         assert rnd["returned_file_locked"] is False
-        print(f"     Recorded (status now: approver_1_returned)")
+        print("     Recorded (status now: approver_1_returned)")
 
         # Verify doc status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
@@ -169,10 +194,14 @@ async def test_wir_e2e(client: httpx.AsyncClient):
 
         # 8. Submit to Approver 2
         print("  8. Submitting to Approver 2 (Sudlows)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 2,
-            "aconex_submitted_date": "2026-05-29",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 2,
+                "aconex_submitted_date": "2026-05-29",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit to approver 2 failed: {r.text}"
         rnd = r.json()
         assert rnd["submitted_file_path"] == f"responses/{doc_id}/S2.pdf"
@@ -203,17 +232,24 @@ async def test_wir_e2e(client: httpx.AsyncClient):
 
         # Verify doc status = approved
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
-        assert r.json()["status"] == "approved", f"Expected approved, got {r.json()['status']}"
+        assert r.json()["status"] == "approved", (
+            f"Expected approved, got {r.json()['status']}"
+        )
         print(f"     Doc status: {r.json()['status']}")
 
         # 10. Verify commissioning achievement
         print("  10. Verifying commissioning status...")
-        r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}", headers=site_headers)
+        r = await client.get(
+            f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}",
+            headers=site_headers,
+        )
         assert r.status_code == 200
         reqs = r.json()
         wir_wb_req = next((req for req in reqs if req["id"] == AR_WIR_WB), None)
         assert wir_wb_req is not None
-        print(f"     Power Cable Installation: status={wir_wb_req['status']}, progress={wir_wb_req['progress_percent']}%")
+        print(
+            f"     Power Cable Installation: status={wir_wb_req['status']}, progress={wir_wb_req['progress_percent']}%"
+        )
         assert wir_wb_req["status"] == "achieved"
         assert wir_wb_req["progress_percent"] == 100.0
 
@@ -239,6 +275,7 @@ async def test_wir_e2e(client: httpx.AsyncClient):
             except Exception as e:  # noqa: BLE001
                 print(f"  WARN: teardown DELETE work-item {wi_id} raised {e!r}")
 
+
 @pytest.mark.asyncio
 async def test_mir_e2e(client: httpx.AsyncClient):
     """MIR: create -> sign (single) -> submit approver 1 -> record A -> submit approver 2 -> record A -> approved"""
@@ -252,16 +289,20 @@ async def test_mir_e2e(client: httpx.AsyncClient):
     try:
         # 1. Create MIR
         print("  1. Creating MIR...")
-        r = await client.post(f"{BASE}/documents", json={
-            "project_id": PROJECT_ID,
-            "document_type": "MIR",
-            "title": "Generator 1 - Equipment Delivery Inspection",
-            "discipline_id": DISCIPLINE_ID,
-            "delivery_note": "DN-2026-0451",
-            "material_submittals": "MS-EL-0089",
-            "qty": "1 unit",
-            "asset_ids": [ASSET_GEN1],
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents",
+            json={
+                "project_id": PROJECT_ID,
+                "document_type": "MIR",
+                "title": "Generator 1 - Equipment Delivery Inspection",
+                "discipline_id": DISCIPLINE_ID,
+                "delivery_note": "DN-2026-0451",
+                "material_submittals": "MS-EL-0089",
+                "qty": "1 unit",
+                "asset_ids": [ASSET_GEN1],
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create MIR failed: {r.text}"
         doc = r.json()
         doc_id = doc["id"]
@@ -269,27 +310,37 @@ async def test_mir_e2e(client: httpx.AsyncClient):
 
         # 2. Link to MIR requirement
         print("  2. Linking to Equipment Delivery requirement...")
-        r = await client.post(f"{BASE}/commissioning/document-links", json={
-            "document_id": doc_id,
-            "asset_requirement_id": AR_MIR,
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/commissioning/document-links",
+            json={
+                "document_id": doc_id,
+                "asset_requirement_id": AR_MIR,
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create link failed: {r.text}"
 
         # 3. Sign as site engineer (MIR = single signatory)
         print("  3. Signing as site_engineer (single signatory for MIR)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers
+        )
         assert r.status_code == 200, f"Sign failed: {r.text}"
         assert r.json()["status"] == "internally_signed"  # MIR transitions after 1 sig
         print(f"     Signed (status={r.json()['status']})")
 
         # 4. Submit to Approver 1
         print("  4. Submitting to Approver 1 (RED Engineering)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 1,
-            "aconex_submitted_date": "2026-05-28",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 1,
+                "aconex_submitted_date": "2026-05-28",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit failed: {r.text}"
-        print(f"     Doc status: with_approver_1")
+        print("     Doc status: with_approver_1")
 
         # 5. Record Approver 1 Response (A)
         print("  5. Recording Approver 1 response (A)...")
@@ -309,10 +360,14 @@ async def test_mir_e2e(client: httpx.AsyncClient):
 
         # 6. Submit to Approver 2
         print("  6. Submitting to Approver 2 (Sudlows)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 2,
-            "aconex_submitted_date": "2026-05-29",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 2,
+                "aconex_submitted_date": "2026-05-29",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit failed: {r.text}"
 
         # 7. Record Approver 2 Response (A)
@@ -333,12 +388,17 @@ async def test_mir_e2e(client: httpx.AsyncClient):
 
         # Verify final status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
-        assert r.json()["status"] == "approved", f"Expected approved, got {r.json()['status']}"
+        assert r.json()["status"] == "approved", (
+            f"Expected approved, got {r.json()['status']}"
+        )
         print(f"     Doc status: {r.json()['status']}")
 
         # Verify requirement achievement
         print("  8. Verifying commissioning status...")
-        r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}", headers=site_headers)
+        r = await client.get(
+            f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}",
+            headers=site_headers,
+        )
         reqs = r.json()
         mir_req = next((req for req in reqs if req["id"] == AR_MIR), None)
         assert mir_req["status"] == "achieved"
@@ -353,6 +413,7 @@ async def test_mir_e2e(client: httpx.AsyncClient):
                 print(f"  cleanup: hard-deleted {deleted}/1 doc ({doc_id})")
             except Exception as e:  # noqa: BLE001
                 print(f"  WARN: teardown hard_delete_documents({doc_id}) raised {e!r}")
+
 
 @pytest.mark.asyncio
 async def test_cir_e2e(client: httpx.AsyncClient):
@@ -369,14 +430,18 @@ async def test_cir_e2e(client: httpx.AsyncClient):
     try:
         # 1. Create CIR
         print("  1. Creating CIR...")
-        r = await client.post(f"{BASE}/documents", json={
-            "project_id": PROJECT_ID,
-            "document_type": "CIR",
-            "title": "Insulation Resistance Test - Generator 1",
-            "discipline_id": DISCIPLINE_ID,
-            "location": "POD 3, Electrical Room",
-            "asset_ids": [ASSET_GEN1],
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents",
+            json={
+                "project_id": PROJECT_ID,
+                "document_type": "CIR",
+                "title": "Insulation Resistance Test - Generator 1",
+                "discipline_id": DISCIPLINE_ID,
+                "location": "POD 3, Electrical Room",
+                "asset_ids": [ASSET_GEN1],
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create CIR failed: {r.text}"
         doc = r.json()
         doc_id = doc["id"]
@@ -384,32 +449,44 @@ async def test_cir_e2e(client: httpx.AsyncClient):
 
         # 2. Link to CIR requirement
         print("  2. Linking to Insulation Resistance Test requirement...")
-        r = await client.post(f"{BASE}/commissioning/document-links", json={
-            "document_id": doc_id,
-            "asset_requirement_id": AR_CIR,
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/commissioning/document-links",
+            json={
+                "document_id": doc_id,
+                "asset_requirement_id": AR_CIR,
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create link failed: {r.text}"
 
         # 3. Sign as site engineer
         print("  3. Signing as site_engineer...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/sign?role=site_engineer", headers=site_headers
+        )
         assert r.status_code == 200, f"Sign failed: {r.text}"
         assert r.json()["status"] == "draft"  # CIR needs both sigs
         print(f"     Signed (status={r.json()['status']})")
 
         # 4. Sign as qaqc engineer
         print("  4. Signing as qaqc_engineer...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/sign?role=qaqc_engineer", headers=qaqc_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/sign?role=qaqc_engineer", headers=qaqc_headers
+        )
         assert r.status_code == 200, f"Sign failed: {r.text}"
         assert r.json()["status"] == "internally_signed"
         print(f"     Signed (status={r.json()['status']})")
 
         # 5. Submit to Approver 1 (AESG for CIR)
         print("  5. Submitting to Approver 1 (AESG)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 1,
-            "aconex_submitted_date": "2026-05-28",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 1,
+                "aconex_submitted_date": "2026-05-28",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit failed: {r.text}"
 
         # 6. Record Approver 1 Response (A)
@@ -430,10 +507,14 @@ async def test_cir_e2e(client: httpx.AsyncClient):
 
         # 7. Submit to Approver 2 (Core Emirates for CIR)
         print("  7. Submitting to Approver 2 (Core Emirates)...")
-        r = await client.post(f"{BASE}/documents/{doc_id}/submit-to-approver", json={
-            "approver_order": 2,
-            "aconex_submitted_date": "2026-05-29",
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents/{doc_id}/submit-to-approver",
+            json={
+                "approver_order": 2,
+                "aconex_submitted_date": "2026-05-29",
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Submit failed: {r.text}"
 
         # 8. Record Approver 2 Response (B - Approved with Comments)
@@ -455,12 +536,17 @@ async def test_cir_e2e(client: httpx.AsyncClient):
 
         # Verify final status
         r = await client.get(f"{BASE}/documents/{doc_id}", headers=site_headers)
-        assert r.json()["status"] == "approved_with_comments", f"Expected approved_with_comments, got {r.json()['status']}"
+        assert r.json()["status"] == "approved_with_comments", (
+            f"Expected approved_with_comments, got {r.json()['status']}"
+        )
         print(f"     Doc status: {r.json()['status']}")
 
         # Verify requirement achievement
         print("  9. Verifying commissioning status...")
-        r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}", headers=site_headers)
+        r = await client.get(
+            f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}",
+            headers=site_headers,
+        )
         reqs = r.json()
         cir_req = next((req for req in reqs if req["id"] == AR_CIR), None)
         assert cir_req["status"] == "achieved"
@@ -476,6 +562,7 @@ async def test_cir_e2e(client: httpx.AsyncClient):
             except Exception as e:  # noqa: BLE001
                 print(f"  WARN: teardown hard_delete_documents({doc_id}) raised {e!r}")
 
+
 @pytest.mark.asyncio
 async def test_fat_e2e(client: httpx.AsyncClient):
     """FAT: create -> auto-approved -> verify requirement achievement"""
@@ -489,14 +576,18 @@ async def test_fat_e2e(client: httpx.AsyncClient):
     try:
         # 1. Create FAT (auto-approved on create)
         print("  1. Creating FAT...")
-        r = await client.post(f"{BASE}/documents", json={
-            "project_id": PROJECT_ID,
-            "document_type": "FAT",
-            "title": "Factory Acceptance Test - Generator 2",
-            "description": "FAT certificate for 2500kVA Generator unit 2",
-            "discipline_id": DISCIPLINE_ID,
-            "asset_ids": [ASSET_GEN2],
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/documents",
+            json={
+                "project_id": PROJECT_ID,
+                "document_type": "FAT",
+                "title": "Factory Acceptance Test - Generator 2",
+                "description": "FAT certificate for 2500kVA Generator unit 2",
+                "discipline_id": DISCIPLINE_ID,
+                "asset_ids": [ASSET_GEN2],
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create FAT failed: {r.text}"
         doc = r.json()
         doc_id = doc["id"]
@@ -505,19 +596,28 @@ async def test_fat_e2e(client: httpx.AsyncClient):
 
         # 2. Link to FAT requirement
         print("  2. Linking to Factory Acceptance Test requirement...")
-        r = await client.post(f"{BASE}/commissioning/document-links", json={
-            "document_id": doc_id,
-            "asset_requirement_id": AR_FAT,
-        }, headers=site_headers)
+        r = await client.post(
+            f"{BASE}/commissioning/document-links",
+            json={
+                "document_id": doc_id,
+                "asset_requirement_id": AR_FAT,
+            },
+            headers=site_headers,
+        )
         assert r.status_code == 201, f"Create link failed: {r.text}"
 
         # 3. Verify requirement achievement (FAT is already approved)
         print("  3. Verifying commissioning status...")
-        r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN2}", headers=site_headers)
+        r = await client.get(
+            f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN2}",
+            headers=site_headers,
+        )
         reqs = r.json()
         fat_req = next((req for req in reqs if req["id"] == AR_FAT), None)
         assert fat_req is not None, "FAT requirement not found"
-        assert fat_req["status"] == "achieved", f"Expected achieved, got {fat_req['status']}"
+        assert fat_req["status"] == "achieved", (
+            f"Expected achieved, got {fat_req['status']}"
+        )
         print(f"     Factory Acceptance Test: status={fat_req['status']}")
 
         print("  [PASS] FAT end-to-end test passed!")
@@ -539,21 +639,31 @@ async def verify_commissioning_summary(client: httpx.AsyncClient):
     headers = {"Authorization": f"Bearer {site_token}"}
 
     # Check Generator 1 requirements
-    r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}", headers=headers)
+    r = await client.get(
+        f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN1}",
+        headers=headers,
+    )
     reqs = r.json()
     print(f"\n  Generator 1 (MERC:P3:GEN:0001) - {len(reqs)} requirements:")
     for req in reqs:
-        print(f"    {req['id'][:8]}... | status={req['status']:12s} | progress={req['progress_percent']}%")
+        print(
+            f"    {req['id'][:8]}... | status={req['status']:12s} | progress={req['progress_percent']}%"
+        )
 
     achieved = sum(1 for r in reqs if r["status"] == "achieved")
     print(f"  Achieved: {achieved}/{len(reqs)}")
 
     # Check Generator 2 requirements
-    r = await client.get(f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN2}", headers=headers)
+    r = await client.get(
+        f"{BASE}/commissioning/asset-requirements?asset_id={ASSET_GEN2}",
+        headers=headers,
+    )
     reqs2 = r.json()
     print(f"\n  Generator 2 (MERC:P3:GEN:0002) - {len(reqs2)} requirements:")
     for req in reqs2:
-        print(f"    {req['id'][:8]}... | status={req['status']:12s} | progress={req['progress_percent']}%")
+        print(
+            f"    {req['id'][:8]}... | status={req['status']:12s} | progress={req['progress_percent']}%"
+        )
 
     achieved2 = sum(1 for r in reqs2 if r["status"] == "achieved")
     print(f"  Achieved: {achieved2}/{len(reqs2)}")
@@ -563,7 +673,9 @@ async def main():
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Verify server is running
         try:
-            r = await client.get(f"{BASE}/auth/me", headers={"Authorization": "Bearer invalid"})
+            await client.get(
+                f"{BASE}/auth/me", headers={"Authorization": "Bearer invalid"}
+            )
         except httpx.ConnectError:
             print("ERROR: Backend not running at http://localhost:8000")
             print("Start it with: cd backend && uv run uvicorn app.main:app --reload")

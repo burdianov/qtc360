@@ -225,7 +225,7 @@ function SignatureDisplaySettings() {
       }
       setLoaded(true);
     }
-  }, [prefs, loaded]);
+  }, [prefs, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = JSON.stringify(settings) !== JSON.stringify(initial);
 
@@ -252,11 +252,11 @@ function SignatureDisplaySettings() {
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">X Offset (pt)</label>
-          <Input value={settings.x_offset} onChange={(e) => { const v = e.target.value; if (/^-?\d*\.?\d?$/.test(v)) setSettings((s) => ({ ...s, x_offset: v as any })); }} onBlur={(e) => setSettings((s) => ({ ...s, x_offset: Number(s.x_offset) || 0 }))} />
+          <Input value={settings.x_offset} onChange={(e) => { const v = e.target.value; if (/^-?\d*\.?\d?$/.test(v)) setSettings((s) => ({ ...s, x_offset: v as any })); }} onBlur={() => setSettings((s) => ({ ...s, x_offset: Number(s.x_offset) || 0 }))} />
         </div>
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">Y Offset (pt)</label>
-          <Input value={settings.y_offset} onChange={(e) => { const v = e.target.value; if (/^-?\d*\.?\d?$/.test(v)) setSettings((s) => ({ ...s, y_offset: v as any })); }} onBlur={(e) => setSettings((s) => ({ ...s, y_offset: Number(s.y_offset) || 0 }))} />
+          <Input value={settings.y_offset} onChange={(e) => { const v = e.target.value; if (/^-?\d*\.?\d?$/.test(v)) setSettings((s) => ({ ...s, y_offset: v as any })); }} onBlur={() => setSettings((s) => ({ ...s, y_offset: Number(s.y_offset) || 0 }))} />
         </div>
       </div>
       <Button size="sm" onClick={() => saveMutation.mutate()} disabled={!isDirty || saveMutation.isPending}>

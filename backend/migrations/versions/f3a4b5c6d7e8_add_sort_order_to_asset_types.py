@@ -4,6 +4,7 @@ Revision ID: f3a4b5c6d7e8
 Revises: e2f3a4b5c6d7
 Create Date: 2026-05-30
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -14,7 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("asset_types", sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False))
+    op.add_column(
+        "asset_types",
+        sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False),
+    )
 
 
 def downgrade() -> None:

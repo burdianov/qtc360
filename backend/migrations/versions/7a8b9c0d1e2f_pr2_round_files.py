@@ -23,6 +23,7 @@ Revision ID: 7a8b9c0d1e2f
 Revises: f4a5b6c7d8e9
 Create Date: 2026-06-06 12:00:00.000000
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -49,7 +50,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "document_approval_rounds",
-        sa.Column("returned_file_locked", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "returned_file_locked",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
     )
 
 

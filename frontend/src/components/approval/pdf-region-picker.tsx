@@ -2,9 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { ChevronLeft, ChevronRight, Crosshair, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -268,8 +266,8 @@ export const PdfRegionPicker = forwardRef<PdfPickerHandle, Props>(function PdfRe
     startRef.current = null;
   };
 
-  const canZoomOut = zoom > ZOOM_MIN + 0.01;
-  const canZoomIn = zoom < ZOOM_MAX - 0.01;
+  const _canZoomOut = zoom > ZOOM_MIN + 0.01;
+  const _canZoomIn = zoom < ZOOM_MAX - 0.01;
 
   const cursorClass = !fileObj
     ? ""

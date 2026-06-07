@@ -1,5 +1,5 @@
 """Notifications API."""
-from typing import Any
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -22,10 +22,14 @@ async def list_notifications(
     user: User = Depends(get_current_user),
 ):
     """Get current user's notifications, optionally filtered by project."""
-    query = select(Notification).where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
+    query = select(Notification).where(
+        Notification.user_id == user.id, not Notification.is_deleted
+    )  # noqa: E712
     if project_id:
         query = query.where(Notification.project_id == project_id)
-    result = await db.execute(query.order_by(Notification.created_at.desc()).limit(NOTIFICATION_LIMIT))
+    result = await db.execute(
+        query.order_by(Notification.created_at.desc()).limit(NOTIFICATION_LIMIT)
+    )
     return [
         {
             "id": str(n.id),
@@ -46,11 +50,19 @@ async def mark_read(
     user: User = Depends(get_current_user),
 ):
     """Mark a notification as read."""
-    await db.execute(
-        update(Notification)
-        .where(Notification.id == notification_id, Notification.user_id == user.id)
-        .values(is_read=True)
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user.id,
+            Notification.is_deleted == False,  # noqa: E712
+        )
     )
+    notif = result.scalar_one_or_none()
+    if not notif:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.is_read = True
     await db.commit()
     return {"status": "ok"}
 
@@ -77,11 +89,19 @@ async def delete_notification(
     user: User = Depends(get_current_user),
 ):
     """Soft-delete a single notification."""
-    await db.execute(
-        update(Notification)
-        .where(Notification.id == notification_id, Notification.user_id == user.id)
-        .values(is_deleted=True)
+    result = await db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user.id,
+            Notification.is_deleted == False,  # noqa: E712
+        )
     )
+    notif = result.scalar_one_or_none()
+    if not notif:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notif.is_deleted = True
     await db.commit()
     return {"status": "ok"}
 
@@ -109,10 +129,15 @@ async def unread_count(
 ):
     """Get count of unread notifications."""
     from sqlalchemy import func
-    query = select(func.count()).select_from(Notification).where(
-        Notification.user_id == user.id,
-        Notification.is_read == False,  # noqa: E712
-        Notification.is_deleted == False,  # noqa: E712
+
+    query = (
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.user_id == user.id,
+            Notification.is_read == False,  # noqa: E712
+            Notification.is_deleted == False,  # noqa: E712
+        )
     )
     if project_id:
         query = query.where(Notification.project_id == project_id)

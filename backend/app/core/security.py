@@ -12,8 +12,15 @@ ALGORITHM = "HS256"
 
 def validate_password(password: str) -> None:
     """Raise HTTPException if password doesn't meet policy: 8+ chars, 1 uppercase, 1 number."""
-    if len(password) < 8 or not re.search(r"[A-Z]", password) or not re.search(r"\d", password):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Password must be at least 8 characters with 1 uppercase letter and 1 number")
+    if (
+        len(password) < 8
+        or not re.search(r"[A-Z]", password)
+        or not re.search(r"\d", password)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters with 1 uppercase letter and 1 number",
+        )
 
 
 def hash_password(password: str) -> str:
@@ -25,7 +32,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str, token_version: int = 0) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
     return jwt.encode(
         {"sub": subject, "exp": expire, "type": "access", "ver": token_version},
         settings.secret_key,
@@ -34,7 +43,9 @@ def create_access_token(subject: str, token_version: int = 0) -> str:
 
 
 def create_refresh_token(subject: str, token_version: int = 0) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(timezone.utc) + timedelta(
+        days=settings.refresh_token_expire_days
+    )
     return jwt.encode(
         {"sub": subject, "exp": expire, "type": "refresh", "ver": token_version},
         settings.secret_key,

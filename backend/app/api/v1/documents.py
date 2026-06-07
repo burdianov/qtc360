@@ -1,9 +1,19 @@
-import uuid as uuid_mod
+import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +31,12 @@ from app.models.document_approval_round import DocumentApprovalRound
 from app.models.reference_number_config import ReferenceNumberConfig
 from app.models.user import User
 from app.schemas.document import (
-    DocumentCreate, DocumentUpdate, DocumentResponse,
+    DocumentCreate,
+    DocumentUpdate,
+    DocumentResponse,
     DocumentApprovalRoundResponse,
-    OCRExtractRequest, OCRExtractResponse,
+    OCRExtractRequest,
+    OCRExtractResponse,
     SubmitToApproverRequest,
 )
 from app.services.commissioning import recalculate_requirements_for_document
@@ -36,10 +49,14 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
-from app.core.types import (
-    ALLOWED_ATTACHMENT_SUFFIXES, ALLOWED_ATTACHMENT_MIMES,
-    MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_DOC,
-    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, MAX_APPROVERS,
+from app.core.types import (  # noqa: E402
+    ALLOWED_ATTACHMENT_SUFFIXES,
+    ALLOWED_ATTACHMENT_MIMES,
+    MAX_ATTACHMENT_BYTES,
+    MAX_ATTACHMENTS_PER_DOC,
+    DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
+    MAX_APPROVERS,
     _mb,
 )
 
@@ -64,6 +81,7 @@ async def _purge_document_storage(db: AsyncSession, doc_id: UUID) -> int:
     wrapped in try/except — we never want storage cleanup to abort a delete.
     """
     from app.models.document_attachment import DocumentAttachment
+
     keys: set[str] = set()
 
     att_result = await db.execute(
@@ -96,6 +114,7 @@ async def _purge_document_storage(db: AsyncSession, doc_id: UUID) -> int:
     # round was created but the doc was deleted before the S or R
     # file was recorded in the column — unlikely but possible).
     from app.services.approval_files import purge_doc_responses
+
     try:
         purge_doc_responses(str(doc_id))
     except Exception:
@@ -117,7 +136,7 @@ async def _allocate_serial(
         .where(
             ReferenceNumberConfig.project_id == project_id,
             ReferenceNumberConfig.doc_type == doc_type,
-            ReferenceNumberConfig.is_deleted == False,
+            not ReferenceNumberConfig.is_deleted,
         )
         .with_for_update()
     )
@@ -181,9 +200,10 @@ async def _auto_create_ref_config(
     none exists. Lets the discipline-scoped counter have a starting point
     even for a project's very first document of a given type."""
     from app.models.project import Project
-    project = (await db.execute(
-        select(Project).where(Project.id == project_id)
-    )).scalar_one()
+
+    project = (
+        await db.execute(select(Project).where(Project.id == project_id))
+    ).scalar_one()
     code = (getattr(project, "code", None) or "PROJ")[:50]
     config = ReferenceNumberConfig(
         project_id=project_id,
@@ -207,6 +227,7 @@ async def list_rejected_for_revision(
 ):
     """List rejected documents available for revision (not yet superseded by a newer revision)."""
     from sqlalchemy.orm import selectinload
+
     query = (
         select(Document)
         .options(selectinload(Document.discipline))
@@ -225,15 +246,19 @@ async def list_rejected_for_revision(
     # Exclude docs that already have a newer revision
     out = []
     for doc in docs:
-        newer = (await db.execute(
-            select(func.count()).select_from(Document).where(
-                Document.reference_no == doc.reference_no,
-                Document.revision_no > doc.revision_no,
-                Document.project_id == project_id,
-                Document.is_deleted == False,  # noqa: E712
-                Document.status != "superseded",
+        newer = (
+            await db.execute(
+                select(func.count())
+                .select_from(Document)
+                .where(
+                    Document.reference_no == doc.reference_no,
+                    Document.revision_no > doc.revision_no,
+                    Document.project_id == project_id,
+                    Document.is_deleted == False,  # noqa: E712
+                    Document.status != "superseded",
+                )
             )
-        )).scalar()
+        ).scalar()
         if not newer:
             out.append(doc)
 
@@ -241,14 +266,16 @@ async def list_rejected_for_revision(
     grouped: dict[str, list[dict]] = {}
     for doc in out:
         disc_name = doc.discipline.name if doc.discipline else "No Discipline"
-        grouped.setdefault(disc_name, []).append({
-            "id": str(doc.id),
-            "reference_no": doc.reference_no,
-            "revision_no": doc.revision_no,
-            "title": doc.title,
-            "document_type": doc.document_type,
-            "discipline_id": str(doc.discipline_id) if doc.discipline_id else None,
-        })
+        grouped.setdefault(disc_name, []).append(
+            {
+                "id": str(doc.id),
+                "reference_no": doc.reference_no,
+                "revision_no": doc.revision_no,
+                "title": doc.title,
+                "document_type": doc.document_type,
+                "discipline_id": str(doc.discipline_id) if doc.discipline_id else None,
+            }
+        )
     return grouped
 
 
@@ -265,7 +292,9 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_project_access()),
 ):
-    stmt = select(Document).where(Document.is_deleted == False, Document.project_id == project_id)  # noqa: E712
+    stmt = select(Document).where(
+        not Document.is_deleted, Document.project_id == project_id
+    )  # noqa: E712
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
     if status_filter:
@@ -285,7 +314,10 @@ async def list_documents(
     stmt = stmt.order_by(Document.created_at.desc(), Document.id.desc())
     if paginated:
         from sqlalchemy import func as sa_func
-        count_result = await db.execute(select(sa_func.count()).select_from(stmt.subquery()))
+
+        count_result = await db.execute(
+            select(sa_func.count()).select_from(stmt.subquery())
+        )
         total = count_result.scalar() or 0
         result = await db.execute(stmt.offset(skip).limit(limit))
         return {"items": result.scalars().all(), "total": total}
@@ -301,8 +333,10 @@ async def get_document(
     user: User = Depends(get_current_user),
 ):
     from sqlalchemy.orm import selectinload
+
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
         .options(selectinload(Document.assets))
     )
     doc = result.scalar_one_or_none()
@@ -341,12 +375,15 @@ async def download_stage_file(
     """
     from fastapi.responses import Response
     from app.services.approval_files import (
-        submitted_path, returned_path,
+        submitted_path,
+        returned_path,
     )
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     await assert_user_in_project(user, doc.project_id)
@@ -393,16 +430,20 @@ async def create_document(
         )
 
     from app.models.discipline import Discipline
-    disc = (await db.execute(
-        select(Discipline).where(
-            Discipline.id == body.discipline_id,
-            Discipline.project_id == body.project_id,
-            Discipline.is_deleted == False,  # noqa: E712
+
+    disc = (
+        await db.execute(
+            select(Discipline).where(
+                Discipline.id == body.discipline_id,
+                Discipline.project_id == body.project_id,
+                Discipline.is_deleted == False,  # noqa: E712
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not disc:
         raise HTTPException(
-            status_code=400, detail="Discipline not found in this project",
+            status_code=400,
+            detail="Discipline not found in this project",
         )
 
     # Allocate a serial atomically. For revisions we still use the allocator
@@ -419,7 +460,9 @@ async def create_document(
         # No config for (project, doc_type) — auto-create one with defaults
         # so the discipline counter has a starting point.
         config = await _auto_create_ref_config(
-            db, project_id=body.project_id, doc_type=body.document_type,
+            db,
+            project_id=body.project_id,
+            doc_type=body.document_type,
         )
 
     data["reference_no"] = _format_reference(
@@ -434,14 +477,16 @@ async def create_document(
     # parent's reference, increment revision_no. The parent's reference
     # is taken from a server-side lookup, not from the client.
     if body.revision_of_id:
-        old_doc = (await db.execute(
-            select(Document)
-            .where(
-                Document.id == body.revision_of_id,
-                Document.is_deleted == False,  # noqa: E712
+        old_doc = (
+            await db.execute(
+                select(Document)
+                .where(
+                    Document.id == body.revision_of_id,
+                    Document.is_deleted == False,  # noqa: E712
+                )
+                .with_for_update()
             )
-            .with_for_update()
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if not old_doc:
             raise HTTPException(
                 status_code=404,
@@ -473,14 +518,25 @@ async def create_document(
 
     if body.asset_ids:
         for aid in body.asset_ids:
-            await db.execute(document_assets.insert().values(document_id=doc.id, asset_id=aid))
+            await db.execute(
+                document_assets.insert().values(document_id=doc.id, asset_id=aid)
+            )
 
-    await record_audit(db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id, summary=f"Created {doc.document_type} '{doc.reference_no}' rev {doc.revision_no}")
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="create",
+        entity_type="document",
+        entity_id=doc.id,
+        summary=f"Created {doc.document_type} '{doc.reference_no}' rev {doc.revision_no}",
+    )
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Reference number collision — please retry.")
+        raise HTTPException(
+            status_code=409, detail="Reference number collision — please retry."
+        )
     await db.refresh(doc)
     return doc
 
@@ -493,7 +549,9 @@ async def update_document(
     user: User = Depends(require_permission("documents.edit")),
 ):
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, not Document.is_deleted)
+        .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
@@ -504,8 +562,14 @@ async def update_document(
     updates = body.model_dump(exclude_unset=True, exclude={"asset_ids"})
 
     # Validate status transition if status is being changed
-    if "status" in updates and updates["status"] and updates["status"] != old_status and doc.document_type not in ("FAT", "CRS"):
+    if (
+        "status" in updates
+        and updates["status"]
+        and updates["status"] != old_status
+        and doc.document_type not in ("FAT", "CRS")
+    ):
         from app.schemas.document import VALID_STATUS_TRANSITIONS
+
         allowed = VALID_STATUS_TRANSITIONS.get(old_status, set())
         if updates["status"] not in allowed:
             raise HTTPException(
@@ -518,15 +582,30 @@ async def update_document(
     doc.updated_by = user.id
 
     if body.asset_ids is not None:
-        await db.execute(document_assets.delete().where(document_assets.c.document_id == doc_id))
+        await db.execute(
+            document_assets.delete().where(document_assets.c.document_id == doc_id)
+        )
         for aid in body.asset_ids:
-            await db.execute(document_assets.insert().values(document_id=doc.id, asset_id=aid))
+            await db.execute(
+                document_assets.insert().values(document_id=doc.id, asset_id=aid)
+            )
 
     if doc.status != old_status:
-        await record_audit(db, user_id=user.id, action="update", entity_type="document", entity_id=doc.id, summary=f"Status changed {old_status} → {doc.status} on {doc.reference_no}")
+        await record_audit(
+            db,
+            user_id=user.id,
+            action="update",
+            entity_type="document",
+            entity_id=doc.id,
+            summary=f"Status changed {old_status} → {doc.status} on {doc.reference_no}",
+        )
 
     # If status changed, recalculate linked requirements (same transaction).
-    if doc.status != old_status and doc.status in ("approved", "approved_with_comments", "rejected"):
+    if doc.status != old_status and doc.status in (
+        "approved",
+        "approved_with_comments",
+        "rejected",
+    ):
         await recalculate_requirements_for_document(db, doc.id)
 
     try:
@@ -546,14 +625,18 @@ async def resubmit_document(
 ):
     """Resubmit a rejected document with incremented revision."""
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, not Document.is_deleted)
+        .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
     if doc.status != "rejected":
-        raise HTTPException(status_code=400, detail="Only rejected documents can be resubmitted")
+        raise HTTPException(
+            status_code=400, detail="Only rejected documents can be resubmitted"
+        )
 
     # Mark current as superseded
     doc.status = "superseded"
@@ -585,7 +668,11 @@ async def resubmit_document(
         document_assets.select().where(document_assets.c.document_id == doc_id)
     )
     for row in assets_result.all():
-        await db.execute(document_assets.insert().values(document_id=new_doc.id, asset_id=row.asset_id))
+        await db.execute(
+            document_assets.insert().values(
+                document_id=new_doc.id, asset_id=row.asset_id
+            )
+        )
 
     # Approval rounds are NOT copied — each new revision starts fresh and
     # progresses through the approver chain again. The chain itself is
@@ -593,7 +680,11 @@ async def resubmit_document(
     # at "Submit to Approver N" time (Phase 2).
 
     await record_audit(
-        db, user_id=user.id, action="update", entity_type="document", entity_id=new_doc.id,
+        db,
+        user_id=user.id,
+        action="update",
+        entity_type="document",
+        entity_id=new_doc.id,
         summary=f"Resubmitted {new_doc.document_type} '{new_doc.reference_no}' rev {new_doc.revision_no}",
     )
     try:
@@ -654,8 +745,12 @@ async def delete_document(
     has_been_submitted = rounds_result.scalar_one_or_none() is not None
     # Also consider explicit status states that imply submission
     submitted_statuses = {
-        "with_approver_1", "with_approver_2",
-        "approver_1_returned", "approved", "approved_with_comments", "rejected"
+        "with_approver_1",
+        "with_approver_2",
+        "approver_1_returned",
+        "approved",
+        "approved_with_comments",
+        "rejected",
     }
     is_submitted = has_been_submitted or doc.status in submitted_statuses
 
@@ -668,8 +763,12 @@ async def delete_document(
         doc.is_deleted = True
         await recalculate_requirements_for_document(db, doc_id)
         await record_audit(
-            db, user_id=user.id, action="supersede", entity_type="document", entity_id=doc.id,
-            summary=f"Superseded {doc.document_type} '{doc.reference_no}' (was submitted to approver)"
+            db,
+            user_id=user.id,
+            action="supersede",
+            entity_type="document",
+            entity_id=doc.id,
+            summary=f"Superseded {doc.document_type} '{doc.reference_no}' (was submitted to approver)",
         )
     else:
         # HARD DELETE: remove document and attachments; serial is not reused.
@@ -689,6 +788,7 @@ async def delete_document(
         # Snapshot the asset_requirement ids we will need to recalc after the
         # links are gone.
         from app.models.commissioning import DocumentRequirementLink
+
         ar_ids_result = await db.execute(
             select(DocumentRequirementLink.asset_requirement_id)
             .where(
@@ -701,6 +801,7 @@ async def delete_document(
 
         # Hard delete attachments from DB
         from sqlalchemy import delete as sa_delete
+
         await db.execute(
             sa_delete(DocumentAttachment).where(
                 DocumentAttachment.document_id == doc.id,
@@ -723,21 +824,24 @@ async def delete_document(
         )
 
         # Hard delete the document itself
-        await db.execute(
-            sa_delete(Document).where(Document.id == doc.id)
-        )
+        await db.execute(sa_delete(Document).where(Document.id == doc.id))
 
         # Recalculate every affected requirement now that the doc + links are
         # truly gone. recalculate_requirements_for_document() would no-op here
         # (it short-circuits when the doc is missing), so we call the
         # per-requirement helper directly.
         from app.services.commissioning import recalculate_requirement_status
+
         for ar_id in affected_ar_ids:
             await recalculate_requirement_status(db, ar_id)
 
         await record_audit(
-            db, user_id=user.id, action="delete", entity_type="document", entity_id=doc.id,
-            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted; serial preserved)"
+            db,
+            user_id=user.id,
+            action="delete",
+            entity_type="document",
+            entity_id=doc.id,
+            summary=f"Deleted {doc.document_type} '{doc.reference_no}' (was not submitted; serial preserved)",
         )
 
     try:
@@ -749,6 +853,7 @@ async def delete_document(
 
 # --- Notifications ---
 
+
 @router.post("/{doc_id}/notify-signatories")
 async def notify_signatories(
     doc_id: UUID,
@@ -759,7 +864,9 @@ async def notify_signatories(
     from sqlalchemy.orm import selectinload
 
     result = await db.execute(
-        select(Document).options(selectinload(Document.discipline)).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        select(Document)
+        .options(selectinload(Document.discipline))
+        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
@@ -767,16 +874,24 @@ async def notify_signatories(
     await assert_user_in_project(user, doc.project_id)
 
     if doc.created_by != user.id:
-        raise HTTPException(status_code=403, detail="Only the document creator can notify signatories")
+        raise HTTPException(
+            status_code=403, detail="Only the document creator can notify signatories"
+        )
 
     # Detect previously notified signatories by checking existing notifications for this doc
-    existing_notifs = (await db.execute(
-    select(Notification).where(
-        Notification.link.contains(str(doc_id)),
-        Notification.title.like("Signature Required%"),
-        Notification.is_deleted == False,  # noqa: E712
+    existing_notifs = (
+        (
+            await db.execute(
+                select(Notification).where(
+                    Notification.link.contains(str(doc_id)),
+                    Notification.title.like("Signature Required%"),
+                    Notification.is_deleted == False,  # noqa: E712
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
-)).scalars().all()
     previously_notified_ids = {n.user_id for n in existing_notifs}
 
     link = f"/qaqc/{doc.document_type.lower()}/{doc_id}"
@@ -791,7 +906,10 @@ async def notify_signatories(
 
     # Notify current signatories who haven't signed
     current_signatory_ids = set()
-    for user_id, is_signed in [(doc.site_engineer_id, doc.site_engineer_signed), (doc.qaqc_engineer_id, doc.qaqc_engineer_signed)]:
+    for user_id, is_signed in [
+        (doc.site_engineer_id, doc.site_engineer_signed),
+        (doc.qaqc_engineer_id, doc.qaqc_engineer_signed),
+    ]:
         if user_id:
             current_signatory_ids.add(user_id)
             if not is_signed and user_id != user.id:
@@ -827,6 +945,7 @@ async def notify_signatories(
 
 # --- Sign ---
 
+
 @router.post("/{doc_id}/sign", response_model=DocumentResponse)
 async def sign_document(
     doc_id: UUID,
@@ -837,7 +956,9 @@ async def sign_document(
 ):
     # Lock the row so two concurrent signers can't race past the "already signed" check.
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, not Document.is_deleted)
+        .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
@@ -852,6 +973,7 @@ async def sign_document(
     signatory_id = user.id
     if on_behalf_of:
         from uuid import UUID as _UUID
+
         try:
             behalf_uuid = _UUID(on_behalf_of)
         except (ValueError, TypeError):
@@ -866,7 +988,9 @@ async def sign_document(
                 )
             )
             if not deleg.scalar_one_or_none():
-                raise HTTPException(status_code=403, detail="No delegation from this user")
+                raise HTTPException(
+                    status_code=403, detail="No delegation from this user"
+                )
         signatory_id = behalf_uuid
 
     if role == "site_engineer":
@@ -891,19 +1015,29 @@ async def sign_document(
             doc.status = "internally_signed"
             doc.submitted_date = datetime.now(timezone.utc)
 
-    await record_audit(db, user_id=user.id, action="sign", entity_type="document", entity_id=doc.id, summary=f"Signed {doc.document_type} '{doc.reference_no}' as {role}")
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="sign",
+        entity_type="document",
+        entity_id=doc.id,
+        summary=f"Signed {doc.document_type} '{doc.reference_no}' as {role}",
+    )
 
     # Notify grantor if signed on their behalf
     if signatory_id != user.id:
         from app.models.notification import Notification
+
         doc_type_lower = doc.document_type.lower()
-        db.add(Notification(
-            user_id=signatory_id,
-            project_id=doc.project_id,
-            title=f"Signed on your behalf — {doc.reference_no}",
-            message=f"{user.full_name} signed {doc.document_type} '{doc.reference_no}' on your behalf.",
-            link=f"/qaqc/{doc_type_lower}?doc={doc.id}",
-        ))
+        db.add(
+            Notification(
+                user_id=signatory_id,
+                project_id=doc.project_id,
+                title=f"Signed on your behalf — {doc.reference_no}",
+                message=f"{user.full_name} signed {doc.document_type} '{doc.reference_no}' on your behalf.",
+                link=f"/qaqc/{doc_type_lower}?doc={doc.id}",
+            )
+        )
 
     try:
         await db.commit()
@@ -922,14 +1056,18 @@ async def unsign_document(
     user: User = Depends(require_permission("documents.sign")),
 ):
     result = await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False).with_for_update()  # noqa: E712
+        select(Document)
+        .where(Document.id == doc_id, not Document.is_deleted)
+        .with_for_update()  # noqa: E712
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
     if doc.status not in ("draft", "internally_signed"):
-        raise HTTPException(status_code=400, detail="Cannot remove signature after submission")
+        raise HTTPException(
+            status_code=400, detail="Cannot remove signature after submission"
+        )
 
     if role == "site_engineer":
         if not doc.site_engineer_signed:
@@ -945,7 +1083,14 @@ async def unsign_document(
         doc.status = "draft"
         doc.submitted_date = None
 
-    await record_audit(db, user_id=user.id, action="unsign", entity_type="document", entity_id=doc.id, summary=f"Removed signature from {doc.document_type} '{doc.reference_no}' as {role}")
+    await record_audit(
+        db,
+        user_id=user.id,
+        action="unsign",
+        entity_type="document",
+        entity_id=doc.id,
+        summary=f"Removed signature from {doc.document_type} '{doc.reference_no}' as {role}",
+    )
     await db.commit()
     await db.refresh(doc)
     return doc
@@ -954,26 +1099,38 @@ async def unsign_document(
 # --- External Approval Workflow ---
 
 
-@router.get("/{doc_id}/approval-rounds", response_model=list[DocumentApprovalRoundResponse])
+@router.get(
+    "/{doc_id}/approval-rounds", response_model=list[DocumentApprovalRoundResponse]
+)
 async def list_approval_rounds(
     doc_id: UUID,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
-    rounds = (await db.execute(
-        select(DocumentApprovalRound)
-        .where(
-            DocumentApprovalRound.document_id == doc_id,
-            DocumentApprovalRound.is_deleted == False,  # noqa: E712
+    rounds = (
+        (
+            await db.execute(
+                select(DocumentApprovalRound)
+                .where(
+                    DocumentApprovalRound.document_id == doc_id,
+                    DocumentApprovalRound.is_deleted == False,  # noqa: E712
+                )
+                .order_by(
+                    DocumentApprovalRound.approver_order, DocumentApprovalRound.round_no
+                )
+            )
         )
-        .order_by(DocumentApprovalRound.approver_order, DocumentApprovalRound.round_no)
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     return rounds
 
 
@@ -1002,12 +1159,19 @@ async def extract_preview_region(
     """
     from app.services.pdf import extract_region_text, normalize_date_text
 
-    if target_field not in ("signatory_name", "response_date", "response_time", "comments"):
+    if target_field not in (
+        "signatory_name",
+        "response_date",
+        "response_time",
+        "comments",
+    ):
         raise HTTPException(status_code=400, detail="Invalid target_field")
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
@@ -1017,14 +1181,20 @@ async def extract_preview_region(
         raise HTTPException(status_code=400, detail="File must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
     try:
         text, via = extract_region_text(
-            data, page, (x, y, width, height),
-            target_field=target_field, force_ocr=force_ocr,
+            data,
+            page,
+            (x, y, width, height),
+            target_field=target_field,
+            force_ocr=force_ocr,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1062,18 +1232,21 @@ async def submit_to_approver_endpoint(
     """
     from app.services.approval import submit_to_approver
     from app.services.approval_files import (
-        assemble_submission_for_round, save_submission,
+        assemble_submission_for_round,
+        save_submission,
     )
 
     approver_order = payload.approver_order
     aconex_submitted_date = payload.aconex_submitted_date
     password = payload.password
 
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-        .with_for_update()
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
@@ -1083,24 +1256,34 @@ async def submit_to_approver_endpoint(
     # Save Aconex submission date if provided
     if aconex_submitted_date:
         from datetime import date as date_cls
+
         try:
             round_.aconex_submitted_date = date_cls.fromisoformat(aconex_submitted_date)
         except ValueError:
-            pass
+            raise HTTPException(
+                status_code=400, detail="aconex_submitted_date must be ISO yyyy-MM-dd"
+            )
 
     # Assemble the S-round bundle. This may raise 400 with
     # PDF_PASSWORD_REQUIRED; the round row is already created (state
     # machine has advanced) so the user can retry without losing
     # progress.
     bundle_bytes = await assemble_submission_for_round(
-        db, doc, approver_order, password=password,
+        db,
+        doc,
+        approver_order,
+        password=password,
     )
     key, size = save_submission(str(doc.id), approver_order, bundle_bytes)
     round_.submitted_file_path = key
     round_.submitted_file_size = size
 
     await record_audit(
-        db, user_id=user.id, action="submit", entity_type="document", entity_id=doc.id,
+        db,
+        user_id=user.id,
+        action="submit",
+        entity_type="document",
+        entity_id=doc.id,
         summary=(
             f"Submitted {doc.document_type} '{doc.reference_no}' rev {doc.revision_no} "
             f"to approver {approver_order} ({size} bytes)"
@@ -1144,11 +1327,16 @@ async def record_response_endpoint(
         raise HTTPException(status_code=400, detail="Returned file must be a PDF")
     declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
     if declared_mime and declared_mime != "application/pdf":
-        raise HTTPException(status_code=400, detail=f"Unsupported MIME type {declared_mime!r}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported MIME type {declared_mime!r}"
+        )
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1157,28 +1345,40 @@ async def record_response_endpoint(
         try:
             parsed_date = date_cls.fromisoformat(response_date)
         except ValueError:
-            raise HTTPException(status_code=400, detail="response_date must be ISO yyyy-MM-dd")
+            raise HTTPException(
+                status_code=400, detail="response_date must be ISO yyyy-MM-dd"
+            )
 
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-        .with_for_update()
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
     round_ = await record_response(
-        db, doc, approver_order, decision_status_id,
-        signatory_name or None, parsed_date, comments or None,
+        db,
+        doc,
+        approver_order,
+        decision_status_id,
+        signatory_name or None,
+        parsed_date,
+        comments or None,
     )
     await db.flush()
 
     # PR2: write the R-round PDF to responses/{doc_id}/R{N}.pdf (one
     # file per stage, name maps directly to "which file is which stage").
     from app.services.approval_files import save_response
+
     storage_key, file_size, requires_password = save_response(
-        str(doc.id), approver_order, data,
+        str(doc.id),
+        approver_order,
+        data,
     )
     round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
@@ -1188,26 +1388,35 @@ async def record_response_endpoint(
     # Save Aconex received date
     if aconex_received_date:
         from datetime import date as date_cls2
+
         try:
             round_.aconex_received_date = date_cls2.fromisoformat(aconex_received_date)
         except ValueError:
-            pass
+            raise HTTPException(
+                status_code=400, detail="aconex_received_date must be ISO yyyy-MM-dd"
+            )
 
     # Save the returned PDF as a single attachment (so the existing UI
     # which lists DocumentAttachment rows continues to work).
-    db.add(DocumentAttachment(
-        document_id=doc.id,
-        document_approval_round_id=round_.id,
-        kind="returned_pdf",
-        filename=f"Approver {approver_order} — Returned.pdf",
-        storage_path=storage_key,
-        content_type="application/pdf",
-        size=file_size,
-        sort_order=0,
-    ))
+    db.add(
+        DocumentAttachment(
+            document_id=doc.id,
+            document_approval_round_id=round_.id,
+            kind="returned_pdf",
+            filename=f"Approver {approver_order} — Returned.pdf",
+            storage_path=storage_key,
+            content_type="application/pdf",
+            size=file_size,
+            sort_order=0,
+        )
+    )
 
     await record_audit(
-        db, user_id=user.id, action="approval_response", entity_type="document", entity_id=doc.id,
+        db,
+        user_id=user.id,
+        action="approval_response",
+        entity_type="document",
+        entity_id=doc.id,
         summary=(
             f"Recorded approver {approver_order} response on "
             f"{doc.document_type} '{doc.reference_no}' rev {doc.revision_no}"
@@ -1220,8 +1429,11 @@ async def record_response_endpoint(
     if doc.status in ("rejected", "approved", "approved_with_comments"):
         from app.models.notification import Notification
         from sqlalchemy.orm import selectinload
+
         disc_result = await db.execute(
-            select(Document).options(selectinload(Document.discipline)).where(Document.id == doc.id)
+            select(Document)
+            .options(selectinload(Document.discipline))
+            .where(Document.id == doc.id)
         )
         doc_with_disc = disc_result.scalar_one()
         disc_name = doc_with_disc.discipline.name if doc_with_disc.discipline else "—"
@@ -1238,7 +1450,9 @@ async def record_response_endpoint(
                 f"Action required: Start a new revision to resubmit."
             )
         else:
-            status_label = "Approved" if doc.status == "approved" else "Approved with Comments"
+            status_label = (
+                "Approved" if doc.status == "approved" else "Approved with Comments"
+            )
             title = f"Document {status_label} — {doc.reference_no}"
             message = (
                 f"{doc.document_type} {doc.reference_no} (Rev {doc.revision_no}) has been {status_label.upper()}.\n\n"
@@ -1248,9 +1462,19 @@ async def record_response_endpoint(
                 f"Comments: {comments or 'None'}"
             )
 
-        recipients = {doc.created_by, doc.site_engineer_id, doc.qaqc_engineer_id} - {None}
+        recipients = {doc.created_by, doc.site_engineer_id, doc.qaqc_engineer_id} - {
+            None
+        }
         for uid in recipients:
-            db.add(Notification(user_id=uid, project_id=doc.project_id, title=title, message=message, link=link))
+            db.add(
+                Notification(
+                    user_id=uid,
+                    project_id=doc.project_id,
+                    title=title,
+                    message=message,
+                    link=link,
+                )
+            )
 
     try:
         await db.commit()
@@ -1285,29 +1509,39 @@ async def replace_round_file(
         raise HTTPException(status_code=400, detail="File must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = (await db.execute(
-        select(DocumentApprovalRound).where(
-            DocumentApprovalRound.id == round_id,
-            DocumentApprovalRound.document_id == doc_id,
+    round_ = (
+        await db.execute(
+            select(DocumentApprovalRound).where(
+                DocumentApprovalRound.id == round_id,
+                DocumentApprovalRound.document_id == doc_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
     from app.services.approval_files import save_response
+
     storage_key, file_size, requires_password = save_response(
-        str(doc.id), round_.approver_order, data,
+        str(doc.id),
+        round_.approver_order,
+        data,
     )
     round_.returned_file_path = storage_key
     round_.returned_file_name = file.filename or "returned.pdf"
@@ -1326,26 +1560,34 @@ async def replace_round_file(
         round_.response_date = None
 
     # Update the returned_pdf attachment
-    att = (await db.execute(
-        select(DocumentAttachment).where(
-            DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "returned_pdf",
-            DocumentAttachment.is_deleted == False,  # noqa: E712
+    att = (
+        await db.execute(
+            select(DocumentAttachment).where(
+                DocumentAttachment.document_approval_round_id == round_id,
+                DocumentAttachment.kind == "returned_pdf",
+                DocumentAttachment.is_deleted == False,  # noqa: E712
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if att:
         att.storage_path = storage_key
         att.size = len(data)
         att.filename = f"Approver {round_.approver_order} — Returned.pdf"
 
     # Delete all user_attachment files for this round (new document = fresh start)
-    user_atts = (await db.execute(
-        select(DocumentAttachment).where(
-            DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
-            DocumentAttachment.is_deleted == False,  # noqa: E712
+    user_atts = (
+        (
+            await db.execute(
+                select(DocumentAttachment).where(
+                    DocumentAttachment.document_approval_round_id == round_id,
+                    DocumentAttachment.kind == "user_attachment",
+                    DocumentAttachment.is_deleted == False,  # noqa: E712
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     for ua in user_atts:
         try:
             storage.delete(ua.storage_path)
@@ -1376,19 +1618,23 @@ async def extract_round_region(
     """
     from app.services.pdf import extract_region_text, normalize_date_text
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = (await db.execute(
-        select(DocumentApprovalRound).where(
-            DocumentApprovalRound.id == round_id,
-            DocumentApprovalRound.document_id == doc_id,
+    round_ = (
+        await db.execute(
+            select(DocumentApprovalRound).where(
+                DocumentApprovalRound.id == round_id,
+                DocumentApprovalRound.document_id == doc_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not round_ or not round_.returned_file_path:
         raise HTTPException(status_code=404, detail="Round or returned file not found")
 
@@ -1396,7 +1642,9 @@ async def extract_round_region(
         raise HTTPException(status_code=404, detail="Returned file is missing")
 
     if len(body.bbox) != 4:
-        raise HTTPException(status_code=400, detail="bbox must be [x, y, width, height]")
+        raise HTTPException(
+            status_code=400, detail="bbox must be [x, y, width, height]"
+        )
 
     try:
         text, via = extract_region_text(
@@ -1435,25 +1683,32 @@ async def upload_round_remarks(
         raise HTTPException(status_code=400, detail="Remarks file must be a PDF")
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-        .with_for_update()
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = (await db.execute(
-        select(DocumentApprovalRound).where(
-            DocumentApprovalRound.id == round_id,
-            DocumentApprovalRound.document_id == doc_id,
+    round_ = (
+        await db.execute(
+            select(DocumentApprovalRound).where(
+                DocumentApprovalRound.id == round_id,
+                DocumentApprovalRound.document_id == doc_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
@@ -1463,7 +1718,11 @@ async def upload_round_remarks(
     await attach_remarks(db, doc, round_, storage_key, file.filename or "remarks.pdf")
 
     await record_audit(
-        db, user_id=user.id, action="update", entity_type="document", entity_id=doc.id,
+        db,
+        user_id=user.id,
+        action="update",
+        entity_type="document",
+        entity_id=doc.id,
         summary=f"Added remarks to approver 1 round on '{doc.reference_no}'",
     )
     try:
@@ -1483,7 +1742,11 @@ async def upload_round_attachment(
     doc_id: UUID,
     round_id: UUID,
     file: UploadFile = File(...),
-    insert_after_page: int | None = Query(None, ge=0, description="Page number after which to insert (0-indexed). Omit to upload without adding to bundle."),
+    insert_after_page: int | None = Query(
+        None,
+        ge=0,
+        description="Page number after which to insert (0-indexed). Omit to upload without adding to bundle.",
+    ),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -1496,37 +1759,50 @@ async def upload_round_attachment(
 
     suffix = FilePath(file.filename or "").suffix.lower()
     if suffix not in (".pdf", ".png", ".jpg", ".jpeg"):
-        raise HTTPException(status_code=400, detail="Attachment must be a PDF or image (PNG, JPG)")
+        raise HTTPException(
+            status_code=400, detail="Attachment must be a PDF or image (PNG, JPG)"
+        )
     allowed_mimes = {"application/pdf", "image/png", "image/jpeg"}
     declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
     if declared_mime and declared_mime not in allowed_mimes:
-        raise HTTPException(status_code=400, detail=f"Unsupported MIME type {declared_mime!r}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported MIME type {declared_mime!r}"
+        )
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = (await db.execute(
-        select(DocumentApprovalRound).where(
-            DocumentApprovalRound.id == round_id,
-            DocumentApprovalRound.document_id == doc_id,
+    round_ = (
+        await db.execute(
+            select(DocumentApprovalRound).where(
+                DocumentApprovalRound.id == round_id,
+                DocumentApprovalRound.document_id == doc_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not round_:
         raise HTTPException(status_code=404, detail="Round not found")
 
     # Get next sort order for this round
     count_result = await db.execute(
-        select(func.count()).select_from(DocumentAttachment).where(
+        select(func.count())
+        .select_from(DocumentAttachment)
+        .where(
             DocumentAttachment.document_approval_round_id == round_id,
             DocumentAttachment.kind == "user_attachment",
             DocumentAttachment.is_deleted == False,  # noqa: E712
@@ -1534,7 +1810,7 @@ async def upload_round_attachment(
     )
     existing_count = count_result.scalar() or 0
 
-    file_id = str(uuid_mod.uuid4())
+    file_id = str(uuid.uuid4())
     storage_key = f"approval-rounds/{round_.id}/attachments/{file_id}.pdf"
     storage.save(storage_key, data)
 
@@ -1552,7 +1828,11 @@ async def upload_round_attachment(
     db.add(att)
 
     await record_audit(
-        db, user_id=user.id, action="create", entity_type="document", entity_id=doc.id,
+        db,
+        user_id=user.id,
+        action="create",
+        entity_type="document",
+        entity_id=doc.id,
         summary=f"Added attachment to approval round {round_.approver_order}",
     )
     try:
@@ -1580,14 +1860,24 @@ async def list_round_attachments(
     from app.models.document_attachment import DocumentAttachment
 
     result = await db.execute(
-        select(DocumentAttachment).where(
+        select(DocumentAttachment)
+        .where(
             DocumentAttachment.document_approval_round_id == round_id,
             DocumentAttachment.kind == "user_attachment",
             DocumentAttachment.is_deleted == False,  # noqa: E712
-        ).order_by(DocumentAttachment.sort_order)
+        )
+        .order_by(DocumentAttachment.sort_order)
     )
     atts = result.scalars().all()
-    return [{"id": str(a.id), "filename": a.filename, "size": a.size, "insert_after_page": a.insert_after_page} for a in atts]
+    return [
+        {
+            "id": str(a.id),
+            "filename": a.filename,
+            "size": a.size,
+            "insert_after_page": a.insert_after_page,
+        }
+        for a in atts
+    ]
 
 
 @router.patch("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}")
@@ -1602,24 +1892,32 @@ async def update_round_attachment(
     """Set or clear insert_after_page on a round attachment."""
     from app.models.document_attachment import DocumentAttachment
 
-    att = (await db.execute(
-        select(DocumentAttachment).where(
-            DocumentAttachment.id == att_id,
-            DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
-            DocumentAttachment.is_deleted == False,  # noqa: E712
+    att = (
+        await db.execute(
+            select(DocumentAttachment).where(
+                DocumentAttachment.id == att_id,
+                DocumentAttachment.document_approval_round_id == round_id,
+                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.is_deleted == False,  # noqa: E712
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
 
     if "insert_after_page" in body:
         att.insert_after_page = body["insert_after_page"]  # None = remove from bundle
     await db.commit()
-    return {"id": str(att.id), "filename": att.filename, "insert_after_page": att.insert_after_page}
+    return {
+        "id": str(att.id),
+        "filename": att.filename,
+        "insert_after_page": att.insert_after_page,
+    }
 
 
-@router.delete("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}", status_code=204)
+@router.delete(
+    "/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}", status_code=204
+)
 async def delete_round_attachment(
     doc_id: UUID,
     round_id: UUID,
@@ -1630,18 +1928,23 @@ async def delete_round_attachment(
     """Delete a round attachment (only if not in bundle)."""
     from app.models.document_attachment import DocumentAttachment
 
-    att = (await db.execute(
-        select(DocumentAttachment).where(
-            DocumentAttachment.id == att_id,
-            DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
-            DocumentAttachment.is_deleted == False,  # noqa: E712
+    att = (
+        await db.execute(
+            select(DocumentAttachment).where(
+                DocumentAttachment.id == att_id,
+                DocumentAttachment.document_approval_round_id == round_id,
+                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.is_deleted == False,  # noqa: E712
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
     if att.insert_after_page is not None:
-        raise HTTPException(status_code=400, detail="Cannot delete attachment that is in the bundle. Remove from bundle first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete attachment that is in the bundle. Remove from bundle first.",
+        )
 
     # Hard delete file + record
     try:
@@ -1668,19 +1971,23 @@ async def download_round_bundle(
     from app.models.document_attachment import DocumentAttachment
     from app.services.pdf_merge import merge_pdf_bundle
 
-    doc = (await db.execute(
-        select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
-    round_ = (await db.execute(
-        select(DocumentApprovalRound).where(
-            DocumentApprovalRound.id == round_id,
-            DocumentApprovalRound.document_id == doc_id,
+    round_ = (
+        await db.execute(
+            select(DocumentApprovalRound).where(
+                DocumentApprovalRound.id == round_id,
+                DocumentApprovalRound.document_id == doc_id,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not round_ or not round_.returned_file_path:
         raise HTTPException(status_code=404, detail="Round or returned file not found")
 
@@ -1708,9 +2015,7 @@ async def download_round_bundle(
         return Response(
             content=returned_pdf_bytes,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{fname}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
     # Load attachment files and prepare for merging
@@ -1731,13 +2036,13 @@ async def download_round_bundle(
     return Response(
         content=merged_pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{fname}"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 
 
-@router.post("/{doc_id}/start-new-revision", response_model=DocumentResponse, status_code=201)
+@router.post(
+    "/{doc_id}/start-new-revision", response_model=DocumentResponse, status_code=201
+)
 async def start_new_revision(
     doc_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -1750,11 +2055,13 @@ async def start_new_revision(
     links carried over. Approval rounds and attachments are NOT copied — they
     were specific to the rejected revision.
     """
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-        .with_for_update()
-    )).scalar_one_or_none()
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
@@ -1788,12 +2095,21 @@ async def start_new_revision(
         document_assets.select().where(document_assets.c.document_id == doc.id)
     )
     for row in assets_result.all():
-        await db.execute(document_assets.insert().values(document_id=new_doc.id, asset_id=row.asset_id))
+        await db.execute(
+            document_assets.insert().values(
+                document_id=new_doc.id, asset_id=row.asset_id
+            )
+        )
 
     doc.status = "superseded"
+    doc.updated_by = user.id
 
     await record_audit(
-        db, user_id=user.id, action="update", entity_type="document", entity_id=new_doc.id,
+        db,
+        user_id=user.id,
+        action="update",
+        entity_type="document",
+        entity_id=new_doc.id,
         summary=f"Started revision {new_doc.revision_no} of {new_doc.document_type} '{new_doc.reference_no}'",
     )
     try:
@@ -1807,8 +2123,15 @@ async def start_new_revision(
 
 # --- Attachments (stored on web server filesystem) ---
 
-async def _load_doc_for_attachment(db: AsyncSession, doc_id: UUID, user: User) -> Document:
-    doc = (await db.execute(select(Document).where(Document.id == doc_id, Document.is_deleted == False))).scalar_one_or_none()  # noqa: E712
+
+async def _load_doc_for_attachment(
+    db: AsyncSession, doc_id: UUID, user: User
+) -> Document:
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, not Document.is_deleted)
+        )
+    ).scalar_one_or_none()  # noqa: E712
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
@@ -1822,6 +2145,7 @@ async def list_attachments(
     user: User = Depends(get_current_user),
 ):
     from app.models.document_attachment import DocumentAttachment
+
     await _load_doc_for_attachment(db, doc_id, user)
     result = await db.execute(
         select(DocumentAttachment)
@@ -1835,19 +2159,32 @@ async def list_attachments(
             DocumentAttachment.id,
         )
     )
-    return [{"id": str(a.id), "filename": a.filename, "size": a.size, "sort_order": a.sort_order, "content_type": a.content_type, "kind": a.kind} for a in result.scalars().all()]
+    return [
+        {
+            "id": str(a.id),
+            "filename": a.filename,
+            "size": a.size,
+            "sort_order": a.sort_order,
+            "content_type": a.content_type,
+            "kind": a.kind,
+        }
+        for a in result.scalars().all()
+    ]
 
 
 @router.post("/{doc_id}/attachments", status_code=201)
 async def upload_attachment(
     doc_id: UUID,
     file: UploadFile = File(...),
-    insert_after_page: int = Query(None, ge=0, description="Page number after which to insert (0-indexed, optional)"),
+    insert_after_page: int = Query(
+        None,
+        ge=0,
+        description="Page number after which to insert (0-indexed, optional)",
+    ),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
     from app.models.document_attachment import DocumentAttachment
-    from app.core.config import settings
 
     await _load_doc_for_attachment(db, doc_id, user)
 
@@ -1860,25 +2197,36 @@ async def upload_attachment(
         )
     declared_mime = (file.content_type or "").lower().split(";", 1)[0].strip()
     if declared_mime and declared_mime not in ALLOWED_ATTACHMENT_MIMES:
-        raise HTTPException(status_code=400, detail=f"Unsupported MIME type {declared_mime!r}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported MIME type {declared_mime!r}"
+        )
 
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=400, detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {_mb(MAX_ATTACHMENT_BYTES)}MB)",
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
     # Per-document attachment cap
     count_result = await db.execute(
-        select(func.count()).select_from(DocumentAttachment).where(
-            DocumentAttachment.document_id == doc_id, DocumentAttachment.is_deleted == False  # noqa: E712
+        select(func.count())
+        .select_from(DocumentAttachment)
+        .where(
+            DocumentAttachment.document_id == doc_id,
+            DocumentAttachment.is_deleted == False,  # noqa: E712
         )
     )
     existing_count = count_result.scalar() or 0
     if existing_count >= MAX_ATTACHMENTS_PER_DOC:
-        raise HTTPException(status_code=400, detail=f"Maximum of {MAX_ATTACHMENTS_PER_DOC} attachments per document")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum of {MAX_ATTACHMENTS_PER_DOC} attachments per document",
+        )
 
-    file_id = str(uuid_mod.uuid4())
+    file_id = str(uuid.uuid4())
     storage_key = f"attachments/{doc_id}/{file_id}{suffix}"
     storage.save(storage_key, data)
 
@@ -1898,7 +2246,12 @@ async def upload_attachment(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(att)
-    return {"id": str(att.id), "filename": att.filename, "size": att.size, "insert_after_page": att.insert_after_page}
+    return {
+        "id": str(att.id),
+        "filename": att.filename,
+        "size": att.size,
+        "insert_after_page": att.insert_after_page,
+    }
 
 
 @router.delete("/{doc_id}/attachments/{att_id}", status_code=204)
@@ -1909,8 +2262,13 @@ async def delete_attachment(
     user: User = Depends(require_permission("documents.edit")),
 ):
     from app.models.document_attachment import DocumentAttachment
+
     await _load_doc_for_attachment(db, doc_id, user)
-    result = await db.execute(select(DocumentAttachment).where(DocumentAttachment.id == att_id, DocumentAttachment.document_id == doc_id))
+    result = await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.id == att_id, DocumentAttachment.document_id == doc_id
+        )
+    )
     att = result.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
@@ -1944,7 +2302,10 @@ async def reorder_attachments(
     for i, att_id in enumerate(body):
         await db.execute(
             sa_update(DocumentAttachment)
-            .where(DocumentAttachment.id == att_id, DocumentAttachment.document_id == doc_id)
+            .where(
+                DocumentAttachment.id == att_id,
+                DocumentAttachment.document_id == doc_id,
+            )
             .values(sort_order=i)
         )
     await db.commit()
@@ -1965,38 +2326,52 @@ async def download_document_bundle(
     from fastapi.responses import Response
     from sqlalchemy.orm import selectinload
     from app.models.document_attachment import DocumentAttachment
-    from app.services.pdf_merge import merge_pdf_bundle
-    from app.api.v1.reports import _build_context, _fill_template, _convert_to_pdf, _stamp_vector_signatures
+    from app.api.v1.reports import (
+        _build_context,
+        _fill_template,
+        _convert_to_pdf,
+        _stamp_vector_signatures,
+    )
     from app.models.doc_template import DocTemplate
 
-    doc = (await db.execute(
-        select(Document)
-        .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
-        .options(
-            selectinload(Document.discipline),
-            selectinload(Document.project),
-            selectinload(Document.site_engineer).selectinload(User.designation),
-            selectinload(Document.qaqc_engineer).selectinload(User.designation),
+    doc = (
+        await db.execute(
+            select(Document)
+            .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+            .options(
+                selectinload(Document.discipline),
+                selectinload(Document.project),
+                selectinload(Document.site_engineer).selectinload(User.designation),
+                selectinload(Document.qaqc_engineer).selectinload(User.designation),
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
 
     # Get template
     if doc.template_id:
-        template = (await db.execute(select(DocTemplate).where(DocTemplate.id == doc.template_id))).scalar_one_or_none()
-    else:
-        template = (await db.execute(
-            select(DocTemplate).where(
-                DocTemplate.project_id == doc.project_id,
-                DocTemplate.doc_type == doc.document_type,
-                DocTemplate.is_active == True,  # noqa: E712
-                DocTemplate.is_deleted == False,  # noqa: E712
+        template = (
+            await db.execute(
+                select(DocTemplate).where(DocTemplate.id == doc.template_id)
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
+    else:
+        template = (
+            await db.execute(
+                select(DocTemplate).where(
+                    DocTemplate.project_id == doc.project_id,
+                    DocTemplate.doc_type == doc.document_type,
+                    DocTemplate.is_active == True,  # noqa: E712
+                    DocTemplate.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
     if not template:
-        raise HTTPException(status_code=404, detail="No template found for this document type")
+        raise HTTPException(
+            status_code=404, detail="No template found for this document type"
+        )
 
     # Generate PDF
     context = _build_context(doc)
@@ -2006,12 +2381,22 @@ async def download_document_bundle(
     # Load signature config
     import json as _json
     from app.models.app_setting import AppSetting
-    _sig_default = {"font_size": 36, "cell_width": 75, "x_offset": -0.3, "color": "#1a237e"}
-    _sig_setting = (await db.execute(select(AppSetting).where(AppSetting.key == "signature_config"))).scalar_one_or_none()
+
+    _sig_default = {
+        "font_size": 36,
+        "cell_width": 75,
+        "x_offset": -0.3,
+        "color": "#1a237e",
+    }
+    _sig_setting = (
+        await db.execute(select(AppSetting).where(AppSetting.key == "signature_config"))
+    ).scalar_one_or_none()
     _sig_cfg = _sig_default
     if _sig_setting:
         try:
-            _sig_cfg = _json.loads(_sig_setting.value).get(doc.document_type, _sig_default)
+            _sig_cfg = _json.loads(_sig_setting.value).get(
+                doc.document_type, _sig_default
+            )
         except Exception:
             pass
     main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc, _sig_cfg)
@@ -2034,13 +2419,12 @@ async def download_document_bundle(
         return Response(
             content=main_pdf_bytes,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{fname}"'
-            },
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
     # Merge all attachments (PDFs appended, images converted to PDF pages)
     from app.api.v1.reports import _merge_attachments_with_status
+
     try:
         merged_pdf, _ = _merge_attachments_with_status(main_pdf_bytes, attachments)
     except ValueError as e:
@@ -2050,8 +2434,5 @@ async def download_document_bundle(
     return Response(
         content=merged_pdf,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{fname}"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
-

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { GripVertical, Trash2, FileText, Loader2 } from "lucide-react";
+import Image from "next/image";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -119,7 +120,7 @@ export function BundleComposerModal({ open, onOpenChange, documentId, attachment
     enabled: open && !!documentId,
   });
 
-  const thumbnails = data?.thumbnails ?? [];
+  const thumbnails = useMemo(() => data?.thumbnails ?? [], [data?.thumbnails]);
   const pageCount = data?.page_count ?? 0;
 
   const attachmentIds = useMemo(() => new Set(attachments.map((a) => a.id)), [attachments]);
@@ -228,7 +229,7 @@ export function BundleComposerModal({ open, onOpenChange, documentId, attachment
                         <div key={`p-${item.pageNum}`} className="flex items-stretch">
                           {pageIdx === 0 && <DropZone id={`drop--1`} isOver={overDropZone === "drop--1"} />}
                           <div className="relative border rounded overflow-hidden">
-                            <img src={`data:image/png;base64,${item.thumb}`} alt={`Page ${item.pageNum}`} className="h-32 w-auto" />
+                            <Image src={`data:image/png;base64,${item.thumb}`} alt={`Page ${item.pageNum}`} width={128} height={128} className="h-32 w-auto" />
                             <span className="absolute bottom-0.5 right-1 text-[9px] bg-black/60 text-white px-1 rounded">{item.pageNum}</span>
                           </div>
                           <DropZone id={`drop-${pageIdx}`} isOver={overDropZone === `drop-${pageIdx}`} />

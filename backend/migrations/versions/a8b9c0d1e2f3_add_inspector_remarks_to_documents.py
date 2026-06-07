@@ -4,6 +4,7 @@ Revision ID: a8b9c0d1e2f3
 Revises: 7031919285ed
 Create Date: 2026-05-29
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -16,10 +17,18 @@ depends_on = None
 def upgrade() -> None:
     op.add_column("documents", sa.Column("remarks_1", sa.Text(), nullable=True))
     op.add_column("documents", sa.Column("remarks_2", sa.Text(), nullable=True))
-    op.add_column("documents", sa.Column("inspector_date_1", sa.String(20), nullable=True))
-    op.add_column("documents", sa.Column("inspector_time_1", sa.String(10), nullable=True))
-    op.add_column("documents", sa.Column("inspector_date_2", sa.String(20), nullable=True))
-    op.add_column("documents", sa.Column("inspector_time_2", sa.String(10), nullable=True))
+    op.add_column(
+        "documents", sa.Column("inspector_date_1", sa.String(20), nullable=True)
+    )
+    op.add_column(
+        "documents", sa.Column("inspector_time_1", sa.String(10), nullable=True)
+    )
+    op.add_column(
+        "documents", sa.Column("inspector_date_2", sa.String(20), nullable=True)
+    )
+    op.add_column(
+        "documents", sa.Column("inspector_time_2", sa.String(10), nullable=True)
+    )
 
 
 def downgrade() -> None:

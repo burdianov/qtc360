@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,7 +43,11 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
         # SSL only for external managed databases (Neon, etc.)
-        if self.environment == "production" and self.postgres_host not in ("localhost", "postgres", "127.0.0.1"):
+        if self.environment == "production" and self.postgres_host not in (
+            "localhost",
+            "postgres",
+            "127.0.0.1",
+        ):
             return f"{base}?ssl=require"
         return base
 
@@ -70,6 +73,7 @@ if settings.secret_key.strip() in _PLACEHOLDER_SECRETS or len(settings.secret_ke
         )
     else:
         import warnings
+
         warnings.warn(
             "SECRET_KEY is weak or a known placeholder. Tokens are forgeable. "
             "Set a strong SECRET_KEY before any non-development deployment.",

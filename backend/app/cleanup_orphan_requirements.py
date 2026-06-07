@@ -24,6 +24,7 @@ Run:
     cd backend
     uv run python -m app.cleanup_orphan_requirements
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -52,7 +53,9 @@ def _fmt(ar: AssetRequirement) -> str:
     )
 
 
-async def _snapshot_stale_ars(session: AsyncSession) -> list[tuple[str, str, str, float]]:
+async def _snapshot_stale_ars(
+    session: AsyncSession,
+) -> list[tuple[str, str, str, float]]:
     """Return (id, status, progress_percent, is_stale_score) for every non-not_started
     requirement that no longer has any live evidence (active link or active
     approved work item)."""
@@ -120,16 +123,21 @@ async def recalc_orphan_ars(session: AsyncSession) -> list[tuple[str, str, str]]
         await session.refresh(ar)
         change = (
             f"{ar_id}: {before_status}/{before_progress} -> {new_status}/{ar.progress_percent}"
-            + (f"  (cleared completion={ar.actual_completion_date}, approved={ar.approved_date})"
-               if new_status != "achieved" and (ar.actual_completion_date or ar.approved_date)
-               else "")
+            + (
+                f"  (cleared completion={ar.actual_completion_date}, approved={ar.approved_date})"
+                if new_status != "achieved"
+                and (ar.actual_completion_date or ar.approved_date)
+                else ""
+            )
         )
         print(f"  - {change}")
         transitions.append((ar_id, before_status, new_status))
     return transitions
 
 
-async def reset_stale_approved_work_items(session: AsyncSession) -> tuple[int, list[str]]:
+async def reset_stale_approved_work_items(
+    session: AsyncSession,
+) -> tuple[int, list[str]]:
     """Reset live work items whose 'approved' status no longer has backing
     evidence (the linking document is gone / soft-deleted / no longer
     approved, or the document_requirement_link was soft-deleted). These
@@ -241,7 +249,9 @@ async def purge_orphan_links(session: AsyncSession) -> int:
     if not rows:
         print("No orphan soft-deleted document_requirement_links to purge.")
         return 0
-    print(f"Hard-deleting {len(rows)} orphan soft-deleted document_requirement_link(s):")
+    print(
+        f"Hard-deleting {len(rows)} orphan soft-deleted document_requirement_link(s):"
+    )
     for lid, doc_id, ar_id in rows:
         print(f"  - {lid}  doc={doc_id}  ar={ar_id}")
     ids = [r[0] for r in rows]
@@ -279,9 +289,7 @@ async def main() -> None:
                 before_status = ar.status
                 new_status = await recalculate_requirement_status(session, ar_id)
                 await session.refresh(ar)
-                change = (
-                    f"  - {ar_id}: {before_status} -> {new_status}"
-                )
+                change = f"  - {ar_id}: {before_status} -> {new_status}"
                 print(change)
                 reset_transitions.append((ar_id, before_status, new_status))
             # Step 3: catch the structural staleness (requirements whose only

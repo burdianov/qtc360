@@ -27,12 +27,13 @@ event loop, which makes pooled asyncpg connections go stale
 ``NullPool`` so each call gets a brand-new connection bound to the
 current event loop.
 """
+
 from __future__ import annotations
 
 from typing import Iterable
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
@@ -117,6 +118,7 @@ async def hard_delete_documents(doc_ids: Iterable[str]) -> int:
             try:
                 from app.services.approval_files import purge_doc_responses
                 from app.services.storage import storage
+
                 for did in ids:
                     purge_doc_responses(did)
                     # Also clean up any per-doc attachments the API
@@ -125,6 +127,7 @@ async def hard_delete_documents(doc_ids: Iterable[str]) -> int:
                         root = storage._root / sub / str(did)  # noqa: SLF001
                         if root.exists():
                             import shutil
+
                             shutil.rmtree(root, ignore_errors=True)
             except Exception:
                 pass

@@ -10,15 +10,27 @@ from app.models.base import Base, BaseModel
 document_assets = Table(
     "document_assets",
     Base.metadata,
-    Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
-    Column("asset_id", UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "document_id",
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "asset_id",
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
 class DocumentAttachment(BaseModel):
     __tablename__ = "document_attachments"
 
-    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"), index=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id"), index=True
+    )
     document_approval_round_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("document_approval_rounds.id", ondelete="CASCADE"),

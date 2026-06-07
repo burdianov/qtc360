@@ -1,5 +1,6 @@
 """Generic CRUD endpoints for master tables."""
-from typing import Any, Type
+
+from typing import Type
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -39,6 +40,7 @@ def create_crud_router(
         stmt = select(model).where(model.is_deleted == False)  # noqa: E712
         if eager:
             from sqlalchemy.orm.strategy_options import _AbstractLoad
+
             for rel in eager:
                 if isinstance(rel, _AbstractLoad):
                     stmt = stmt.options(rel)
@@ -75,7 +77,10 @@ def create_crud_router(
         base = base.order_by(model.id)
         if paginated:
             from sqlalchemy import func
-            count_result = await db.execute(select(func.count()).select_from(base.subquery()))
+
+            count_result = await db.execute(
+                select(func.count()).select_from(base.subquery())
+            )
             total = count_result.scalar() or 0
             result = await db.execute(base.offset(skip).limit(limit))
             return {"items": result.scalars().all(), "total": total}
@@ -91,12 +96,16 @@ def create_crud_router(
         result = await db.execute(_base_query().where(model.id == item_id))
         item = result.scalar_one_or_none()
         if not item:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+            )
         if has_project:
             await assert_user_in_project(user, getattr(item, "project_id", None))
         return item
 
-    @router.post("", response_model=response_schema, status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "", response_model=response_schema, status_code=status.HTTP_201_CREATED
+    )
     async def create(
         body: create_schema,
         db: AsyncSession = Depends(get_db),
@@ -105,14 +114,19 @@ def create_crud_router(
         payload = body.model_dump()
         if has_project:
             project_id = payload.get("project_id")
-            await assert_user_in_project(user, project_id, require_super_for_missing=False)
+            await assert_user_in_project(
+                user, project_id, require_super_for_missing=False
+            )
         item = model(**payload)
         db.add(item)
         try:
             await db.commit()
         except IntegrityError:
             await db.rollback()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Record already exists or invalid reference",
+            )
         result = await db.execute(_base_query().where(model.id == item.id))
         item = result.scalar_one()
         return item
@@ -127,12 +141,18 @@ def create_crud_router(
         result = await db.execute(_base_query().where(model.id == item_id))
         item = result.scalar_one_or_none()
         if not item:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+            )
         if has_project:
             await assert_user_in_project(user, getattr(item, "project_id", None))
         updates = body.model_dump(exclude_unset=True)
         # Don't let an update silently move a row across projects unless the caller has access to BOTH.
-        if has_project and "project_id" in updates and updates["project_id"] != getattr(item, "project_id", None):
+        if (
+            has_project
+            and "project_id" in updates
+            and updates["project_id"] != getattr(item, "project_id", None)
+        ):
             await assert_user_in_project(user, updates["project_id"])
         for key, value in updates.items():
             setattr(item, key, value)
@@ -140,7 +160,10 @@ def create_crud_router(
             await db.commit()
         except IntegrityError:
             await db.rollback()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Record already exists or invalid reference")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Record already exists or invalid reference",
+            )
         result = await db.execute(_base_query().where(model.id == item_id))
         item = result.scalar_one()
         return item
@@ -151,10 +174,14 @@ def create_crud_router(
         db: AsyncSession = Depends(get_db),
         user: User = Depends(require_permission(write_permission)),
     ):
-        result = await db.execute(select(model).where(model.id == item_id, model.is_deleted == False))  # noqa: E712
+        result = await db.execute(
+            select(model).where(model.id == item_id, not model.is_deleted)
+        )  # noqa: E712
         item = result.scalar_one_or_none()
         if not item:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+            )
         if has_project:
             await assert_user_in_project(user, getattr(item, "project_id", None))
         if hard_delete:

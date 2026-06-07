@@ -1,8 +1,8 @@
 """Signature rendering: generates signature images from name + font."""
+
 import io
 import re
 from functools import lru_cache
-from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -33,10 +33,7 @@ _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 def get_available_fonts() -> list[dict]:
     """Return list of available signature fonts."""
-    return [
-        {"id": k, "name": k.replace("_", " ").title()}
-        for k in SIGNATURE_FONTS
-    ]
+    return [{"id": k, "name": k.replace("_", " ").title()} for k in SIGNATURE_FONTS]
 
 
 @lru_cache(maxsize=64)
@@ -48,6 +45,7 @@ def _load_font(font_id: str, font_size: int) -> ImageFont.FreeTypeFont:
 
 # Target visual height in pixels for normalization
 _TARGET_HEIGHT = 60
+
 
 @lru_cache(maxsize=64)
 def _normalized_font_size(font_id: str, name: str, base_size: int) -> int:
@@ -62,7 +60,12 @@ def _normalized_font_size(font_id: str, name: str, base_size: int) -> int:
     return max(16, int(base_size * _TARGET_HEIGHT / actual_h))
 
 
-def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 72, color: str = DEFAULT_SIGNATURE_COLOR) -> bytes:
+def render_signature(
+    name: str,
+    font_id: str = DEFAULT_FONT,
+    font_size: int = 72,
+    color: str = DEFAULT_SIGNATURE_COLOR,
+) -> bytes:
     """Render a name as a signature PNG image.
 
     Returns high-resolution PNG bytes suitable for embedding in DOCX via InlineImage.
@@ -89,9 +92,13 @@ def render_signature(name: str, font_id: str = DEFAULT_FONT, font_size: int = 72
     g = int(color[3:5], 16)
     b = int(color[5:7], 16)
 
-    draw.text((SIGNATURE_TEXT_X, -bbox[1] + SIGNATURE_TEXT_Y_OFFSET), name, font=font, fill=(r, g, b, 255))
+    draw.text(
+        (SIGNATURE_TEXT_X, -bbox[1] + SIGNATURE_TEXT_Y_OFFSET),
+        name,
+        font=font,
+        fill=(r, g, b, 255),
+    )
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", dpi=(300, 300))
     return buf.getvalue()
-

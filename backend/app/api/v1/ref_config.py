@@ -1,5 +1,5 @@
 """Reference number configuration endpoints."""
-from typing import Any
+
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import (
     assert_user_in_project,
-    get_current_user,
     require_permission,
     require_project_access,
 )
@@ -22,13 +21,20 @@ from app.services.audit import record_audit
 router = APIRouter(prefix="/ref-config", tags=["ref-config"])
 
 
-_ALLOWED_PLACEHOLDERS = {"project_code", "contractor_code", "discipline_code", "doc_type", "serial"}
+_ALLOWED_PLACEHOLDERS = {
+    "project_code",
+    "contractor_code",
+    "discipline_code",
+    "doc_type",
+    "serial",
+}
 
 
 def _validate_pattern(pattern: str) -> None:
     """Reject anything outside the known placeholder set to block format-string traversal
     (e.g. ``{0.__class__}``).  We require simple ``{name}``/``{name:fmt}`` placeholders."""
     import string
+
     fmt = string.Formatter()
     try:
         parsed = list(fmt.parse(pattern))
@@ -39,7 +45,9 @@ def _validate_pattern(pattern: str) -> None:
             continue
         # Reject attribute access or indexing in the field name.
         if any(c in field for c in ".[]"):
-            raise HTTPException(status_code=400, detail=f"Invalid pattern field: {field!r}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid pattern field: {field!r}"
+            )
         if field not in _ALLOWED_PLACEHOLDERS:
             raise HTTPException(
                 status_code=400,
@@ -50,7 +58,9 @@ def _validate_pattern(pattern: str) -> None:
 class RefConfigCreate(PydanticModel):
     project_id: UUID
     doc_type: str
-    pattern: str = "{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}"
+    pattern: str = (
+        "{project_code}-{contractor_code}-{discipline_code}-{doc_type}-{serial:04d}"
+    )
     project_code: str
     contractor_code: str = ""
     serial_start: int = DEFAULT_SERIAL_START

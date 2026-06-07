@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import Image from "next/image";
-import { ArrowLeft, Loader2, X, Send, PenLine, Download } from "lucide-react";
+import { ArrowLeft, Loader2, X, Send, Download } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -120,7 +118,7 @@ function NewMIRPageContent() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
-  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
+  const _sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -285,7 +283,7 @@ function NewMIRPageContent() {
       "rejected",
       "superseded",
     ].includes(existingDoc.status);
-  const fullyLocked =
+  const _fullyLocked =
     !!existingDoc &&
     [
       "with_approver_1",

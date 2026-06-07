@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef, useCallback, useEffect } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronRight, ChevronDown, Search, X, FileText, Download } from "lucide-react";
@@ -194,8 +194,8 @@ export default function InspectionTrackerPage() {
     enabled: !!project?.id,
   });
 
-  const columns = data?.columns ?? [];
-  const rows = data?.rows ?? [];
+  const columns = useMemo(() => data?.columns ?? [], [data?.columns]);
+  const rows = useMemo(() => data?.rows ?? [], [data?.rows]);
 
   // Group columns by level
   const levelGroups = useMemo(() => {
@@ -207,7 +207,7 @@ export default function InspectionTrackerPage() {
   }, [columns]);
 
   // Visible columns based on expanded levels
-  const visibleColumns = useMemo(() => {
+  const _visibleColumns = useMemo(() => {
     const result: Column[] = [];
     for (const level of LEVEL_ORDER) {
       if (!levelGroups[level]) continue;

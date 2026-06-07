@@ -10,9 +10,11 @@ class ClientCreate(BaseModel):
     name: str
     code: str
 
+
 class ClientUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+
 
 class ClientResponse(BaseModel):
     id: uuid.UUID
@@ -27,9 +29,11 @@ class ApproverTitleCreate(BaseModel):
     code: str
     title: str
 
+
 class ApproverTitleUpdate(BaseModel):
     code: str | None = None
     title: str | None = None
+
 
 class ApproverTitleResponse(BaseModel):
     id: uuid.UUID
@@ -44,10 +48,12 @@ class ApproverCreate(BaseModel):
     code: str
     title_id: uuid.UUID
 
+
 class ApproverUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     title_id: uuid.UUID | None = None
+
 
 class ApproverResponse(BaseModel):
     id: uuid.UUID
@@ -69,6 +75,7 @@ class ProjectCreate(BaseModel):
     end_date: date | None = None
     client_id: uuid.UUID | None = None
 
+
 class ProjectUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
@@ -78,6 +85,7 @@ class ProjectUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     client_id: uuid.UUID | None = None
+
 
 class ProjectResponse(BaseModel):
     id: uuid.UUID
@@ -101,12 +109,14 @@ class ProjectApproverCreate(BaseModel):
     approver_order: int
     approver_title_id: uuid.UUID | None = None
 
+
 class ProjectApproverUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     approver_id: uuid.UUID | None = None
     document_type: Literal["WIR", "MIR", "CIR", "FAT"] | None = None
     approver_order: int | None = None
     approver_title_id: uuid.UUID | None = None
+
 
 class ProjectApproverResponse(BaseModel):
     id: uuid.UUID
@@ -124,9 +134,11 @@ class DisciplineCreate(BaseModel):
     code: str
     project_id: uuid.UUID
 
+
 class DisciplineUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+
 
 class DisciplineResponse(BaseModel):
     id: uuid.UUID
@@ -143,10 +155,12 @@ class ServiceCreate(BaseModel):
     code: str
     discipline_id: uuid.UUID
 
+
 class ServiceUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     discipline_id: uuid.UUID | None = None
+
 
 class ServiceResponse(BaseModel):
     id: uuid.UUID
@@ -165,12 +179,14 @@ class AssetTypeCreate(BaseModel):
     parent_type_id: uuid.UUID | None = None
     sort_order: int = 0
 
+
 class AssetTypeUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     service_id: uuid.UUID | None = None
     parent_type_id: uuid.UUID | None = None
     sort_order: int | None = None
+
 
 class AssetTypeResponse(BaseModel):
     id: uuid.UUID
@@ -193,6 +209,7 @@ class AssetCreate(BaseModel):
     status: str = "pending"
     custom_fields: dict = {}
 
+
 class AssetUpdate(BaseModel):
     name: str | None = None
     tag_number: str | None = None
@@ -201,6 +218,7 @@ class AssetUpdate(BaseModel):
     location: str | None = None
     status: str | None = None
     custom_fields: dict | None = None
+
 
 class AssetResponse(BaseModel):
     id: uuid.UUID
@@ -222,10 +240,12 @@ class SystemCreate(BaseModel):
     description: str | None = None
     project_id: uuid.UUID
 
+
 class SystemUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     description: str | None = None
+
 
 class SystemResponse(BaseModel):
     id: uuid.UUID
@@ -243,9 +263,11 @@ class ContractorCreate(BaseModel):
     code: str
     project_id: uuid.UUID
 
+
 class ContractorUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+
 
 class ContractorResponse(BaseModel):
     id: uuid.UUID
@@ -264,11 +286,13 @@ class ApprovalStatusCreate(BaseModel):
     description: str
     action: str
 
+
 class ApprovalStatusUpdate(BaseModel):
     letter: str | None = None
     name: str | None = None
     description: str | None = None
     action: str | None = None
+
 
 class ApprovalStatusResponse(BaseModel):
     id: uuid.UUID
@@ -281,14 +305,16 @@ class ApprovalStatusResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
 # --- Designation ---
+
 
 class DesignationCreate(BaseModel):
     name: str
 
+
 class DesignationUpdate(BaseModel):
     name: str | None = None
+
 
 class DesignationResponse(BaseModel):
     id: uuid.UUID

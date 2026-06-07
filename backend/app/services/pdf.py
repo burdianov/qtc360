@@ -11,6 +11,7 @@ Three core operations:
   image overlap with the requested region and preferring OCR in that case,
   with preprocessing tuned for scanned/stamped Aconex transmittals.
 """
+
 from __future__ import annotations
 
 import io
@@ -68,7 +69,9 @@ def count_pages_in_docx(docx_bytes: bytes) -> int:
         try:
             proc = subprocess.run(cmd, capture_output=True, timeout=LIBREOFFICE_TIMEOUT)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            logger.exception("LibreOffice unavailable; defaulting cover_page_count to 1")
+            logger.exception(
+                "LibreOffice unavailable; defaulting cover_page_count to 1"
+            )
             return 1
         if proc.returncode != 0:
             logger.warning(
@@ -216,12 +219,16 @@ def extract_region_text(
         psm = PSM_BY_FIELD.get(target_field or "", 6)
         config = f"--psm {psm}"
         try:
-            text = pytesseract.image_to_string(Image.open(io.BytesIO(png)), config=config)
+            text = pytesseract.image_to_string(
+                Image.open(io.BytesIO(png)), config=config
+            )
         except pytesseract.TesseractNotFoundError:
             logger.warning(
                 "Tesseract binary not found; native text was empty for this region"
             )
-            raise ValueError("OCR unavailable: Tesseract is not installed on the server")
+            raise ValueError(
+                "OCR unavailable: Tesseract is not installed on the server"
+            )
         except Exception:
             logger.exception("Tesseract OCR failed")
             return "", "native"

@@ -2,6 +2,7 @@
 
 Revision ID: 9baac946c1e9
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -12,7 +13,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("documents", sa.Column("material_submittals", sa.Text(), nullable=True))
+    op.add_column(
+        "documents", sa.Column("material_submittals", sa.Text(), nullable=True)
+    )
     op.add_column("documents", sa.Column("qty", sa.String(length=100), nullable=True))
 
 

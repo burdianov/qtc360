@@ -12,8 +12,12 @@ class DocTemplate(BaseModel):
 
     __tablename__ = "doc_templates"
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), index=True)
-    doc_type: Mapped[str] = mapped_column(String(10), index=True)  # WIR, MIR, CIR, FAT, CHECKLIST
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id"), index=True
+    )
+    doc_type: Mapped[str] = mapped_column(
+        String(10), index=True
+    )  # WIR, MIR, CIR, FAT, CHECKLIST
     name: Mapped[str] = mapped_column(String(255))
     file: Mapped[bytes] = mapped_column(LargeBinary)
     filename: Mapped[str] = mapped_column(String(255))

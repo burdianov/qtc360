@@ -1,5 +1,6 @@
 """Reset a user's password to a known value by writing a fresh bcrypt hash
 directly into the DB. Bypasses the API and the seed's skip-if-exists check."""
+
 import asyncio
 import sys
 

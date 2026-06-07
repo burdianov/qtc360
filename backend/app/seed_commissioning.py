@@ -1,4 +1,5 @@
 """Seed commissioning data: services, asset types, assets, requirement templates."""
+
 import asyncio
 
 from sqlalchemy import select
@@ -9,7 +10,7 @@ from app.models.discipline import Discipline
 from app.models.service import Service
 from app.models.asset_type import AssetType
 from app.models.asset import Asset
-from app.models.commissioning import RequirementTemplate, AssetRequirement, AssetTagTarget
+from app.models.commissioning import RequirementTemplate, AssetRequirement
 
 
 # --- Services per Discipline (for project 1728) ---
@@ -44,10 +45,14 @@ SERVICES = {
 # --- Asset Types per Service ---
 ASSET_TYPES = {
     "GEN": [
-        {"name": "Generator", "code": "GEN", "subtypes": [
-            {"name": "2500kVA Generator", "code": "GEN-2500"},
-            {"name": "1250kVA Generator", "code": "GEN-1250"},
-        ]},
+        {
+            "name": "Generator",
+            "code": "GEN",
+            "subtypes": [
+                {"name": "2500kVA Generator", "code": "GEN-2500"},
+                {"name": "1250kVA Generator", "code": "GEN-1250"},
+            ],
+        },
     ],
     "LV": [
         {"name": "Main Distribution Board", "code": "MDB"},
@@ -143,47 +148,242 @@ ASSETS = [
 # --- Requirement Templates ---
 REQUIREMENT_TEMPLATES = [
     # L1 - FAT
-    {"name": "Factory Acceptance Test", "code": "FAT", "level": "L1", "category": "fat", "evidence": "FAT", "sort": 1},
+    {
+        "name": "Factory Acceptance Test",
+        "code": "FAT",
+        "level": "L1",
+        "category": "fat",
+        "evidence": "FAT",
+        "sort": 1,
+    },
     # L2A - Delivery & Placement
-    {"name": "Equipment Delivery", "code": "DEL", "level": "L2A", "category": "delivery", "evidence": "MIR", "sort": 1},
-    {"name": "Equipment Placement & Anchoring", "code": "PLC", "level": "L2A", "category": "activity", "evidence": "WIR", "sort": 2},
+    {
+        "name": "Equipment Delivery",
+        "code": "DEL",
+        "level": "L2A",
+        "category": "delivery",
+        "evidence": "MIR",
+        "sort": 1,
+    },
+    {
+        "name": "Equipment Placement & Anchoring",
+        "code": "PLC",
+        "level": "L2A",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 2,
+    },
     # L2B - Installation Activities
-    {"name": "Power Cable Installation", "code": "PWR-CBL", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 1, "work_breakdown": True},
-    {"name": "Control Cable Installation", "code": "CTL-CBL", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 2, "work_breakdown": True},
-    {"name": "Cable Termination", "code": "CBL-TERM", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 3, "work_breakdown": True},
-    {"name": "Containment Installation", "code": "CONT", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 4},
-    {"name": "Earthing Connection", "code": "EARTH", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 5},
-    {"name": "Piping Installation", "code": "PIPE", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 6},
-    {"name": "Ductwork Installation", "code": "DUCT", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 7},
-    {"name": "Insulation", "code": "INSUL", "level": "L2B", "category": "activity", "evidence": "WIR", "sort": 8},
+    {
+        "name": "Power Cable Installation",
+        "code": "PWR-CBL",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 1,
+        "work_breakdown": True,
+    },
+    {
+        "name": "Control Cable Installation",
+        "code": "CTL-CBL",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 2,
+        "work_breakdown": True,
+    },
+    {
+        "name": "Cable Termination",
+        "code": "CBL-TERM",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 3,
+        "work_breakdown": True,
+    },
+    {
+        "name": "Containment Installation",
+        "code": "CONT",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 4,
+    },
+    {
+        "name": "Earthing Connection",
+        "code": "EARTH",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 5,
+    },
+    {
+        "name": "Piping Installation",
+        "code": "PIPE",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 6,
+    },
+    {
+        "name": "Ductwork Installation",
+        "code": "DUCT",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 7,
+    },
+    {
+        "name": "Insulation",
+        "code": "INSUL",
+        "level": "L2B",
+        "category": "activity",
+        "evidence": "WIR",
+        "sort": 8,
+    },
     # L2B - Tests
-    {"name": "Insulation Resistance Test", "code": "IR-TEST", "level": "L2B", "category": "test", "evidence": "CIR", "sort": 10},
-    {"name": "Continuity Test", "code": "CONT-TEST", "level": "L2B", "category": "test", "evidence": "CIR", "sort": 11},
-    {"name": "Pressure Test", "code": "PRESS-TEST", "level": "L2B", "category": "test", "evidence": "CIR", "sort": 12},
-    {"name": "Cold Test", "code": "COLD-TEST", "level": "L2B", "category": "test", "evidence": "CIR", "sort": 13},
+    {
+        "name": "Insulation Resistance Test",
+        "code": "IR-TEST",
+        "level": "L2B",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 10,
+    },
+    {
+        "name": "Continuity Test",
+        "code": "CONT-TEST",
+        "level": "L2B",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 11,
+    },
+    {
+        "name": "Pressure Test",
+        "code": "PRESS-TEST",
+        "level": "L2B",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 12,
+    },
+    {
+        "name": "Cold Test",
+        "code": "COLD-TEST",
+        "level": "L2B",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 13,
+    },
     # L2B - Final gate
-    {"name": "Level 2B Final Inspection", "code": "L2B-FINAL", "level": "L2B", "category": "final_level_test", "evidence": "CIR", "sort": 99, "gate": True},
+    {
+        "name": "Level 2B Final Inspection",
+        "code": "L2B-FINAL",
+        "level": "L2B",
+        "category": "final_level_test",
+        "evidence": "CIR",
+        "sort": 99,
+        "gate": True,
+    },
     # L3 - Standalone Tests
-    {"name": "Functional Performance Test", "code": "FPT", "level": "L3", "category": "test", "evidence": "CIR", "sort": 1},
-    {"name": "Load Test", "code": "LOAD-TEST", "level": "L3", "category": "test", "evidence": "CIR", "sort": 2},
-    {"name": "Protection Relay Test", "code": "PROT-TEST", "level": "L3", "category": "test", "evidence": "CIR", "sort": 3},
-    {"name": "Vibration Test", "code": "VIB-TEST", "level": "L3", "category": "test", "evidence": "CIR", "sort": 4},
-    {"name": "Noise Level Test", "code": "NOISE-TEST", "level": "L3", "category": "test", "evidence": "CIR", "sort": 5},
+    {
+        "name": "Functional Performance Test",
+        "code": "FPT",
+        "level": "L3",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 1,
+    },
+    {
+        "name": "Load Test",
+        "code": "LOAD-TEST",
+        "level": "L3",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 2,
+    },
+    {
+        "name": "Protection Relay Test",
+        "code": "PROT-TEST",
+        "level": "L3",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 3,
+    },
+    {
+        "name": "Vibration Test",
+        "code": "VIB-TEST",
+        "level": "L3",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 4,
+    },
+    {
+        "name": "Noise Level Test",
+        "code": "NOISE-TEST",
+        "level": "L3",
+        "category": "test",
+        "evidence": "CIR",
+        "sort": 5,
+    },
     # L4 - Integration Tests
-    {"name": "BMS Integration Test", "code": "BMS-INT", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 1},
-    {"name": "Power Changeover Test", "code": "PCO-TEST", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 2},
-    {"name": "UPS Failover Test", "code": "UPS-FO", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 3},
-    {"name": "Fire Suppression Integration Test", "code": "FIRE-INT", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 4},
-    {"name": "Cooling Redundancy Test", "code": "COOL-RED", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 5},
-    {"name": "Emergency Power Off Test", "code": "EPO-TEST", "level": "L4", "category": "integration_test", "evidence": "CIR", "sort": 6},
+    {
+        "name": "BMS Integration Test",
+        "code": "BMS-INT",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 1,
+    },
+    {
+        "name": "Power Changeover Test",
+        "code": "PCO-TEST",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 2,
+    },
+    {
+        "name": "UPS Failover Test",
+        "code": "UPS-FO",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 3,
+    },
+    {
+        "name": "Fire Suppression Integration Test",
+        "code": "FIRE-INT",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 4,
+    },
+    {
+        "name": "Cooling Redundancy Test",
+        "code": "COOL-RED",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 5,
+    },
+    {
+        "name": "Emergency Power Off Test",
+        "code": "EPO-TEST",
+        "level": "L4",
+        "category": "integration_test",
+        "evidence": "CIR",
+        "sort": 6,
+    },
 ]
 
 # Tag mapping
-from app.core.types import LEVEL_TAG_MAP as TAG_MAP
+from app.core.types import LEVEL_TAG_MAP as TAG_MAP  # noqa: E402
 
 
 async def get_or_create(session, model, filter_field, filter_value, **kwargs):
-    result = await session.execute(select(model).where(getattr(model, filter_field) == filter_value))
+    result = await session.execute(
+        select(model).where(getattr(model, filter_field) == filter_value)
+    )
     item = result.scalar_one_or_none()
     if item:
         return item, False
@@ -206,7 +406,9 @@ async def seed_commissioning():
             return
 
         # Get disciplines
-        disc_result = await session.execute(select(Discipline).where(Discipline.project_id == proj.id))
+        disc_result = await session.execute(
+            select(Discipline).where(Discipline.project_id == proj.id)
+        )
         disc_map = {d.code: d for d in disc_result.scalars().all()}
 
         # --- Services ---
@@ -243,13 +445,28 @@ async def seed_commissioning():
             if not svc:
                 continue
             for t in types:
-                at, created = await get_or_create(session, AssetType, "code", t["code"], name=t["name"], service_id=svc.id)
+                at, created = await get_or_create(
+                    session,
+                    AssetType,
+                    "code",
+                    t["code"],
+                    name=t["name"],
+                    service_id=svc.id,
+                )
                 type_map[t["code"]] = at
                 if created:
                     print(f"  AssetType: {t['code']} - {t['name']}")
                 # Subtypes
                 for st in t.get("subtypes", []):
-                    sub, sub_created = await get_or_create(session, AssetType, "code", st["code"], name=st["name"], service_id=svc.id, parent_type_id=at.id)
+                    sub, sub_created = await get_or_create(
+                        session,
+                        AssetType,
+                        "code",
+                        st["code"],
+                        name=st["name"],
+                        service_id=svc.id,
+                        parent_type_id=at.id,
+                    )
                     type_map[st["code"]] = sub
                     if sub_created:
                         print(f"    Subtype: {st['code']} - {st['name']}")
@@ -260,11 +477,18 @@ async def seed_commissioning():
         for a in ASSETS:
             at = type_map.get(a["type_code"])
             if not at:
-                print(f"  WARNING: type {a['type_code']} not found for asset {a['tag']}")
+                print(
+                    f"  WARNING: type {a['type_code']} not found for asset {a['tag']}"
+                )
                 continue
             asset, created = await get_or_create(
-                session, Asset, "tag_number", a["tag"],
-                name=a["name"], asset_type_id=at.id, project_id=proj.id,
+                session,
+                Asset,
+                "tag_number",
+                a["tag"],
+                name=a["name"],
+                asset_type_id=at.id,
+                project_id=proj.id,
             )
             # Backfill project_id for assets seeded before this column existed.
             if asset.project_id is None:
@@ -278,7 +502,10 @@ async def seed_commissioning():
         tmpl_map = {}
         for rt in REQUIREMENT_TEMPLATES:
             tmpl, created = await get_or_create(
-                session, RequirementTemplate, "code", rt["code"],
+                session,
+                RequirementTemplate,
+                "code",
+                rt["code"],
                 name=rt["name"],
                 project_id=proj.id,
                 level_code=rt["level"],
@@ -298,8 +525,27 @@ async def seed_commissioning():
         # Electrical assets also get cable/termination requirements
         # All assets get L2B final, L3 FPT
         core_reqs = ["FAT", "DEL", "PLC"]
-        electrical_reqs = ["PWR-CBL", "CTL-CBL", "CBL-TERM", "CONT", "EARTH", "IR-TEST", "CONT-TEST", "COLD-TEST", "L2B-FINAL", "FPT"]
-        mechanical_reqs = ["PIPE", "DUCT", "INSUL", "PRESS-TEST", "COLD-TEST", "L2B-FINAL", "FPT"]
+        electrical_reqs = [
+            "PWR-CBL",
+            "CTL-CBL",
+            "CBL-TERM",
+            "CONT",
+            "EARTH",
+            "IR-TEST",
+            "CONT-TEST",
+            "COLD-TEST",
+            "L2B-FINAL",
+            "FPT",
+        ]
+        mechanical_reqs = [
+            "PIPE",
+            "DUCT",
+            "INSUL",
+            "PRESS-TEST",
+            "COLD-TEST",
+            "L2B-FINAL",
+            "FPT",
+        ]
 
         # Determine which assets are electrical vs mechanical
         el_svc_codes = {"HV", "LV", "UPS", "GEN", "LTG", "ELP", "CM"}
@@ -347,11 +593,13 @@ async def seed_commissioning():
                     )
                 )
                 if not existing.scalar_one_or_none():
-                    session.add(AssetRequirement(
-                        asset_id=asset.id,
-                        requirement_template_id=tmpl.id,
-                        required_for_tag=TAG_MAP[tmpl.level_code],
-                    ))
+                    session.add(
+                        AssetRequirement(
+                            asset_id=asset.id,
+                            requirement_template_id=tmpl.id,
+                            required_for_tag=TAG_MAP[tmpl.level_code],
+                        )
+                    )
                     assigned_count += 1
 
         await session.commit()
@@ -359,17 +607,43 @@ async def seed_commissioning():
 
         # --- L4 Integration test assignments (multi-asset) ---
         # BMS Integration: all BMS + CRAC + AHU + FCU
-        bms_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["BMSP", "BMSC", "CRAC", "IRC", "AHU", "FCU"])]
+        bms_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(
+                t.startswith(p) for p in ["BMSP", "BMSC", "CRAC", "IRC", "AHU", "FCU"]
+            )
+        ]
         # Power Changeover: Generators + ATS + MDB + HV
-        pco_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["GEN", "ATS", "MDB", "HVSW", "TX"])]
+        pco_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(t.startswith(p) for p in ["GEN", "ATS", "MDB", "HVSW", "TX"])
+        ]
         # UPS Failover: UPS + STS + UPSDB
-        ups_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["UPS", "STS", "UPSDB"])]
+        ups_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(t.startswith(p) for p in ["UPS", "STS", "UPSDB"])
+        ]
         # Fire Suppression: FAP + FM200
-        fire_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["FAP", "FM200"])]
+        fire_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(t.startswith(p) for p in ["FAP", "FM200"])
+        ]
         # Cooling Redundancy: Chillers + CRAC + IRC + CHWP
-        cool_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["CH-", "CRAC", "IRC", "CHWP"])]
+        cool_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(t.startswith(p) for p in ["CH-", "CRAC", "IRC", "CHWP"])
+        ]
         # EPO: all critical power
-        epo_assets = [t for t, a in asset_map.items() if any(t.startswith(p) for p in ["GEN", "UPS", "STS", "MDB", "ATS", "HVSW"])]
+        epo_assets = [
+            t
+            for t, a in asset_map.items()
+            if any(t.startswith(p) for p in ["GEN", "UPS", "STS", "MDB", "ATS", "HVSW"])
+        ]
 
         l4_assignments = [
             ("BMS-INT", bms_assets),
@@ -396,11 +670,13 @@ async def seed_commissioning():
                     )
                 )
                 if not existing.scalar_one_or_none():
-                    session.add(AssetRequirement(
-                        asset_id=asset.id,
-                        requirement_template_id=tmpl.id,
-                        required_for_tag="blue",
-                    ))
+                    session.add(
+                        AssetRequirement(
+                            asset_id=asset.id,
+                            requirement_template_id=tmpl.id,
+                            required_for_tag="blue",
+                        )
+                    )
                     l4_count += 1
 
         await session.commit()
@@ -408,15 +684,48 @@ async def seed_commissioning():
 
         # --- Systems ---
         from app.models.system import System, asset_systems
+
         SYSTEMS = [
-            {"name": "Building Management System", "code": "BMS", "description": "Controls and monitors HVAC, lighting, and energy management"},
-            {"name": "Fire Alarm System", "code": "FAS", "description": "Fire detection, alarm, and suppression control"},
-            {"name": "Access Control System", "code": "ACS", "description": "Door access, CCTV integration, and security management"},
-            {"name": "Electrical Power System", "code": "EPS", "description": "HV/LV distribution, generators, UPS, and switchgear"},
-            {"name": "HVAC System", "code": "HVAC", "description": "Heating, ventilation, and air conditioning"},
-            {"name": "Plumbing & Drainage System", "code": "PDS", "description": "Water supply, drainage, and sewage"},
-            {"name": "Fire Fighting System", "code": "FFS", "description": "Sprinklers, hydrants, and suppression systems"},
-            {"name": "Lighting Control System", "code": "LCS", "description": "Automated lighting control and DALI integration"},
+            {
+                "name": "Building Management System",
+                "code": "BMS",
+                "description": "Controls and monitors HVAC, lighting, and energy management",
+            },
+            {
+                "name": "Fire Alarm System",
+                "code": "FAS",
+                "description": "Fire detection, alarm, and suppression control",
+            },
+            {
+                "name": "Access Control System",
+                "code": "ACS",
+                "description": "Door access, CCTV integration, and security management",
+            },
+            {
+                "name": "Electrical Power System",
+                "code": "EPS",
+                "description": "HV/LV distribution, generators, UPS, and switchgear",
+            },
+            {
+                "name": "HVAC System",
+                "code": "HVAC",
+                "description": "Heating, ventilation, and air conditioning",
+            },
+            {
+                "name": "Plumbing & Drainage System",
+                "code": "PDS",
+                "description": "Water supply, drainage, and sewage",
+            },
+            {
+                "name": "Fire Fighting System",
+                "code": "FFS",
+                "description": "Sprinklers, hydrants, and suppression systems",
+            },
+            {
+                "name": "Lighting Control System",
+                "code": "LCS",
+                "description": "Automated lighting control and DALI integration",
+            },
         ]
 
         # Asset-to-system mapping by asset tag prefix
@@ -432,7 +741,9 @@ async def seed_commissioning():
         system_count = 0
         for sys_data in SYSTEMS:
             existing = await session.execute(
-                select(System).where(System.code == sys_data["code"], System.project_id == proj.id)
+                select(System).where(
+                    System.code == sys_data["code"], System.project_id == proj.id
+                )
             )
             if not existing.scalar_one_or_none():
                 session.add(System(project_id=proj.id, **sys_data))
@@ -440,7 +751,9 @@ async def seed_commissioning():
         await session.commit()
 
         # Link assets to systems
-        sys_result = await session.execute(select(System).where(System.project_id == proj.id))
+        sys_result = await session.execute(
+            select(System).where(System.project_id == proj.id)
+        )
         sys_map = {s.code: s for s in sys_result.scalars().all()}
 
         link_count = 0
@@ -457,7 +770,11 @@ async def seed_commissioning():
                         )
                     )
                     if not existing_link.first():
-                        await session.execute(asset_systems.insert().values(asset_id=asset.id, system_id=system.id))
+                        await session.execute(
+                            asset_systems.insert().values(
+                                asset_id=asset.id, system_id=system.id
+                            )
+                        )
                         link_count += 1
         await session.commit()
         print(f"  Created {system_count} systems, {link_count} asset-system links.")

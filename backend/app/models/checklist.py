@@ -9,6 +9,7 @@ from app.models.base import BaseModel
 
 class ChecklistItem(BaseModel):
     """Master checklist item belonging to a requirement template (project-scoped)."""
+
     __tablename__ = "checklist_items"
 
     requirement_template_id: Mapped[uuid.UUID] = mapped_column(
@@ -20,6 +21,7 @@ class ChecklistItem(BaseModel):
 
 class DocumentChecklist(BaseModel):
     """A filled checklist for a specific requirement within a document."""
+
     __tablename__ = "document_checklists"
 
     document_id: Mapped[uuid.UUID] = mapped_column(
@@ -42,10 +44,13 @@ class DocumentChecklist(BaseModel):
 
 class DocumentChecklistResponse(BaseModel):
     """Individual response to a checklist item within a document checklist."""
+
     __tablename__ = "document_checklist_responses"
 
     checklist_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("document_checklists.id", ondelete="CASCADE"), index=True
+        UUID(as_uuid=True),
+        ForeignKey("document_checklists.id", ondelete="CASCADE"),
+        index=True,
     )
     checklist_item_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checklist_items.id")

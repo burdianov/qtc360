@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
@@ -13,11 +12,8 @@ import {
   Loader2,
   X,
   Send,
-  PenLine,
   Download,
-  ChevronDown,
 } from "lucide-react";
-import Image from "next/image";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -35,15 +31,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Form,
   FormField,
@@ -137,7 +124,7 @@ function NewCIRPageContent() {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
-  const sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
+  const _sigColor = resolvedTheme === "dark" ? "%23f8fafc" : "%230f172a";
   const [attachments, setAttachments] = useState<
     {
       id?: string;
@@ -304,7 +291,7 @@ function NewCIRPageContent() {
       "rejected",
       "superseded",
     ].includes(existingDoc.status);
-  const fullyLocked =
+  const _fullyLocked =
     !!existingDoc &&
     [
       "with_approver_1",

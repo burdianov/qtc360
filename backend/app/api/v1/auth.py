@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_admin, require_superuser
+from app.core.deps import get_current_user, require_superuser
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -17,6 +17,7 @@ from app.core.security import (
     validate_password,
     verify_password,
 )
+from app.core.types import MAX_SIGNATURE_IMAGE_BYTES
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
@@ -36,17 +37,27 @@ def _ver(user: User) -> int:
     return int(user.token_version or 0)
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_superuser),
 ):
     validate_password(body.password)
-    existing = await db.execute(select(User).where(User.email == body.email, User.is_deleted == False))  # noqa: E712
+    existing = await db.execute(
+        select(User).where(User.email == body.email, not User.is_deleted)
+    )  # noqa: E712
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
-    user = User(email=body.email, hashed_password=hash_password(body.password), full_name=body.full_name)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
+    user = User(
+        email=body.email,
+        hashed_password=hash_password(body.password),
+        full_name=body.full_name,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -55,15 +66,24 @@ async def register(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email, User.is_deleted == False))  # noqa: E712
+    result = await db.execute(
+        select(User).where(User.email == body.email, not User.is_deleted)
+    )  # noqa: E712
     user = result.scalar_one_or_none()
     if not user or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled"
+        )
     if user.must_change_password and user.password_reset_at:
         if datetime.now(timezone.utc) - user.password_reset_at > timedelta(hours=1):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Temporary password expired. Please contact your administrator.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Temporary password expired. Please contact your administrator.",
+            )
     return LoginResponse(
         access_token=create_access_token(str(user.id), token_version=_ver(user)),
         refresh_token=create_refresh_token(str(user.id), token_version=_ver(user)),
@@ -75,13 +95,21 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     payload = decode_token(body.refresh_token)
     if not payload or payload.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
-    result = await db.execute(select(User).where(User.id == payload["sub"], User.is_deleted == False))  # noqa: E712
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        )
+    result = await db.execute(
+        select(User).where(User.id == payload["sub"], not User.is_deleted)
+    )  # noqa: E712
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
     if int(payload.get("ver", 0) or 0) != _ver(user):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked"
+        )
     return TokenResponse(
         access_token=create_access_token(str(user.id), token_version=_ver(user)),
         refresh_token=create_refresh_token(str(user.id), token_version=_ver(user)),
@@ -95,7 +123,10 @@ async def change_password(
     user: User = Depends(get_current_user),
 ):
     if not verify_password(body.current_password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
     validate_password(body.new_password)
     user.hashed_password = hash_password(body.new_password)
     user.must_change_password = False
@@ -105,10 +136,17 @@ async def change_password(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not change password")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not change password",
+        )
     new_access = create_access_token(str(user.id), token_version=_ver(user))
     new_refresh = create_refresh_token(str(user.id), token_version=_ver(user))
-    return {"detail": "Password changed successfully", "access_token": new_access, "refresh_token": new_refresh}
+    return {
+        "detail": "Password changed successfully",
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+    }
 
 
 @router.get("/me", response_model=UserResponse)
@@ -132,28 +170,42 @@ async def list_users_basic(
 ):
     """List active users for dropdowns/selectors. Limited to users sharing at least one
     project with the caller, unless the caller is an admin/super_admin/superuser."""
-    from app.models.designation import Designation
-    role_names = {r.name for r in user.roles}
-    is_privileged = user.is_superuser or "admin" in role_names or "super_admin" in role_names
+    from app.models.user import user_projects
 
-    base = select(User).where(User.is_deleted == False, User.is_active == True).options(  # noqa: E712
-        selectinload(User.designation), selectinload(User.projects)
+    role_names = {r.name for r in user.roles}
+    is_privileged = (
+        user.is_superuser or "admin" in role_names or "super_admin" in role_names
+    )
+
+    base = (
+        select(User)
+        .where(not User.is_deleted, User.is_active)
+        .options(  # noqa: E712
+            selectinload(User.designation), selectinload(User.projects)
+        )
     )
     if not is_privileged:
         my_project_ids = {p.id for p in user.projects}
         if not my_project_ids:
             return []
+        # Filter at the SQL level: only users who share at least one project.
+        base = base.where(
+            User.id.in_(
+                select(user_projects.c.user_id).where(
+                    user_projects.c.project_id.in_(my_project_ids)
+                )
+            )
+        )
     result = await db.execute(base)
     users = result.scalars().all()
-    if not is_privileged:
-        my_project_ids = {p.id for p in user.projects}
-        users = [u for u in users if any(p.id in my_project_ids for p in u.projects)]
     return [
         {
             "id": str(u.id),
             "full_name": u.full_name,
             "email": u.email,
-            "designation": {"id": str(u.designation.id), "name": u.designation.name} if u.designation else None,
+            "designation": {"id": str(u.designation.id), "name": u.designation.name}
+            if u.designation
+            else None,
             "signature_font": u.signature_font,
             "signature_text": u.signature_text,
             "has_signature": bool(u.signature_path),
@@ -187,9 +239,13 @@ async def upload_signature(
     if not file.content_type or not file.content_type.startswith("image/png"):
         raise HTTPException(status_code=400, detail="Only PNG files are accepted")
     data = await file.read()
-    if len(data) > 2 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 2MB)")
+    if len(data) > MAX_SIGNATURE_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {MAX_SIGNATURE_IMAGE_BYTES // (1024 * 1024)}MB)",
+        )
     from app.services.storage import storage
+
     key = f"signatures/{user.id}.png"
     storage.save(key, data)
     user.signature_path = key
@@ -205,6 +261,7 @@ async def delete_signature(
     """Delete the current user's uploaded signature."""
     if user.signature_path:
         from app.services.storage import storage
+
         storage.delete(user.signature_path)
         user.signature_path = None
         await db.commit()
@@ -219,6 +276,7 @@ async def get_user_signature(
     """Serve a user's signature PNG."""
     from app.services.storage import storage
     from app.core.config import settings
+
     key = f"signatures/{user_id}.png"
     if not storage.exists(key):
         raise HTTPException(status_code=404, detail="No signature uploaded")
@@ -233,6 +291,7 @@ async def my_projects(user: User = Depends(get_current_user)):
 
 # --- Signature Delegations ---
 
+
 @router.get("/me/delegations")
 async def list_delegations(
     db: AsyncSession = Depends(get_db),
@@ -240,13 +299,21 @@ async def list_delegations(
 ):
     """List users I have granted signing rights to."""
     from app.models.signature_delegation import SignatureDelegation
+
     result = await db.execute(
         select(SignatureDelegation)
-        .where(SignatureDelegation.grantor_id == user.id, SignatureDelegation.is_deleted == False)  # noqa: E712
+        .where(
+            SignatureDelegation.grantor_id == user.id,
+            not SignatureDelegation.is_deleted,
+        )  # noqa: E712
         .options(selectinload(SignatureDelegation.delegate))
     )
     return [
-        {"id": str(d.id), "delegate_id": str(d.delegate_id), "delegate_name": d.delegate.full_name}
+        {
+            "id": str(d.id),
+            "delegate_id": str(d.delegate_id),
+            "delegate_name": d.delegate.full_name,
+        }
         for d in result.scalars().all()
     ]
 
@@ -260,6 +327,7 @@ async def grant_delegation(
     """Grant signing rights to another user."""
     from app.models.signature_delegation import SignatureDelegation
     from uuid import UUID as _UUID
+
     delegate_id = body.get("delegate_id")
     if not delegate_id:
         raise HTTPException(status_code=400, detail="delegate_id required")
@@ -293,6 +361,7 @@ async def revoke_delegation(
 ):
     """Revoke a signing delegation."""
     from app.models.signature_delegation import SignatureDelegation
+
     result = await db.execute(
         select(SignatureDelegation).where(
             SignatureDelegation.id == delegation_id,
@@ -315,19 +384,27 @@ async def list_delegated_by(
 ):
     """List users who have granted me signing rights."""
     from app.models.signature_delegation import SignatureDelegation
+
     result = await db.execute(
         select(SignatureDelegation)
-        .where(SignatureDelegation.delegate_id == user.id, SignatureDelegation.is_deleted == False)  # noqa: E712
+        .where(
+            SignatureDelegation.delegate_id == user.id,
+            not SignatureDelegation.is_deleted,
+        )  # noqa: E712
         .options(selectinload(SignatureDelegation.grantor))
     )
     return [
-        {"grantor_id": str(d.grantor_id), "grantor_name": d.grantor.full_name, "has_signature": bool(d.grantor.signature_path)}
+        {
+            "grantor_id": str(d.grantor_id),
+            "grantor_name": d.grantor.full_name,
+            "has_signature": bool(d.grantor.signature_path),
+        }
         for d in result.scalars().all()
     ]
 
 
-
 # --- User Preferences (column orders, etc.) ---
+
 
 @router.get("/me/preferences")
 async def get_preferences(
@@ -335,8 +412,11 @@ async def get_preferences(
     user: User = Depends(get_current_user),
 ):
     from app.models.user_preference import UserPreference
+
     result = await db.execute(
-        select(UserPreference).where(UserPreference.user_id == user.id, UserPreference.is_deleted == False)  # noqa: E712
+        select(UserPreference).where(
+            UserPreference.user_id == user.id, not UserPreference.is_deleted
+        )  # noqa: E712
     )
     return {p.key: p.value for p in result.scalars().all()}
 
@@ -364,5 +444,8 @@ async def set_preference(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not save preference")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save preference",
+        )
     return {"status": "ok"}

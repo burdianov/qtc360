@@ -17,6 +17,7 @@ teardown by a super_admin user. Re-runs do not pollute the dev DB.
 
 Run: cd backend && .venv/Scripts/python.exe -m pytest tests/test_deferred_allocation.py -v
 """
+
 import asyncio
 import uuid as uuid_mod
 from contextlib import asynccontextmanager
@@ -60,13 +61,9 @@ class _TestContext:
         return {"Authorization": f"Bearer {self.site_token}"}
 
     async def load_tokens(self) -> None:
-        self.site_token = await _login(
-            self.client, "site@jlwme.com", "Site1234"
-        )
+        self.site_token = await _login(self.client, "site@jlwme.com", "Site1234")
 
-    async def create(
-        self, doc_type: str, title: str, **extra
-    ) -> dict:
+    async def create(self, doc_type: str, title: str, **extra) -> dict:
         """Create a document and track its id for teardown."""
         body = {
             "project_id": PROJECT_ID,
@@ -75,9 +72,7 @@ class _TestContext:
             "discipline_id": DISCIPLINE_ID,
             **extra,
         }
-        r = await self.client.post(
-            f"{BASE}/documents", json=body, headers=self.headers
-        )
+        r = await self.client.post(f"{BASE}/documents", json=body, headers=self.headers)
         assert r.status_code == 201, f"Create {doc_type} failed: {r.text}"
         doc = r.json()
         self._created_ids.append(doc["id"])
@@ -102,7 +97,9 @@ class _TestContext:
             return
         try:
             deleted = await hard_delete_documents(self._created_ids)
-            print(f"  cleanup: hard-deleted {deleted}/{len(self._created_ids)} tracked docs")
+            print(
+                f"  cleanup: hard-deleted {deleted}/{len(self._created_ids)} tracked docs"
+            )
         except Exception as e:  # noqa: BLE001
             print(f"  WARN: hard_delete_documents raised {e!r}")
 
@@ -154,9 +151,7 @@ async def test_create_document_rejects_client_supplied_reference():
             },
             headers=ctx.headers,
         )
-        assert r.status_code == 422, (
-            f"Expected 422, got {r.status_code}: {r.text}"
-        )
+        assert r.status_code == 422, f"Expected 422, got {r.status_code}: {r.text}"
 
 
 @pytest.mark.asyncio
@@ -165,6 +160,7 @@ async def test_concurrent_creates_get_unique_references():
     succeed and produce distinct references. This is the core race-safety
     guarantee of deferred allocation."""
     async with make_ctx() as ctx:
+
         async def post(i: int):
             r = await ctx.client.post(
                 f"{BASE}/documents",
@@ -183,17 +179,13 @@ async def test_concurrent_creates_get_unique_references():
         results = await asyncio.gather(*(post(i) for i in range(5)))
         refs = []
         for i, r in enumerate(results):
-            assert r.status_code == 201, (
-                f"Post #{i} failed: {r.status_code} {r.text}"
-            )
+            assert r.status_code == 201, f"Post #{i} failed: {r.status_code} {r.text}"
             doc = r.json()
             ctx._created_ids.append(doc["id"])
             refs.append(doc["reference_no"])
 
         assert len(refs) == 5
-        assert len(set(refs)) == 5, (
-            f"Duplicate references in concurrent run: {refs}"
-        )
+        assert len(set(refs)) == 5, f"Duplicate references in concurrent run: {refs}"
 
 
 @pytest.mark.asyncio

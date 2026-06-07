@@ -31,13 +31,26 @@ def upgrade() -> None:
         sa.Column("doc_type", sa.String(length=10), nullable=False),
         sa.Column("discipline_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("next_serial", sa.Integer(), server_default="1", nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.Column("is_deleted", sa.Boolean(), server_default=sa.text("false"), nullable=False),
-
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+        ),
+        sa.Column(
+            "is_deleted", sa.Boolean(), server_default=sa.text("false"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["discipline_id"], ["disciplines.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["discipline_id"], ["disciplines.id"], ondelete="CASCADE"
+        ),
         sa.UniqueConstraint(
             "project_id",
             "doc_type",

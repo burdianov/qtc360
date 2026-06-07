@@ -1,4 +1,5 @@
 """Commissioning engine API endpoints."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -53,14 +54,20 @@ from app.services.commissioning import recalculate_requirement_status
 router = APIRouter(prefix="/commissioning", tags=["commissioning"])
 
 
-async def _project_id_for_asset(db: AsyncSession, asset_id: uuid.UUID) -> uuid.UUID | None:
+async def _project_id_for_asset(
+    db: AsyncSession, asset_id: uuid.UUID
+) -> uuid.UUID | None:
     from app.models.asset import Asset
+
     res = await db.execute(select(Asset.project_id).where(Asset.id == asset_id))
     return res.scalar_one_or_none()
 
 
-async def _project_id_for_asset_requirement(db: AsyncSession, ar_id: uuid.UUID) -> uuid.UUID | None:
+async def _project_id_for_asset_requirement(
+    db: AsyncSession, ar_id: uuid.UUID
+) -> uuid.UUID | None:
     from app.models.asset import Asset
+
     res = await db.execute(
         select(Asset.project_id)
         .join(AssetRequirement, AssetRequirement.asset_id == Asset.id)
@@ -69,13 +76,17 @@ async def _project_id_for_asset_requirement(db: AsyncSession, ar_id: uuid.UUID) 
     return res.scalar_one_or_none()
 
 
-async def _project_id_for_document(db: AsyncSession, doc_id: uuid.UUID) -> uuid.UUID | None:
+async def _project_id_for_document(
+    db: AsyncSession, doc_id: uuid.UUID
+) -> uuid.UUID | None:
     from app.models.document import Document
+
     res = await db.execute(select(Document.project_id).where(Document.id == doc_id))
     return res.scalar_one_or_none()
 
 
 # --- Requirement Templates ---
+
 
 @router.get("/requirement-templates", response_model=list[RequirementTemplateOut])
 async def list_requirement_templates(
@@ -90,7 +101,10 @@ async def list_requirement_templates(
         await assert_user_in_project(user, project_id)
     query = select(RequirementTemplate).where(RequirementTemplate.is_deleted == False)  # noqa: E712
     if project_id:
-        query = query.where((RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None))  # noqa: E711
+        query = query.where(
+            (RequirementTemplate.project_id == project_id)
+            | (RequirementTemplate.project_id is None)
+        )  # noqa: E711
     elif not user.is_superuser:
         # Without project_id: show global + projects the user belongs to.
         my_project_ids = [p.id for p in user.projects]
@@ -108,7 +122,11 @@ async def list_requirement_templates(
     return result.scalars().all()
 
 
-@router.post("/requirement-templates", response_model=RequirementTemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/requirement-templates",
+    response_model=RequirementTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_requirement_template(
     data: RequirementTemplateCreate,
     db: AsyncSession = Depends(get_db),
@@ -120,7 +138,9 @@ async def create_requirement_template(
     if payload.get("project_id"):
         await assert_user_in_project(user, payload["project_id"])
     elif not user.is_superuser:
-        raise HTTPException(status_code=403, detail="Only super_admin can create global templates")
+        raise HTTPException(
+            status_code=403, detail="Only super_admin can create global templates"
+        )
     template = RequirementTemplate(**payload)
     db.add(template)
     try:
@@ -132,21 +152,27 @@ async def create_requirement_template(
     return template
 
 
-@router.patch("/requirement-templates/{template_id}", response_model=RequirementTemplateOut)
+@router.patch(
+    "/requirement-templates/{template_id}", response_model=RequirementTemplateOut
+)
 async def update_requirement_template(
     template_id: uuid.UUID,
     data: RequirementTemplateUpdate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
-    result = await db.execute(select(RequirementTemplate).where(RequirementTemplate.id == template_id))
+    result = await db.execute(
+        select(RequirementTemplate).where(RequirementTemplate.id == template_id)
+    )
     template = result.scalar_one_or_none()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     if template.project_id:
         await assert_user_in_project(user, template.project_id)
     elif not user.is_superuser:
-        raise HTTPException(status_code=403, detail="Only super_admin can modify global templates")
+        raise HTTPException(
+            status_code=403, detail="Only super_admin can modify global templates"
+        )
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(template, k, v)
     try:
@@ -160,6 +186,7 @@ async def update_requirement_template(
 
 # --- Asset Requirements ---
 
+
 @router.get("/asset-requirements", response_model=list[AssetRequirementOut])
 async def list_asset_requirements(
     asset_id: uuid.UUID | None = None,
@@ -169,6 +196,7 @@ async def list_asset_requirements(
     user: User = Depends(get_current_user),
 ):
     from app.models.asset import Asset
+
     query = select(AssetRequirement).where(AssetRequirement.is_deleted == False)  # noqa: E712
     if asset_id:
         ap = await _project_id_for_asset(db, asset_id)
@@ -177,7 +205,8 @@ async def list_asset_requirements(
     if project_id:
         await assert_user_in_project(user, project_id)
         query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
-            Asset.is_deleted == False, Asset.project_id == project_id  # noqa: E712
+            not Asset.is_deleted,
+            Asset.project_id == project_id,  # noqa: E712
         )
     elif not asset_id and not user.is_superuser:
         # No filter at all: scope to the user's projects.
@@ -185,17 +214,26 @@ async def list_asset_requirements(
         if not my_project_ids:
             return []
         query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
-            Asset.is_deleted == False, Asset.project_id.in_(my_project_ids)  # noqa: E712
+            not Asset.is_deleted,
+            Asset.project_id.in_(my_project_ids),  # noqa: E712
         )
     if required_for_tag:
         query = query.where(AssetRequirement.required_for_tag == required_for_tag)
     # Sort by level then sort_order from the template
-    query = query.join(RequirementTemplate, AssetRequirement.requirement_template_id == RequirementTemplate.id, isouter=True).order_by(RequirementTemplate.level_code, RequirementTemplate.sort_order)
+    query = query.join(
+        RequirementTemplate,
+        AssetRequirement.requirement_template_id == RequirementTemplate.id,
+        isouter=True,
+    ).order_by(RequirementTemplate.level_code, RequirementTemplate.sort_order)
     result = await db.execute(query)
     return result.scalars().all()
 
 
-@router.post("/asset-requirements", response_model=AssetRequirementOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/asset-requirements",
+    response_model=AssetRequirementOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_asset_requirement(
     data: AssetRequirementCreate,
     db: AsyncSession = Depends(get_db),
@@ -211,12 +249,16 @@ async def create_asset_requirement(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Requirement already assigned to this asset")
+        raise HTTPException(
+            status_code=409, detail="Requirement already assigned to this asset"
+        )
     await db.refresh(req)
     return req
 
 
-@router.patch("/asset-requirements/{asset_requirement_id}", response_model=AssetRequirementOut)
+@router.patch(
+    "/asset-requirements/{asset_requirement_id}", response_model=AssetRequirementOut
+)
 async def update_asset_requirement(
     asset_requirement_id: uuid.UUID,
     data: AssetRequirementUpdate,
@@ -244,13 +286,17 @@ async def update_asset_requirement(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Requirement already assigned to this asset")
+        raise HTTPException(
+            status_code=409, detail="Requirement already assigned to this asset"
+        )
 
     await db.refresh(req)
     return req
 
 
-@router.delete("/asset-requirements/{asset_requirement_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/asset-requirements/{asset_requirement_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_asset_requirement(
     asset_requirement_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -284,19 +330,34 @@ async def delete_asset_requirement(
     req.is_deleted = True
     await db.commit()
 
-@router.post("/asset-requirements/bulk", response_model=list[AssetRequirementOut], status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/asset-requirements/bulk",
+    response_model=list[AssetRequirementOut],
+    status_code=status.HTTP_201_CREATED,
+)
 async def bulk_create_asset_requirements(
     data: AssetRequirementBulkCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
     from app.models.asset import Asset
+
     if data.asset_ids:
         # Verify every asset is in a project the user has access to.
-        rows = (await db.execute(
-            select(Asset.id, Asset.project_id).where(Asset.id.in_(data.asset_ids))
-        )).all()
-        for _aid, pid in rows:
+        rows = (
+            await db.execute(
+                select(Asset.id, Asset.project_id).where(Asset.id.in_(data.asset_ids))
+            )
+        ).all()
+        project_ids = {pid for _, pid in rows if pid is not None}
+        if len(project_ids) > 1:
+            raise HTTPException(
+                status_code=400, detail="Bulk create cannot span multiple projects"
+            )
+        if not project_ids:
+            raise HTTPException(status_code=404, detail="No valid assets found")
+        for pid in project_ids:
             await assert_user_in_project(user, pid)
     reqs = []
     for asset_id in data.asset_ids:
@@ -312,7 +373,9 @@ async def bulk_create_asset_requirements(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="One or more requirements already assigned")
+        raise HTTPException(
+            status_code=409, detail="One or more requirements already assigned"
+        )
     for r in reqs:
         await db.refresh(r)
     return reqs
@@ -331,10 +394,14 @@ async def bulk_assign_by_asset_type(
 
     # Get all asset type IDs (parent + subtypes)
     type_ids = [data.asset_type_id]
-    subtypes = await db.execute(select(AssetType.id).where(AssetType.parent_type_id == data.asset_type_id))
+    subtypes = await db.execute(
+        select(AssetType.id).where(AssetType.parent_type_id == data.asset_type_id)
+    )
     type_ids.extend([row[0] for row in subtypes.all()])
 
-    asset_q = select(Asset).where(Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False)  # noqa: E712
+    asset_q = select(Asset).where(
+        Asset.asset_type_id.in_(type_ids), not Asset.is_deleted
+    )  # noqa: E712
     if not user.is_superuser:
         my_project_ids = [p.id for p in user.projects]
         if not my_project_ids:
@@ -347,15 +414,18 @@ async def bulk_assign_by_asset_type(
         existing = await db.execute(
             select(AssetRequirement).where(
                 AssetRequirement.asset_id == asset.id,
-                AssetRequirement.requirement_template_id == data.requirement_template_id,
+                AssetRequirement.requirement_template_id
+                == data.requirement_template_id,
             )
         )
         if not existing.scalar_one_or_none():
-            db.add(AssetRequirement(
-                asset_id=asset.id,
-                requirement_template_id=data.requirement_template_id,
-                required_for_tag=data.required_for_tag,
-            ))
+            db.add(
+                AssetRequirement(
+                    asset_id=asset.id,
+                    requirement_template_id=data.requirement_template_id,
+                    required_for_tag=data.required_for_tag,
+                )
+            )
             count += 1
 
     try:
@@ -368,6 +438,7 @@ async def bulk_assign_by_asset_type(
 
 # --- Work Items ---
 
+
 @router.get("/work-items", response_model=list[RequirementWorkItemOut])
 async def list_work_items(
     asset_requirement_id: uuid.UUID,
@@ -378,13 +449,20 @@ async def list_work_items(
     await assert_user_in_project(user, pid)
     result = await db.execute(
         select(RequirementWorkItem)
-        .where(RequirementWorkItem.asset_requirement_id == asset_requirement_id, RequirementWorkItem.is_deleted == False)  # noqa: E712
+        .where(
+            RequirementWorkItem.asset_requirement_id == asset_requirement_id,
+            not RequirementWorkItem.is_deleted,
+        )  # noqa: E712
         .order_by(RequirementWorkItem.sequence_no, RequirementWorkItem.id)
     )
     return result.scalars().all()
 
 
-@router.post("/work-items", response_model=RequirementWorkItemOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/work-items",
+    response_model=RequirementWorkItemOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_work_item(
     data: RequirementWorkItemCreate,
     db: AsyncSession = Depends(get_db),
@@ -408,7 +486,9 @@ async def update_work_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.submit")),
 ):
-    result = await db.execute(select(RequirementWorkItem).where(RequirementWorkItem.id == item_id))
+    result = await db.execute(
+        select(RequirementWorkItem).where(RequirementWorkItem.id == item_id)
+    )
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
@@ -427,7 +507,9 @@ async def delete_work_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.submit")),
 ):
-    result = await db.execute(select(RequirementWorkItem).where(RequirementWorkItem.id == item_id))
+    result = await db.execute(
+        select(RequirementWorkItem).where(RequirementWorkItem.id == item_id)
+    )
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
@@ -442,7 +524,12 @@ async def delete_work_item(
 
 # --- Document Requirement Links ---
 
-@router.post("/document-links", response_model=DocumentRequirementLinkOut, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/document-links",
+    response_model=DocumentRequirementLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_document_requirement_link(
     data: DocumentRequirementLinkCreate,
     db: AsyncSession = Depends(get_db),
@@ -453,7 +540,10 @@ async def create_document_requirement_link(
     if pid_doc is None or pid_req is None:
         raise HTTPException(status_code=404, detail="Document or requirement not found")
     if pid_doc != pid_req:
-        raise HTTPException(status_code=400, detail="Document and requirement belong to different projects")
+        raise HTTPException(
+            status_code=400,
+            detail="Document and requirement belong to different projects",
+        )
     await assert_user_in_project(user, pid_doc)
     link = DocumentRequirementLink(**data.model_dump())
     db.add(link)
@@ -500,19 +590,28 @@ async def list_document_links(
     user: User = Depends(get_current_user),
 ):
     if document_id:
-        await assert_user_in_project(user, await _project_id_for_document(db, document_id))
+        await assert_user_in_project(
+            user, await _project_id_for_document(db, document_id)
+        )
     if asset_requirement_id:
-        await assert_user_in_project(user, await _project_id_for_asset_requirement(db, asset_requirement_id))
-    query = select(DocumentRequirementLink).where(DocumentRequirementLink.is_deleted == False)  # noqa: E712
+        await assert_user_in_project(
+            user, await _project_id_for_asset_requirement(db, asset_requirement_id)
+        )
+    query = select(DocumentRequirementLink).where(
+        not DocumentRequirementLink.is_deleted
+    )  # noqa: E712
     if document_id:
         query = query.where(DocumentRequirementLink.document_id == document_id)
     if asset_requirement_id:
-        query = query.where(DocumentRequirementLink.asset_requirement_id == asset_requirement_id)
+        query = query.where(
+            DocumentRequirementLink.asset_requirement_id == asset_requirement_id
+        )
     result = await db.execute(query)
     return result.scalars().all()
 
 
 # --- Tag Targets ---
+
 
 @router.get("/tag-targets", response_model=list[AssetTagTargetOut])
 async def list_tag_targets(
@@ -527,15 +626,22 @@ async def list_tag_targets(
         query = query.where(AssetTagTarget.asset_id == asset_id)
     elif not user.is_superuser:
         from app.models.asset import Asset
+
         my_project_ids = [p.id for p in user.projects]
         if not my_project_ids:
             return []
-        query = query.join(Asset, AssetTagTarget.asset_id == Asset.id).where(Asset.project_id.in_(my_project_ids))
+        query = query.join(Asset, AssetTagTarget.asset_id == Asset.id).where(
+            Asset.project_id.in_(my_project_ids)
+        )
     result = await db.execute(query)
     return result.scalars().all()
 
 
-@router.post("/tag-targets", response_model=AssetTagTargetOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tag-targets",
+    response_model=AssetTagTargetOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_tag_target(
     data: AssetTagTargetCreate,
     db: AsyncSession = Depends(get_db),
@@ -559,7 +665,9 @@ async def update_tag_target(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("commissioning.manage")),
 ):
-    result = await db.execute(select(AssetTagTarget).where(AssetTagTarget.id == target_id))
+    result = await db.execute(
+        select(AssetTagTarget).where(AssetTagTarget.id == target_id)
+    )
     target = result.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Tag target not found")
@@ -573,6 +681,7 @@ async def update_tag_target(
 
 
 # --- Commissioning Progress ---
+
 
 @router.get("/progress", response_model=list[AssetCommissioningProgress])
 async def get_commissioning_progress(
@@ -593,7 +702,10 @@ async def get_commissioning_progress(
 
     reqs_result = await db.execute(
         select(AssetRequirement)
-        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(asset_ids))  # noqa: E712
+        .where(
+            not AssetRequirement.is_deleted,
+            AssetRequirement.asset_id.in_(asset_ids),
+        )  # noqa: E712
         .options(selectinload(AssetRequirement.work_items))
     )
     all_reqs = reqs_result.scalars().all()
@@ -601,7 +713,8 @@ async def get_commissioning_progress(
     tmpl_result = await db.execute(
         select(RequirementTemplate).where(
             RequirementTemplate.is_deleted == False,  # noqa: E712
-            (RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None),  # noqa: E711
+            (RequirementTemplate.project_id == project_id)
+            | (RequirementTemplate.project_id == None),  # noqa: E711
         )
     )
     templates = {t.id: t for t in tmpl_result.scalars().all()}
@@ -632,44 +745,59 @@ async def get_commissioning_progress(
         for req in asset_reqs:
             tmpl = templates.get(req.requirement_template_id)
             work_items = [wi for wi in req.work_items if not wi.is_deleted]
-            req_details.append(AssetRequirementDetail(
-                id=req.id,
-                asset_id=req.asset_id,
-                requirement_template_id=req.requirement_template_id,
-                status=req.status,
-                progress_percent=req.progress_percent,
-                required_for_tag=req.required_for_tag,
-                target_date=req.target_date,
-                actual_completion_date=req.actual_completion_date,
-                notes=req.notes,
-                created_at=req.created_at,
-                template_name=tmpl.name if tmpl else None,
-                template_code=tmpl.code if tmpl else None,
-                level_code=tmpl.level_code if tmpl else None,
-                work_items=work_items,
-            ))
+            req_details.append(
+                AssetRequirementDetail(
+                    id=req.id,
+                    asset_id=req.asset_id,
+                    requirement_template_id=req.requirement_template_id,
+                    status=req.status,
+                    progress_percent=req.progress_percent,
+                    required_for_tag=req.required_for_tag,
+                    target_date=req.target_date,
+                    actual_completion_date=req.actual_completion_date,
+                    notes=req.notes,
+                    created_at=req.created_at,
+                    template_name=tmpl.name if tmpl else None,
+                    template_code=tmpl.code if tmpl else None,
+                    level_code=tmpl.level_code if tmpl else None,
+                    work_items=work_items,
+                )
+            )
 
         current_tags = []
         for tag_code, levels in TAG_LEVEL_MAP.items():
-            tag_reqs = [r for r in asset_reqs if templates.get(r.requirement_template_id) and templates[r.requirement_template_id].level_code in levels and not templates[r.requirement_template_id].is_optional]
+            tag_reqs = [
+                r
+                for r in asset_reqs
+                if templates.get(r.requirement_template_id)
+                and templates[r.requirement_template_id].level_code in levels
+                and not templates[r.requirement_template_id].is_optional
+            ]
             if tag_reqs and all(r.status == "achieved" for r in tag_reqs):
                 current_tags.append(tag_code)
 
-        progress_list.append(AssetCommissioningProgress(
-            asset_id=asset.id,
-            asset_name=asset.name,
-            tag_number=asset.tag_number,
-            current_tags=current_tags,
-            requirements=req_details,
-            tag_targets=tags_by_asset.get(asset.id, []),
-        ))
+        progress_list.append(
+            AssetCommissioningProgress(
+                asset_id=asset.id,
+                asset_name=asset.name,
+                tag_number=asset.tag_number,
+                current_tags=current_tags,
+                requirements=req_details,
+                tag_targets=tags_by_asset.get(asset.id, []),
+            )
+        )
 
     return progress_list
 
 
 # --- Gate Override Acknowledgements ---
 
-@router.post("/gate-overrides", response_model=GateOverrideOut, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/gate-overrides",
+    response_model=GateOverrideOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_gate_override(
     data: GateOverrideCreate,
     db: AsyncSession = Depends(get_db),
@@ -682,7 +810,9 @@ async def create_gate_override(
     if data.document_id:
         pid_doc = await _project_id_for_document(db, data.document_id)
         if pid_doc != pid:
-            raise HTTPException(status_code=400, detail="Asset and document are in different projects")
+            raise HTTPException(
+                status_code=400, detail="Asset and document are in different projects"
+            )
     override = GateOverrideAcknowledgement(
         user_id=user.id,
         asset_id=data.asset_id,
@@ -693,7 +823,11 @@ async def create_gate_override(
     )
     db.add(override)
     await record_audit(
-        db, user_id=user.id, action="gate_override", entity_type="asset", entity_id=data.asset_id,
+        db,
+        user_id=user.id,
+        action="gate_override",
+        entity_type="asset",
+        entity_id=data.asset_id,
         summary=f"Gate override on level {data.level_code}",
     )
     await db.commit()
@@ -714,8 +848,9 @@ async def check_gate_requirements(
     from app.models.commissioning import RequirementTemplate
 
     result = await db.execute(
-        select(AssetRequirement)
-        .where(AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False)  # noqa: E712
+        select(AssetRequirement).where(
+            AssetRequirement.asset_id == asset_id, not AssetRequirement.is_deleted
+        )  # noqa: E712
     )
     reqs = result.scalars().all()
 
@@ -731,14 +866,21 @@ async def check_gate_requirements(
     incomplete = []
     for req in reqs:
         tmpl = templates.get(req.requirement_template_id)
-        if tmpl and tmpl.level_code == level_code and not tmpl.is_optional and req.status != "achieved":
-            incomplete.append({
-                "requirement_id": str(req.id),
-                "template_name": tmpl.name,
-                "template_code": tmpl.code,
-                "status": req.status,
-                "progress_percent": req.progress_percent,
-            })
+        if (
+            tmpl
+            and tmpl.level_code == level_code
+            and not tmpl.is_optional
+            and req.status != "achieved"
+        ):
+            incomplete.append(
+                {
+                    "requirement_id": str(req.id),
+                    "template_name": tmpl.name,
+                    "template_code": tmpl.code,
+                    "status": req.status,
+                    "progress_percent": req.progress_percent,
+                }
+            )
 
     return {"complete": len(incomplete) == 0, "incomplete": incomplete}
 
@@ -751,20 +893,22 @@ async def list_gate_overrides(
 ):
     if asset_id:
         await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
-    query = select(GateOverrideAcknowledgement).where(GateOverrideAcknowledgement.is_deleted == False)  # noqa: E712
+    query = select(GateOverrideAcknowledgement).where(
+        not GateOverrideAcknowledgement.is_deleted
+    )  # noqa: E712
     if asset_id:
         query = query.where(GateOverrideAcknowledgement.asset_id == asset_id)
     elif not user.is_superuser:
         from app.models.asset import Asset
+
         my_project_ids = [p.id for p in user.projects]
         if not my_project_ids:
             return []
-        query = query.join(Asset, GateOverrideAcknowledgement.asset_id == Asset.id).where(
-            Asset.project_id.in_(my_project_ids)
-        )
+        query = query.join(
+            Asset, GateOverrideAcknowledgement.asset_id == Asset.id
+        ).where(Asset.project_id.in_(my_project_ids))
     result = await db.execute(query)
     return result.scalars().all()
-
 
 
 # ─── Admin: recalculate all ───────────────────────────────────────────────────
@@ -781,10 +925,16 @@ async def recalculate_all_requirements(
     from app.services.commissioning import recalculate_tag_status
 
     result = await db.execute(
-        select(AssetRequirement.id, AssetRequirement.asset_id, AssetRequirement.status)
-        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(  # noqa: E712
-            select(Asset.id).where(Asset.project_id == project_id, Asset.is_deleted == False)  # noqa: E712
-        ))
+        select(
+            AssetRequirement.id, AssetRequirement.asset_id, AssetRequirement.status
+        ).where(
+            not AssetRequirement.is_deleted,
+            AssetRequirement.asset_id.in_(  # noqa: E712
+                select(Asset.id).where(
+                    Asset.project_id == project_id, not Asset.is_deleted
+                )  # noqa: E712
+            ),
+        )
     )
     rows = result.all()
     changed = 0
@@ -819,23 +969,30 @@ async def get_inspection_tracker(
     from app.models.asset import Asset
     from app.models.asset_type import AssetType
     from app.models.service import Service
-    from app.models.document import Document
 
     # 1. Load requirement templates for project
     tmpl_result = await db.execute(
-        select(RequirementTemplate).where(
+        select(RequirementTemplate)
+        .where(
             RequirementTemplate.is_deleted == False,  # noqa: E712
             RequirementTemplate.is_active == True,  # noqa: E712
-            (RequirementTemplate.project_id == project_id) | (RequirementTemplate.project_id == None),  # noqa: E711
-        ).order_by(RequirementTemplate.sort_order, RequirementTemplate.level_code)
+            (RequirementTemplate.project_id == project_id)
+            | (RequirementTemplate.project_id == None),  # noqa: E711
+        )
+        .order_by(RequirementTemplate.sort_order, RequirementTemplate.level_code)
     )
     templates = tmpl_result.scalars().all()
     tmpl_by_id = {t.id: t for t in templates}
 
     # 2. Load assets
     assets_result = await db.execute(
-        select(Asset).where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
-        .options(selectinload(Asset.asset_type).selectinload(AssetType.service).selectinload(Service.discipline))
+        select(Asset)
+        .where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
+        .options(
+            selectinload(Asset.asset_type)
+            .selectinload(AssetType.service)
+            .selectinload(Service.discipline)
+        )
     )
     assets = assets_result.scalars().all()
     if not assets:
@@ -845,8 +1002,10 @@ async def get_inspection_tracker(
 
     # 3. Load all asset requirements
     reqs_result = await db.execute(
-        select(AssetRequirement)
-        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(asset_ids))  # noqa: E712
+        select(AssetRequirement).where(
+            not AssetRequirement.is_deleted,
+            AssetRequirement.asset_id.in_(asset_ids),
+        )  # noqa: E712
     )
     all_reqs = reqs_result.scalars().all()
 
@@ -890,15 +1049,23 @@ async def get_inspection_tracker(
     # 5. Build columns (requirement templates grouped by level)
     level_order = ["L1", "L2A", "L2B", "L3", "L4", "L5"]
     columns = []
-    for tmpl in sorted(templates, key=lambda t: (level_order.index(t.level_code) if t.level_code in level_order else 99, t.sort_order)):
-        columns.append({
-            "id": str(tmpl.id),
-            "name": tmpl.name,
-            "code": tmpl.code,
-            "level_code": tmpl.level_code,
-            "doc_type": tmpl.evidence_document_type,
-            "sort_order": tmpl.sort_order,
-        })
+    for tmpl in sorted(
+        templates,
+        key=lambda t: (
+            level_order.index(t.level_code) if t.level_code in level_order else 99,
+            t.sort_order,
+        ),
+    ):
+        columns.append(
+            {
+                "id": str(tmpl.id),
+                "name": tmpl.name,
+                "code": tmpl.code,
+                "level_code": tmpl.level_code,
+                "doc_type": tmpl.evidence_document_type,
+                "sort_order": tmpl.sort_order,
+            }
+        )
 
     # 6. Build rows
     rows = []
@@ -912,12 +1079,22 @@ async def get_inspection_tracker(
 
         # Calculate blocker: first unmet non-optional requirement in sort order
         blocker = None
-        for tmpl in sorted(templates, key=lambda t: (level_order.index(t.level_code) if t.level_code in level_order else 99, t.sort_order)):
+        for tmpl in sorted(
+            templates,
+            key=lambda t: (
+                level_order.index(t.level_code) if t.level_code in level_order else 99,
+                t.sort_order,
+            ),
+        ):
             if tmpl.is_optional:
                 continue
             req = asset_reqs.get(tmpl.id)
             if req and req.status not in ("achieved", "not_applicable"):
-                blocker = {"template_name": tmpl.name, "level_code": tmpl.level_code, "status": req.status}
+                blocker = {
+                    "template_name": tmpl.name,
+                    "level_code": tmpl.level_code,
+                    "status": req.status,
+                }
                 break
 
         # Build cells keyed by template_id
@@ -928,14 +1105,20 @@ async def get_inspection_tracker(
             for link in links:
                 doc = link.document
                 if doc and not doc.is_deleted:
-                    doc_refs.append({
-                        "id": str(doc.id),
-                        "reference_no": doc.reference_no,
-                        "revision_no": doc.revision_no or 0,
-                        "status": doc.status,
-                    })
+                    doc_refs.append(
+                        {
+                            "id": str(doc.id),
+                            "reference_no": doc.reference_no,
+                            "revision_no": doc.revision_no or 0,
+                            "status": doc.status,
+                        }
+                    )
             work_items = wi_by_ar.get(req.id, [])
-            wi_data = [{"name": wi.name, "status": wi.status} for wi in work_items] if work_items else []
+            wi_data = (
+                [{"name": wi.name, "status": wi.status} for wi in work_items]
+                if work_items
+                else []
+            )
             cells[str(tmpl_id)] = {
                 "status": req.status,
                 "progress": req.progress_percent,
@@ -946,26 +1129,40 @@ async def get_inspection_tracker(
         # Determine achieved levels
         achieved_levels = []
         for level in level_order:
-            level_reqs = [r for tid, r in asset_reqs.items() if tmpl_by_id.get(tid) and tmpl_by_id[tid].level_code == level and not tmpl_by_id[tid].is_optional]
+            level_reqs = [
+                r
+                for tid, r in asset_reqs.items()
+                if tmpl_by_id.get(tid)
+                and tmpl_by_id[tid].level_code == level
+                and not tmpl_by_id[tid].is_optional
+            ]
             if level_reqs and all(r.status == "achieved" for r in level_reqs):
                 achieved_levels.append(level)
 
-        rows.append({
-            "asset_id": str(asset.id),
-            "asset_name": asset.name,
-            "tag_number": asset.tag_number,
-            "asset_type": asset.asset_type.name if asset.asset_type else None,
-            "discipline": asset.asset_type.service.discipline.name if asset.asset_type and asset.asset_type.service and asset.asset_type.service.discipline else None,
-            "service": asset.asset_type.service.name if asset.asset_type and asset.asset_type.service else None,
-            "pod": (asset.custom_fields or {}).get("field_1", ""),
-            "custom_fields": asset.custom_fields or {},
-            "location": asset.location,
-            "progress": progress,
-            "achieved_count": achieved,
-            "total_count": total,
-            "blocker": blocker,
-            "achieved_levels": achieved_levels,
-            "cells": cells,
-        })
+        rows.append(
+            {
+                "asset_id": str(asset.id),
+                "asset_name": asset.name,
+                "tag_number": asset.tag_number,
+                "asset_type": asset.asset_type.name if asset.asset_type else None,
+                "discipline": asset.asset_type.service.discipline.name
+                if asset.asset_type
+                and asset.asset_type.service
+                and asset.asset_type.service.discipline
+                else None,
+                "service": asset.asset_type.service.name
+                if asset.asset_type and asset.asset_type.service
+                else None,
+                "pod": (asset.custom_fields or {}).get("field_1", ""),
+                "custom_fields": asset.custom_fields or {},
+                "location": asset.location,
+                "progress": progress,
+                "achieved_count": achieved,
+                "total_count": total,
+                "blocker": blocker,
+                "achieved_levels": achieved_levels,
+                "cells": cells,
+            }
+        )
 
     return {"columns": columns, "rows": rows}

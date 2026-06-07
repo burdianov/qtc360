@@ -1,17 +1,21 @@
 """Pydantic schemas for commissioning engine."""
+
 import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 LEVEL_CODES = Literal["L1", "L2A", "L2B", "L3", "L4", "L5"]
-REQUIREMENT_CATEGORIES = Literal["fat", "delivery", "activity", "test", "integration_test", "final_level_test"]
+REQUIREMENT_CATEGORIES = Literal[
+    "fat", "delivery", "activity", "test", "integration_test", "final_level_test"
+]
 EVIDENCE_DOCUMENT_TYPES = Literal["FAT", "MIR", "WIR", "CIR"]
 TAG_CODES = Literal["red", "yellow", "green", "blue"]
 
 
 # --- RequirementTemplate ---
+
 
 class RequirementTemplateCreate(BaseModel):
     project_id: uuid.UUID | None = None
@@ -66,12 +70,14 @@ class RequirementTemplateOut(BaseModel):
 
 # --- AssetRequirement ---
 
+
 class AssetRequirementCreate(BaseModel):
     asset_id: uuid.UUID
     requirement_template_id: uuid.UUID
     required_for_tag: TAG_CODES
     target_date: date | None = None
     notes: str | None = None
+
 
 class AssetRequirementUpdate(BaseModel):
     requirement_template_id: uuid.UUID | None = None
@@ -82,6 +88,7 @@ class AssetRequirementUpdate(BaseModel):
 
 class AssetRequirementBulkCreate(BaseModel):
     """Assign a requirement template to multiple assets at once."""
+
     asset_ids: list[uuid.UUID]
     requirement_template_id: uuid.UUID
     required_for_tag: TAG_CODES
@@ -90,6 +97,7 @@ class AssetRequirementBulkCreate(BaseModel):
 
 class AssetRequirementBulkByTypeCreate(BaseModel):
     """Assign a requirement to all assets of a given type."""
+
     asset_type_id: uuid.UUID
     requirement_template_id: uuid.UUID
     required_for_tag: TAG_CODES
@@ -114,6 +122,7 @@ class AssetRequirementOut(BaseModel):
 
 class AssetRequirementDetail(AssetRequirementOut):
     """Extended with template info and work items."""
+
     template_name: str | None = None
     template_code: str | None = None
     level_code: str | None = None
@@ -121,6 +130,7 @@ class AssetRequirementDetail(AssetRequirementOut):
 
 
 # --- RequirementWorkItem ---
+
 
 class RequirementWorkItemCreate(BaseModel):
     asset_requirement_id: uuid.UUID
@@ -154,6 +164,7 @@ class RequirementWorkItemOut(BaseModel):
 
 # --- DocumentRequirementLink ---
 
+
 class DocumentRequirementLinkCreate(BaseModel):
     document_id: uuid.UUID
     asset_requirement_id: uuid.UUID
@@ -171,6 +182,7 @@ class DocumentRequirementLinkOut(BaseModel):
 
 
 # --- AssetTagTarget ---
+
 
 class AssetTagTargetCreate(BaseModel):
     asset_id: uuid.UUID
@@ -197,6 +209,7 @@ class AssetTagTargetOut(BaseModel):
 
 # --- Gate Override ---
 
+
 class GateOverrideCreate(BaseModel):
     asset_id: uuid.UUID
     document_id: uuid.UUID
@@ -220,6 +233,7 @@ class GateOverrideOut(BaseModel):
 
 
 # --- Asset Commissioning Progress (read-only view) ---
+
 
 class AssetCommissioningProgress(BaseModel):
     asset_id: uuid.UUID

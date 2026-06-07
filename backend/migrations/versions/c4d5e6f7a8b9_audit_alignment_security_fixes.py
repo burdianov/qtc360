@@ -15,6 +15,7 @@ Revision ID: c4d5e6f7a8b9
 Revises: b2c3d4e5f6a7
 Create Date: 2026-05-28
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -142,9 +143,9 @@ def upgrade() -> None:
 
     # --- asset_requirements: missing unique constraint -------------------------------
     bind = op.get_bind()
-    has_constraint = bind.execute(sa.text(
-        "SELECT 1 FROM pg_constraint WHERE conname = 'uq_asset_requirement'"
-    )).scalar()
+    has_constraint = bind.execute(
+        sa.text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_asset_requirement'")
+    ).scalar()
     if not has_constraint:
         op.create_unique_constraint(
             "uq_asset_requirement",
@@ -174,9 +175,9 @@ def downgrade() -> None:
         nullable=False,
     )
 
-    has_constraint = bind.execute(sa.text(
-        "SELECT 1 FROM pg_constraint WHERE conname = 'uq_asset_requirement'"
-    )).scalar()
+    has_constraint = bind.execute(
+        sa.text("SELECT 1 FROM pg_constraint WHERE conname = 'uq_asset_requirement'")
+    ).scalar()
     if has_constraint:
         op.drop_constraint("uq_asset_requirement", "asset_requirements", type_="unique")
 

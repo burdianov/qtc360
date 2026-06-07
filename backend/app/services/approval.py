@@ -9,6 +9,7 @@ Each "Submit to Approver N" creates a DocumentApprovalRound (status pending);
 each "Record Approver N Response" stamps it with decision/signatory/comments
 and either advances the document or terminates the chain.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -79,8 +80,7 @@ async def _lock_template(db: AsyncSession, doc: Document) -> None:
     if doc.template_id is not None and doc.cover_page_count is not None:
         return
     template_q = await db.execute(
-        select(DocTemplate)
-        .where(
+        select(DocTemplate).where(
             DocTemplate.project_id == doc.project_id,
             DocTemplate.doc_type == doc.document_type,
             DocTemplate.is_active == True,  # noqa: E712
@@ -119,7 +119,9 @@ async def submit_to_approver(
             detail=f"Cannot submit to approver {approver_order} from status {doc.status!r}",
         )
 
-    pa = await _resolve_project_approver(db, doc.project_id, doc.document_type, approver_order)
+    pa = await _resolve_project_approver(
+        db, doc.project_id, doc.document_type, approver_order
+    )
 
     if approver_order == 1:
         await _lock_template(db, doc)
@@ -191,7 +193,9 @@ async def record_response(
             detail=f"No open round for approver {approver_order}",
         )
     if round_.decision_status_id is not None:
-        raise HTTPException(status_code=400, detail="Round already has a decision recorded")
+        raise HTTPException(
+            status_code=400, detail="Round already has a decision recorded"
+        )
 
     decision_q = await db.execute(
         select(ApprovalStatus).where(
@@ -201,7 +205,9 @@ async def record_response(
     )
     decision = decision_q.scalar_one_or_none()
     if not decision:
-        raise HTTPException(status_code=400, detail="Invalid decision status for this project")
+        raise HTTPException(
+            status_code=400, detail="Invalid decision status for this project"
+        )
 
     round_.decision_status_id = decision_status_id
     round_.signatory_name = signatory_name

@@ -1,9 +1,9 @@
 """Report generation: docxtpl fills Word templates, LibreOffice converts to PDF."""
+
 import io
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any
 from urllib.parse import quote
 from uuid import UUID
 
@@ -20,7 +20,18 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.types import DEFAULT_SIGNATURE_FONT, DEFAULT_SIGNATURE_COLOR, FONTS_DIR, LIBREOFFICE_TIMEOUT, GOTENBERG_TIMEOUT, DEFAULT_DATE_FORMAT, MAX_BUNDLE_BYTES, _mb
+from app.core.types import (
+    DEFAULT_SIGNATURE_FONT,
+    DEFAULT_SIGNATURE_COLOR,
+    FONTS_DIR,
+    LIBREOFFICE_TIMEOUT,
+    GOTENBERG_TIMEOUT,
+    DEFAULT_DATE_FORMAT,
+    MAX_BUNDLE_BYTES,
+    MAX_TEMPLATE_BYTES,
+    DEFAULT_SIG_CONFIG,
+    _mb,
+)
 from app.services.storage import storage
 from app.core.deps import (
     assert_user_in_project,
@@ -45,10 +56,19 @@ async def _load_date_format(db: AsyncSession) -> str:
     global _date_format_cache
     if _date_format_cache is None:
         from app.models.app_setting import AppSetting
-        result = await db.execute(select(AppSetting).where(AppSetting.key == "date_format"))
+
+        result = await db.execute(
+            select(AppSetting).where(AppSetting.key == "date_format")
+        )
         item = result.scalar_one_or_none()
         _date_format_cache = item.value if item else DEFAULT_DATE_FORMAT
     return _date_format_cache
+
+
+def reset_date_format_cache() -> None:
+    """Invalidate the cached date format so it is reloaded from DB on next use."""
+    global _date_format_cache
+    _date_format_cache = None
 
 
 _FORMAT_MAP = {
@@ -63,21 +83,26 @@ _FORMAT_MAP = {
 def _format_date(dt, fmt: str | None = None) -> str:
     if not dt:
         return ""
-    from datetime import date as date_cls, datetime as dt_cls
+    from datetime import datetime as dt_cls
+
     if isinstance(dt, str):
         try:
             dt = dt_cls.fromisoformat(dt)
         except ValueError:
             return dt
-    py_fmt = _FORMAT_MAP.get(fmt or _date_format_cache or DEFAULT_DATE_FORMAT, "%d.%m.%Y")
+    py_fmt = _FORMAT_MAP.get(
+        fmt or _date_format_cache or DEFAULT_DATE_FORMAT, "%d.%m.%Y"
+    )
     return dt.strftime(py_fmt)
 
 
 def _safe_filename_for_disposition(name: str) -> str:
     """Build a safe Content-Disposition filename, blocking header-splitting via CR/LF."""
-    safe_ascii = "".join(c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in name)
+    safe_ascii = "".join(
+        c if 32 <= ord(c) < 127 and c not in '"\\' else "_" for c in name
+    )
     encoded = quote(name, safe="")
-    return f'filename="{safe_ascii}"; filename*=UTF-8\'\'{encoded}'
+    return f"filename=\"{safe_ascii}\"; filename*=UTF-8''{encoded}"
 
 
 # ─── Template Management ─────────────────────────────────────────────────────
@@ -100,11 +125,15 @@ async def upload_template(
     elif fname.endswith(".xlsx"):
         file_format = "xlsx"
     else:
-        raise HTTPException(status_code=400, detail="Only .docx and .xlsx files allowed")
+        raise HTTPException(
+            status_code=400, detail="Only .docx and .xlsx files allowed"
+        )
 
     data = await file.read()
-    if len(data) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    if len(data) > MAX_TEMPLATE_BYTES:
+        raise HTTPException(
+            status_code=400, detail=f"File too large (max {_mb(MAX_TEMPLATE_BYTES)}MB)"
+        )
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -112,11 +141,15 @@ async def upload_template(
     if file_format == "docx":
         try:
             from docxtpl import DocxTemplate
+
             tpl = DocxTemplate(io.BytesIO(data))
             env = SandboxedEnvironment(undefined=Undefined)
             env.parse(tpl.get_xml())
         except TemplateSyntaxError as e:
-            raise HTTPException(status_code=400, detail=f"Template placeholder error: {e.message}. Use underscores in variable names (e.g. {{{{ delivery_notes }}}} not {{{{ delivery notes }}}}).")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Template placeholder error: {e.message}. Use underscores in variable names (e.g. {{{{ delivery_notes }}}} not {{{{ delivery notes }}}}).",
+            )
         except Exception:
             pass
 
@@ -146,6 +179,7 @@ async def upload_template(
     cover_pages = 1
     if file_format == "docx":
         from app.services.pdf import count_pages_in_docx
+
         cover_pages = count_pages_in_docx(data)
 
     template = DocTemplate(
@@ -162,7 +196,12 @@ async def upload_template(
     db.add(template)
     await db.commit()
     await db.refresh(template)
-    return {"id": str(template.id), "name": name, "version": version, "file_format": file_format}
+    return {
+        "id": str(template.id),
+        "name": name,
+        "version": version,
+        "file_format": file_format,
+    }
 
 
 @router.get("/templates")
@@ -179,7 +218,9 @@ async def list_templates(
     )
     if doc_type:
         q = q.where(DocTemplate.doc_type == doc_type.upper())
-    result = await db.execute(q.order_by(DocTemplate.doc_type, DocTemplate.version.desc()))
+    result = await db.execute(
+        q.order_by(DocTemplate.doc_type, DocTemplate.version.desc())
+    )
     return [
         {
             "id": str(t.id),
@@ -202,7 +243,9 @@ async def download_template(
 ):
     """Download the original DOCX template."""
     result = await db.execute(
-        select(DocTemplate).where(DocTemplate.id == template_id, DocTemplate.is_deleted == False)  # noqa: E712
+        select(DocTemplate).where(
+            DocTemplate.id == template_id, not DocTemplate.is_deleted
+        )  # noqa: E712
     )
     template = result.scalar_one_or_none()
     if not template:
@@ -211,7 +254,9 @@ async def download_template(
     return Response(
         content=template.file,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; {_safe_filename_for_disposition(template.filename or 'template.docx')}"},
+        headers={
+            "Content-Disposition": f"attachment; {_safe_filename_for_disposition(template.filename or 'template.docx')}"
+        },
     )
 
 
@@ -223,7 +268,9 @@ async def delete_template(
 ):
     """Delete a template (hard delete)."""
     result = await db.execute(
-        select(DocTemplate).where(DocTemplate.id == template_id, DocTemplate.is_deleted == False)  # noqa: E712
+        select(DocTemplate).where(
+            DocTemplate.id == template_id, not DocTemplate.is_deleted
+        )  # noqa: E712
     )
     template = result.scalar_one_or_none()
     if not template:
@@ -253,6 +300,7 @@ async def preview_signature(
         raise HTTPException(status_code=400, detail="Name too long")
     # Validate color is a #RRGGBB hex string.
     import re as _re
+
     if not _re.fullmatch(r"#[0-9A-Fa-f]{6}", color or ""):
         color = DEFAULT_SIGNATURE_COLOR
     png = render_signature(name, font_id, color=color)
@@ -280,7 +328,9 @@ async def generate_report(
     # Get template (specific or active)
     if body.template_id:
         result = await db.execute(
-            select(DocTemplate).where(DocTemplate.id == body.template_id, DocTemplate.is_deleted == False)  # noqa: E712
+            select(DocTemplate).where(
+                DocTemplate.id == body.template_id, not DocTemplate.is_deleted
+            )  # noqa: E712
         )
     else:
         result = await db.execute(
@@ -293,9 +343,13 @@ async def generate_report(
         )
     template = result.scalar_one_or_none()
     if not template:
-        raise HTTPException(status_code=404, detail=f"No active {doc_type.upper()} template")
+        raise HTTPException(
+            status_code=404, detail=f"No active {doc_type.upper()} template"
+        )
     if template.project_id != body.project_id:
-        raise HTTPException(status_code=400, detail="Template does not belong to this project")
+        raise HTTPException(
+            status_code=400, detail="Template does not belong to this project"
+        )
 
     # Get document data with relationships
     doc_result = await db.execute(
@@ -312,7 +366,9 @@ async def generate_report(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     if document.project_id != body.project_id:
-        raise HTTPException(status_code=400, detail="Document does not belong to this project")
+        raise HTTPException(
+            status_code=400, detail="Document does not belong to this project"
+        )
 
     # Load date format setting
     await _load_date_format(db)
@@ -329,7 +385,7 @@ async def generate_report(
     # Load per-user signature display settings
     import json as _json
     from app.models.user_preference import UserPreference
-    _sig_default = {"cell_width": 75, "cell_height": 25, "x_offset": 0, "y_offset": 0}
+
     _user_sig_cfgs = {}
     for inspector in [document.site_engineer, document.qaqc_engineer]:
         if inspector:
@@ -346,20 +402,27 @@ async def generate_report(
                     v = pref.value
                     if isinstance(v, str):
                         v = _json.loads(v)
-                    _user_sig_cfgs[str(inspector.id)] = {**_sig_default, **v}
+                    _user_sig_cfgs[str(inspector.id)] = {**DEFAULT_SIG_CONFIG, **v}
                 except Exception:
-                    _user_sig_cfgs[str(inspector.id)] = _sig_default
+                    _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
             else:
-                _user_sig_cfgs[str(inspector.id)] = _sig_default
+                _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
 
     # Stamp signatures onto the PDF
-    pdf_bytes = _stamp_vector_signatures(pdf_bytes, document, _sig_default, _user_sig_cfgs)
+    pdf_bytes = _stamp_vector_signatures(
+        pdf_bytes, document, DEFAULT_SIG_CONFIG, _user_sig_cfgs
+    )
 
     # Append attachments as additional pages
     from app.models.document_attachment import DocumentAttachment
+
     att_result = await db.execute(
         select(DocumentAttachment)
-        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.kind.in_(["user", "checklist"]), DocumentAttachment.is_deleted == False)  # noqa: E712
+        .where(
+            DocumentAttachment.document_id == body.document_id,
+            DocumentAttachment.kind.in_(["user", "checklist"]),
+            not DocumentAttachment.is_deleted,
+        )  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     attachments = att_result.scalars().all()
@@ -388,7 +451,9 @@ async def generate_report(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; {_safe_filename_for_disposition(pdf_filename)}"},
+        headers={
+            "Content-Disposition": f"inline; {_safe_filename_for_disposition(pdf_filename)}"
+        },
     )
 
 
@@ -400,6 +465,7 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
     """Check LibreOffice is available and can convert DOCX to PDF."""
     try:
         from docx import Document as DocxDoc
+
         doc = DocxDoc()
         doc.add_paragraph("Health check")
         buf = io.BytesIO()
@@ -407,7 +473,11 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
         test_docx = buf.getvalue()
         pdf = await _convert_to_pdf(test_docx)
         if pdf and len(pdf) > 0:
-            return {"status": "healthy", "pdf_engine": "libreoffice", "pdf_size": len(pdf)}
+            return {
+                "status": "healthy",
+                "pdf_engine": "libreoffice",
+                "pdf_size": len(pdf),
+            }
         raise HTTPException(status_code=503, detail="PDF engine returned empty output")
     except HTTPException:
         raise
@@ -530,6 +600,7 @@ async def compose_bundle(
 
     # Merge
     from app.services.pdf_merge import merge_pdf_bundle
+
     try:
         merged = merge_pdf_bundle(pdf_bytes, att_data)
     except ValueError as e:
@@ -571,7 +642,10 @@ async def get_latest_pdf(
     rounds_result = await db.execute(
         select(DocumentApprovalRound)
         .where(DocumentApprovalRound.document_id == document_id)
-        .order_by(DocumentApprovalRound.approver_order.desc(), DocumentApprovalRound.round_no.desc())
+        .order_by(
+            DocumentApprovalRound.approver_order.desc(),
+            DocumentApprovalRound.round_no.desc(),
+        )
     )
     rounds = rounds_result.scalars().all()
 
@@ -582,19 +656,27 @@ async def get_latest_pdf(
             if data:
                 rev = str(doc.revision_no or 0).zfill(2)
                 fname = f"{doc.reference_no}_{rev}.pdf"
-                return Response(content=data, media_type="application/pdf",
-                                headers={"Content-Disposition": f"inline; filename=\"{fname}\""})
+                return Response(
+                    content=data,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'},
+                )
         if rnd.submitted_file_path:
             data = storage.read(rnd.submitted_file_path)
             if data:
                 rev = str(doc.revision_no or 0).zfill(2)
                 fname = f"{doc.reference_no}_{rev}.pdf"
-                return Response(content=data, media_type="application/pdf",
-                                headers={"Content-Disposition": f"inline; filename=\"{fname}\""})
+                return Response(
+                    content=data,
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'},
+                )
 
-    # No approval files exist — generate on the fly
-    raise HTTPException(status_code=307, headers={"Location": f"/api/v1/reports/generate/{doc.document_type}"},
-                        detail="No approval files; use generate endpoint")
+    # No approval files exist — inform the caller to use the generate endpoint.
+    raise HTTPException(
+        status_code=404,
+        detail="No approval files available. Use POST /reports/generate/{doc_type} to create a PDF.",
+    )
 
 
 # ─── CRS PDF Generation ──────────────────────────────────────────────────────
@@ -632,9 +714,13 @@ async def generate_crs_pdf(
     approver_status = crs.get("approver_status", "")
 
     # Load header image from app_settings
-    header_setting = (await db.execute(
-        select(AppSetting).where(AppSetting.key == f"crs_header_image_{body.project_id}")
-    )).scalar_one_or_none()
+    header_setting = (
+        await db.execute(
+            select(AppSetting).where(
+                AppSetting.key == f"crs_header_image_{body.project_id}"
+            )
+        )
+    ).scalar_one_or_none()
 
     buf = io.BytesIO()
     width, height = A4
@@ -645,15 +731,19 @@ async def generate_crs_pdf(
     if header_setting and header_setting.value:
         try:
             import base64
+
             img_data = base64.b64decode(header_setting.value)
             from reportlab.lib.utils import ImageReader
             from PIL import Image as PILImage
+
             img = PILImage.open(io.BytesIO(img_data))
             img_w, img_h = img.size
             max_w = width - 20 * mm
             ratio = min(max_w / img_w, 35 * mm / img_h)
             draw_w, draw_h = img_w * ratio, img_h * ratio
-            c.drawImage(ImageReader(io.BytesIO(img_data)), 10 * mm, y - draw_h, draw_w, draw_h)
+            c.drawImage(
+                ImageReader(io.BytesIO(img_data)), 10 * mm, y - draw_h, draw_w, draw_h
+            )
             y -= draw_h + 6 * mm
         except Exception:
             pass
@@ -684,36 +774,61 @@ async def generate_crs_pdf(
     # 6. Table (4 columns: SN, CXM's Comments, Status, Responses)
     if rows and len(rows) > 0:
         styles = getSampleStyleSheet()
-        cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=10, leading=12)
-        cell_center = ParagraphStyle("cellcenter", parent=styles["Normal"], fontSize=10, leading=12, alignment=1)
-        header_style = ParagraphStyle("header", parent=styles["Normal"], fontSize=10, leading=12, fontName="Helvetica-Bold")
-        header_center = ParagraphStyle("headercenter", parent=styles["Normal"], fontSize=10, leading=12, fontName="Helvetica-Bold", alignment=1)
+        cell_style = ParagraphStyle(
+            "cell", parent=styles["Normal"], fontSize=10, leading=12
+        )
+        cell_center = ParagraphStyle(
+            "cellcenter", parent=styles["Normal"], fontSize=10, leading=12, alignment=1
+        )
+        header_center = ParagraphStyle(
+            "headercenter",
+            parent=styles["Normal"],
+            fontSize=10,
+            leading=12,
+            fontName="Helvetica-Bold",
+            alignment=1,
+        )
 
         table_data = [
-            [Paragraph("SN", header_center), Paragraph("CXM's Comments", header_center),
-             Paragraph("Status", header_center), Paragraph("Responses to CXM's Comments", header_center)]
+            [
+                Paragraph("SN", header_center),
+                Paragraph("CXM's Comments", header_center),
+                Paragraph("Status", header_center),
+                Paragraph("Responses to CXM's Comments", header_center),
+            ]
         ]
         for row in rows:
             comment_text = str(row.get("comment", "") or "").replace("\n", "<br/>")
             response_text = str(row.get("response", "") or "").replace("\n", "<br/>")
             status_text = str(row.get("status", "") or approver_status or "")
-            table_data.append([
-                Paragraph(str(row.get("sn", "")), cell_center),
-                Paragraph(comment_text, cell_style),
-                Paragraph(status_text, cell_center),
-                Paragraph(response_text, cell_style),
-            ])
+            table_data.append(
+                [
+                    Paragraph(str(row.get("sn", "")), cell_center),
+                    Paragraph(comment_text, cell_style),
+                    Paragraph(status_text, cell_center),
+                    Paragraph(response_text, cell_style),
+                ]
+            )
 
         available_w = width - 30 * mm
-        col_widths = [10 * mm, (available_w - 10 * mm - 16 * mm) / 2, 16 * mm, (available_w - 10 * mm - 16 * mm) / 2]
+        col_widths = [
+            10 * mm,
+            (available_w - 10 * mm - 16 * mm) / 2,
+            16 * mm,
+            (available_w - 10 * mm - 16 * mm) / 2,
+        ]
         t = Table(table_data, colWidths=col_widths, repeatRows=1)
-        t.setStyle(TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
+        t.setStyle(
+            TableStyle(
+                [
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.9, 0.9, 0.9)),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
 
         tw, th = t.wrap(available_w, y - 15 * mm)
         if th > y - 15 * mm:
@@ -725,8 +840,11 @@ async def generate_crs_pdf(
     c.save()
     buf.seek(0)
     fname = f"{document.reference_no}_{int(document.revision_no or 0):02d}.pdf"
-    return Response(content=buf.getvalue(), media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -757,15 +875,34 @@ def _build_context(document: Document) -> dict:
         return "☒" if selected else "☐"
 
     # Discipline checkboxes — match by code or name substring
-    ctx["arch_cb"] = cb(disc_code == "AR" or "architectural" in doc_discipline) + " Architectural"
-    ctx["civil_struct_cb"] = cb(disc_code == "CS" or "civil" in doc_discipline or "structural" in doc_discipline) + " Civil/Structural"
-    ctx["mechanical_cb"] = cb(disc_code == "MC" or "mechanical" in doc_discipline) + " Mechanical"
-    ctx["electrical_cb"] = cb(disc_code == "EL" or "electrical" in doc_discipline) + " Electrical"
-    ctx["plumbing_cb"] = cb(disc_code == "PL" or "plumbing" in doc_discipline) + " Plumbing"
-    ctx["firefighting_cb"] = cb(disc_code == "FF" or "fire" in doc_discipline) + " Fire Fighting"
+    ctx["arch_cb"] = (
+        cb(disc_code == "AR" or "architectural" in doc_discipline) + " Architectural"
+    )
+    ctx["civil_struct_cb"] = (
+        cb(
+            disc_code == "CS"
+            or "civil" in doc_discipline
+            or "structural" in doc_discipline
+        )
+        + " Civil/Structural"
+    )
+    ctx["mechanical_cb"] = (
+        cb(disc_code == "MC" or "mechanical" in doc_discipline) + " Mechanical"
+    )
+    ctx["electrical_cb"] = (
+        cb(disc_code == "EL" or "electrical" in doc_discipline) + " Electrical"
+    )
+    ctx["plumbing_cb"] = (
+        cb(disc_code == "PL" or "plumbing" in doc_discipline) + " Plumbing"
+    )
+    ctx["firefighting_cb"] = (
+        cb(disc_code == "FF" or "fire" in doc_discipline) + " Fire Fighting"
+    )
     ctx["others_cb"] = cb(disc_code == "OT" or "other" in doc_discipline) + " Others"
 
-    for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
+    for i, inspector in enumerate(
+        [document.site_engineer, document.qaqc_engineer], start=1
+    ):
         if inspector:
             name = inspector.full_name
             desig = inspector.designation.name if inspector.designation else ""
@@ -806,7 +943,9 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     doc = DocxTemplate(io.BytesIO(template_bytes))
 
     signed_flags = [document.site_engineer_signed, document.qaqc_engineer_signed]
-    for i, inspector in enumerate([document.site_engineer, document.qaqc_engineer], start=1):
+    for i, inspector in enumerate(
+        [document.site_engineer, document.qaqc_engineer], start=1
+    ):
         key = f"insp_sign_{i}"
         if inspector and signed_flags[i - 1]:
             context[key] = f"SIGMARK{i}"
@@ -820,13 +959,21 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
     try:
         doc.render(context, jinja_env=sandbox_env)
     except TemplateSyntaxError as e:
-        raise HTTPException(status_code=400, detail=f"Template syntax error at line {e.lineno}: {e.message}. Check your DOCX template placeholders (use underscores, not spaces).")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Template syntax error at line {e.lineno}: {e.message}. Check your DOCX template placeholders (use underscores, not spaces).",
+        )
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
 
 
-def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict | None = None, user_sig_cfgs: dict | None = None) -> bytes:
+def _stamp_vector_signatures(
+    pdf_bytes: bytes,
+    document: Document,
+    sig_cfg: dict | None = None,
+    user_sig_cfgs: dict | None = None,
+) -> bytes:
     """Overlay signatures onto the PDF.
     Uses uploaded PNG signature if available, falls back to font-based rendering.
     Finds the signature marker text and draws the signature at that location.
@@ -837,7 +984,6 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
     if not user_sig_cfgs:
         user_sig_cfgs = {}
     from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import letter
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.utils import ImageReader
@@ -855,13 +1001,15 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
             marker = f"SIGMARK{i}"
             sig_key = f"signatures/{inspector.id}.png"
             has_png = storage.exists(sig_key)
-            sigs_to_stamp.append({
-                "marker": marker,
-                "user_id": str(inspector.id),
-                "name": inspector.signature_text or inspector.full_name,
-                "font_id": inspector.signature_font or DEFAULT_SIGNATURE_FONT,
-                "png_key": sig_key if has_png else None,
-            })
+            sigs_to_stamp.append(
+                {
+                    "marker": marker,
+                    "user_id": str(inspector.id),
+                    "name": inspector.signature_text or inspector.full_name,
+                    "font_id": inspector.signature_font or DEFAULT_SIGNATURE_FONT,
+                    "png_key": sig_key if has_png else None,
+                }
+            )
 
     if not sigs_to_stamp:
         return pdf_bytes
@@ -869,6 +1017,7 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
     # Register fonts for fallback
     fonts_dir = FONTS_DIR
     from app.services.signature import SIGNATURE_FONTS
+
     registered_fonts: set[str] = set()
     for sig in sigs_to_stamp:
         if not sig["png_key"]:
@@ -959,6 +1108,7 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
                     except Exception:
                         c.setFont("Helvetica", font_size)
                     from reportlab.pdfbase.pdfmetrics import stringWidth
+
                     text_width = stringWidth(name, font_id, font_size)
                     if text_width > cw and text_width > 0:
                         font_size = font_size * (cw / text_width)
@@ -985,12 +1135,14 @@ def _stamp_vector_signatures(pdf_bytes: bytes, document: Document, sig_cfg: dict
 def _insert_signatures_fitted(docx_bytes: bytes, sig_data: dict[str, bytes]) -> bytes:
     """Replace signature placeholder text in table cells with fitted images."""
     from docx import Document as DocxDoc
-    from docx.shared import Emu
     from PIL import Image as PILImage
 
     doc = DocxDoc(io.BytesIO(docx_bytes))
 
-    placeholders = {f"__SIG_PLACEHOLDER_{i}__": key for i, key in enumerate(sig_data.keys(), start=1)}
+    placeholders = {
+        f"__SIG_PLACEHOLDER_{i}__": key
+        for i, key in enumerate(sig_data.keys(), start=1)
+    }
     processed = set()
 
     for table in doc.tables:
@@ -1044,13 +1196,24 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         async with httpx.AsyncClient(timeout=GOTENBERG_TIMEOUT) as client:
             resp = await client.post(
                 f"{gotenberg_url}/forms/libreoffice/convert",
-                files={"files": ("document.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+                files={
+                    "files": (
+                        "document.docx",
+                        docx_bytes,
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
+                },
             )
             if resp.status_code == 200:
                 return resp.content
-            logger.warning("Gotenberg returned %s, falling back to local LibreOffice", resp.status_code)
+            logger.warning(
+                "Gotenberg returned %s, falling back to local LibreOffice",
+                resp.status_code,
+            )
     except Exception as e:
-        logger.warning("Gotenberg unavailable (%s), falling back to local LibreOffice", e)
+        logger.warning(
+            "Gotenberg unavailable (%s), falling back to local LibreOffice", e
+        )
 
     # Fallback: local LibreOffice
     libre = settings.libreoffice_path
@@ -1059,21 +1222,39 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         docx_path.write_bytes(docx_bytes)
 
         cmd = [
-            libre, "--headless", "--norestore", "--nologo",
-            "--nofirststartwizard", "--convert-to", "pdf",
-            "--outdir", tmp_dir, str(docx_path),
+            libre,
+            "--headless",
+            "--norestore",
+            "--nologo",
+            "--nofirststartwizard",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            tmp_dir,
+            str(docx_path),
         ]
         try:
             import subprocess
+
             proc = await asyncio.to_thread(
-                subprocess.run, cmd, capture_output=True, timeout=LIBREOFFICE_TIMEOUT,
+                subprocess.run,
+                cmd,
+                capture_output=True,
+                timeout=LIBREOFFICE_TIMEOUT,
             )
         except FileNotFoundError:
-            raise HTTPException(status_code=500, detail="PDF engine not configured (Gotenberg down, LibreOffice not found)")
+            raise HTTPException(
+                status_code=500,
+                detail="PDF engine not configured (Gotenberg down, LibreOffice not found)",
+            )
         except subprocess.TimeoutExpired:
             raise HTTPException(status_code=500, detail="PDF generation timed out")
         if proc.returncode != 0:
-            logger.error("LibreOffice exited %s; stderr=%r", proc.returncode, proc.stderr[-500:] if proc.stderr else b"")
+            logger.error(
+                "LibreOffice exited %s; stderr=%r",
+                proc.returncode,
+                proc.stderr[-500:] if proc.stderr else b"",
+            )
             raise HTTPException(status_code=500, detail="Report generation failed")
 
         pdf_path = Path(tmp_dir) / "document.pdf"
@@ -1082,7 +1263,9 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
         return pdf_path.read_bytes()
 
 
-def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes, list[str]]:
+def _merge_attachments_with_status(
+    main_pdf: bytes, attachments
+) -> tuple[bytes, list[str]]:
     """Merge attachment files from web server storage into the main PDF.
 
     Raises:
@@ -1136,14 +1319,18 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
                 max_w, max_h = A4[0] - 72, A4[1] - 72
                 ratio = min(max_w / img.width, max_h / img.height)
                 w, h = img.width * ratio, img.height * ratio
-                c.drawImage(ImageReader(io.BytesIO(att_bytes)), 36, A4[1] - h - 36, w, h)
+                c.drawImage(
+                    ImageReader(io.BytesIO(att_bytes)), 36, A4[1] - h - 36, w, h
+                )
                 c.save()
                 img_buf.seek(0)
                 img_reader = PdfReader(img_buf)
                 for page in img_reader.pages:
                     writer.add_page(page)
             except Exception:
-                logger.exception("Failed to render attachment image %s", file_path)
+                logger.exception(
+                    "Failed to render attachment image %s", att.storage_path
+                )
                 missing_files.append(att.filename)
         else:
             missing_files.append(att.filename)
@@ -1152,4 +1339,3 @@ def _merge_attachments_with_status(main_pdf: bytes, attachments) -> tuple[bytes,
     writer.write(output)
 
     return output.getvalue(), missing_files
-

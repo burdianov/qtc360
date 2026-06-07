@@ -16,6 +16,7 @@ Snapshot the template selection on each document at first external submission.
 A new revision (revision_no + 1) starts with both fields cleared so the user
 can pick a different template; they re-lock at that revision's first submit.
 """
+
 from typing import Sequence, Union
 
 from alembic import op

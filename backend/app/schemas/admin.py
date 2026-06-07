@@ -12,6 +12,7 @@ class UserAdminCreate(BaseModel):
     is_active: bool = True
     role_ids: list[UUID] = []
 
+
 class UserAdminUpdate(BaseModel):
     email: EmailStr | None = None
     full_name: str | None = None
@@ -20,16 +21,19 @@ class UserAdminUpdate(BaseModel):
     password: str | None = None
     role_ids: list[UUID] | None = None
 
+
 class RoleResponse(BaseModel):
     id: UUID
     name: str
     description: str | None
     model_config = {"from_attributes": True}
 
+
 class DesignationRef(BaseModel):
     id: UUID
     name: str
     model_config = {"from_attributes": True}
+
 
 class UserAdminResponse(BaseModel):
     id: UUID
@@ -44,11 +48,13 @@ class UserAdminResponse(BaseModel):
     roles: list[RoleResponse] = []
     model_config = {"from_attributes": True}
 
+
 class PermissionResponse(BaseModel):
     id: UUID
     code: str
     description: str | None
     model_config = {"from_attributes": True}
+
 
 class RoleAdminResponse(BaseModel):
     id: UUID
@@ -57,24 +63,27 @@ class RoleAdminResponse(BaseModel):
     permissions: list[PermissionResponse] = []
     model_config = {"from_attributes": True}
 
+
 class RoleCreate(BaseModel):
     name: str
     description: str | None = None
     permission_ids: list[UUID] = []
+
 
 class RoleUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     permission_ids: list[UUID] | None = None
 
+
 class PermissionCreate(BaseModel):
     code: str
     description: str | None = None
 
+
 class PermissionUpdate(BaseModel):
     code: str | None = None
     description: str | None = None
-
 
 
 class AuditUserRef(BaseModel):
@@ -82,6 +91,7 @@ class AuditUserRef(BaseModel):
     full_name: str
     email: str
     model_config = {"from_attributes": True}
+
 
 class AuditLogResponse(BaseModel):
     id: UUID

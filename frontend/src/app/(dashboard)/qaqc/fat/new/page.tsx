@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, ChevronDown, X } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { toast } from "sonner";
@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Form,
   FormField,
@@ -206,7 +205,7 @@ function NewFATPageContent() {
   }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter assets by discipline (via AssetType → Service → Discipline chain)
-  const disciplineTypeIds = disciplineId
+  const _disciplineTypeIds = disciplineId
     ? new Set(
         assetTypes
           .filter((t) => {

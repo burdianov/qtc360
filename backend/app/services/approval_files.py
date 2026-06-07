@@ -30,6 +30,7 @@ the content. We:
   fails, the submit endpoint returns 400 with a ``code`` field the
   frontend can use to render the password field.
 """
+
 from __future__ import annotations
 
 import io
@@ -40,7 +41,7 @@ from fastapi import HTTPException
 from pypdf import PdfReader, PdfWriter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.types import MAX_BUNDLE_BYTES, _mb
+from app.core.types import MAX_BUNDLE_BYTES, DEFAULT_SIG_CONFIG, _mb
 from app.services.storage import storage
 
 
@@ -165,10 +166,12 @@ async def _assemble_s1(db: AsyncSession, doc) -> bytes:
     from app.models.doc_template import DocTemplate
     from app.models.document_attachment import DocumentAttachment
     from app.api.v1.reports import (
-        _build_context, _fill_template, _convert_to_pdf, _stamp_vector_signatures,
+        _build_context,
+        _fill_template,
+        _convert_to_pdf,
+        _stamp_vector_signatures,
         _merge_attachments_with_status,
     )
-    from app.models.app_setting import AppSetting
     from app.models.user import User
     import json as _json
 
@@ -187,18 +190,22 @@ async def _assemble_s1(db: AsyncSession, doc) -> bytes:
 
     # Template
     if doc_loaded.template_id:
-        template = (await db.execute(
-            select(DocTemplate).where(DocTemplate.id == doc_loaded.template_id)
-        )).scalar_one_or_none()
-    else:
-        template = (await db.execute(
-            select(DocTemplate).where(
-                DocTemplate.project_id == doc_loaded.project_id,
-                DocTemplate.doc_type == doc_loaded.document_type,
-                DocTemplate.is_active == True,  # noqa: E712
-                DocTemplate.is_deleted == False,  # noqa: E712
+        template = (
+            await db.execute(
+                select(DocTemplate).where(DocTemplate.id == doc_loaded.template_id)
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
+    else:
+        template = (
+            await db.execute(
+                select(DocTemplate).where(
+                    DocTemplate.project_id == doc_loaded.project_id,
+                    DocTemplate.doc_type == doc_loaded.document_type,
+                    DocTemplate.is_active == True,  # noqa: E712
+                    DocTemplate.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).scalar_one_or_none()
     if template is None:
         raise HTTPException(
             status_code=400,
@@ -209,29 +216,33 @@ async def _assemble_s1(db: AsyncSession, doc) -> bytes:
     docx_bytes = _fill_template(template.file, context, doc_loaded)
     main_pdf_bytes = await _convert_to_pdf(docx_bytes)
 
-    _sig_default = {"cell_width": 75, "cell_height": 25, "x_offset": 0, "y_offset": 0}
     from app.models.user_preference import UserPreference
+
     _user_sig_cfgs = {}
     for inspector in [doc_loaded.site_engineer, doc_loaded.qaqc_engineer]:
         if inspector:
-            _pref = (await db.execute(
-                select(UserPreference).where(
-                    UserPreference.user_id == inspector.id,
-                    UserPreference.key == "signature_display",
-                    UserPreference.is_deleted == False,  # noqa: E712
+            _pref = (
+                await db.execute(
+                    select(UserPreference).where(
+                        UserPreference.user_id == inspector.id,
+                        UserPreference.key == "signature_display",
+                        UserPreference.is_deleted == False,  # noqa: E712
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if _pref and _pref.value:
                 try:
                     v = _pref.value
                     if isinstance(v, str):
                         v = _json.loads(v)
-                    _user_sig_cfgs[str(inspector.id)] = {**_sig_default, **v}
+                    _user_sig_cfgs[str(inspector.id)] = {**DEFAULT_SIG_CONFIG, **v}
                 except Exception:
-                    _user_sig_cfgs[str(inspector.id)] = _sig_default
+                    _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
             else:
-                _user_sig_cfgs[str(inspector.id)] = _sig_default
-    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc_loaded, _sig_default, _user_sig_cfgs)
+                _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
+    main_pdf_bytes = _stamp_vector_signatures(
+        main_pdf_bytes, doc_loaded, DEFAULT_SIG_CONFIG, _user_sig_cfgs
+    )
 
     # Doc-level user attachments (kind="user").
     attachments_result = await db.execute(
@@ -363,6 +374,7 @@ def _bytes_to_pdf_pages(data: bytes) -> list:
         return list(PdfReader(io.BytesIO(data)).pages)
     # Image → single-page PDF.
     from PIL import Image
+
     img = Image.open(io.BytesIO(data))
     if img.mode == "RGBA":
         img = img.convert("RGB")
@@ -381,6 +393,7 @@ def purge_doc_responses(doc_id: str) -> int:
     Returns the number of files we attempted to unlink. Best-effort —
     missing files are silently ignored."""
     import os
+
     root = storage._root / "responses" / str(doc_id)  # noqa: SLF001
     if not root.exists():
         return 0

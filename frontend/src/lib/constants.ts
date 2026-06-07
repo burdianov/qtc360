@@ -18,12 +18,10 @@ export const statusColors: Record<string, string> = {
   with_approver_1: "bg-amber-500/15 text-amber-500",
   approver_1_returned: "bg-orange-500/15 text-orange-500",
   with_approver_2: "bg-amber-500/15 text-amber-500",
-  submitted: "bg-amber-500/15 text-amber-500",
   approved: "bg-emerald-500/15 text-emerald-500",
   approved_with_comments: "bg-emerald-500/15 text-emerald-500",
   rejected: "bg-red-500/15 text-red-500",
   superseded: "bg-muted text-muted-foreground",
-  cancelled: "bg-muted text-muted-foreground",
 };
 
 // ─── Tag Colors ─────────────────────────────────────────────────────────────
@@ -41,7 +39,6 @@ export const levelColors: Record<string, string> = {
   L2B: "bg-yellow-100 dark:bg-yellow-900",
   L3: "bg-emerald-100 dark:bg-emerald-900",
   L4: "bg-blue-100 dark:bg-blue-900",
-  L5: "bg-purple-100 dark:bg-purple-900",
 };
 
 // ─── Requirement Statuses ───────────────────────────────────────────────────
@@ -50,10 +47,11 @@ export const reqStatusColors: Record<string, string> = {
   in_progress: "bg-amber-500/15 text-amber-500",
   partial: "bg-sky-500/15 text-sky-500",
   achieved: "bg-emerald-500/15 text-emerald-500",
+  not_applicable: "bg-muted text-muted-foreground",
 };
 
 // ─── Document Types ─────────────────────────────────────────────────────────
-export const DOCUMENT_TYPES = ["WIR", "MIR", "CIR", "FAT"] as const;
+export const DOCUMENT_TYPES = ["WIR", "MIR", "CIR", "FAT", "CRS", "CHECKLIST"] as const;
 
 // ─── Storage Keys ───────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {

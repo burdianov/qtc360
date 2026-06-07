@@ -36,6 +36,7 @@ Run with --yes to skip the confirmation prompt:
     uv run python purge_documents.py --yes --purge-orphan-work-items
     uv run python purge_documents.py --yes --purge-orphan-work-items --purge-notifications
 """
+
 from __future__ import annotations
 
 import argparse
@@ -84,7 +85,9 @@ async def purge_documents(confirm: bool) -> int:
     async with Session() as session:
         async with session.begin():
             doc_count = await _count(session, "documents")
-            counts_before = {t: await _count(session, t) for t in _FK_CHAIN_TO_DOCUMENTS}
+            counts_before = {
+                t: await _count(session, t) for t in _FK_CHAIN_TO_DOCUMENTS
+            }
             linked_wi = await _count(
                 session, "requirement_work_items", "linked_document_id IS NOT NULL"
             )
@@ -137,7 +140,13 @@ async def purge_documents(confirm: bool) -> int:
                 await session.execute(text("DELETE FROM documents"))
             ).rowcount
 
-            for project_id, doc_type, discipline_id, _next, serial_start in counter_rows:
+            for (
+                project_id,
+                doc_type,
+                discipline_id,
+                _next,
+                serial_start,
+            ) in counter_rows:
                 await session.execute(
                     text(
                         "UPDATE reference_number_counters "

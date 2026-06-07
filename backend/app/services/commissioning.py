@@ -1,4 +1,5 @@
 """Commissioning engine service — calculates requirement statuses and tag achievements."""
+
 import uuid
 from datetime import date
 
@@ -75,7 +76,10 @@ async def recalculate_requirement_status(
     result = await db.execute(
         select(AssetRequirement)
         .where(AssetRequirement.id == asset_requirement_id)
-        .options(selectinload(AssetRequirement.work_items), selectinload(AssetRequirement.document_links))
+        .options(
+            selectinload(AssetRequirement.work_items),
+            selectinload(AssetRequirement.document_links),
+        )
     )
     req = result.scalar_one_or_none()
     if not req:
@@ -148,13 +152,17 @@ async def recalculate_requirement_status(
     if new_status == "achieved" and not req.actual_completion_date:
         # Set completion date from the linked document's inspector dates
         from app.models.commissioning import DocumentRequirementLink
+
         link_result = await db.execute(
-            select(DocumentRequirementLink.document_id)
-            .where(DocumentRequirementLink.asset_requirement_id == asset_requirement_id)
+            select(DocumentRequirementLink.document_id).where(
+                DocumentRequirementLink.asset_requirement_id == asset_requirement_id
+            )
         )
         doc_ids = [r[0] for r in link_result.all()]
         if doc_ids:
-            doc_result = await db.execute(select(Document).where(Document.id.in_(doc_ids)))
+            doc_result = await db.execute(
+                select(Document).where(Document.id.in_(doc_ids))
+            )
             docs = doc_result.scalars().all()
             inspector_dates = []
             for d in docs:
@@ -169,7 +177,9 @@ async def recalculate_requirement_status(
             else:
                 req.actual_completion_date = date.today()
             # Set approved_date from the document's approved_date
-            approved_dates = [d.approved_date.date() if d.approved_date else None for d in docs]
+            approved_dates = [
+                d.approved_date.date() if d.approved_date else None for d in docs
+            ]
             approved_dates = [d for d in approved_dates if d]
             if approved_dates:
                 req.approved_date = max(approved_dates)
@@ -195,10 +205,14 @@ async def recalculate_requirements_for_document(
 
     # Get all links for this document
     links_result = await db.execute(
-        select(DocumentRequirementLink).where(DocumentRequirementLink.document_id == document_id)
+        select(DocumentRequirementLink).where(
+            DocumentRequirementLink.document_id == document_id
+        )
     )
     links = links_result.scalars().all()
-    wi_ids = [lnk.requirement_work_item_id for lnk in links if lnk.requirement_work_item_id]
+    wi_ids = [
+        lnk.requirement_work_item_id for lnk in links if lnk.requirement_work_item_id
+    ]
 
     if wi_ids:
         wi_result = await db.execute(
@@ -209,7 +223,11 @@ async def recalculate_requirements_for_document(
         if doc.status in ("approved", "approved_with_comments"):
             for wi in work_items:
                 # Don't overwrite an existing approved linkage from another doc — preserve audit history.
-                if wi.status == "approved" and wi.linked_document_id and wi.linked_document_id != document_id:
+                if (
+                    wi.status == "approved"
+                    and wi.linked_document_id
+                    and wi.linked_document_id != document_id
+                ):
                     continue
                 if wi.status != "approved":
                     wi.status = "approved"
@@ -247,19 +265,19 @@ async def recalculate_requirements_for_document(
         await recalculate_tag_status(db, asset_id)
 
 
-async def recalculate_tag_status(
-    db: AsyncSession, asset_id: uuid.UUID
-) -> None:
+async def recalculate_tag_status(db: AsyncSession, asset_id: uuid.UUID) -> None:
     """Recalculate tag achievement for an asset based on requirement completion."""
     # Get all non-deleted requirements for this asset
     result = await db.execute(
-        select(AssetRequirement)
-        .where(AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False)  # noqa: E712
+        select(AssetRequirement).where(
+            AssetRequirement.asset_id == asset_id, not AssetRequirement.is_deleted
+        )  # noqa: E712
     )
     requirements = result.scalars().all()
 
     # Get requirement templates to know level_code
     from app.models.commissioning import RequirementTemplate
+
     template_ids = [r.requirement_template_id for r in requirements]
     if not template_ids:
         return

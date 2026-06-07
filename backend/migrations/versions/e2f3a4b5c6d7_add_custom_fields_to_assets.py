@@ -4,6 +4,7 @@ Revision ID: e2f3a4b5c6d7
 Revises: 9baac946c1e9
 Create Date: 2026-05-30
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,7 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("assets", sa.Column("custom_fields", JSONB, server_default="{}", nullable=False))
+    op.add_column(
+        "assets", sa.Column("custom_fields", JSONB, server_default="{}", nullable=False)
+    )
     # Seed default custom field definition (rename "location" to "POD")
     op.execute("""
         INSERT INTO app_settings (id, key, value)

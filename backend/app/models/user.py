@@ -10,8 +10,18 @@ from app.models.base import Base, BaseModel
 user_projects = Table(
     "user_projects",
     Base.metadata,
-    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-    Column("project_id", UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "project_id",
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
@@ -22,12 +32,16 @@ class User(BaseModel):
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50))
-    designation_id: Mapped[uuid_mod.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("designations.id"))
+    designation_id: Mapped[uuid_mod.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("designations.id")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     password_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    signature_font: Mapped[str | None] = mapped_column(String(50), default="dancing_script")
+    signature_font: Mapped[str | None] = mapped_column(
+        String(50), default="dancing_script"
+    )
     signature_text: Mapped[str | None] = mapped_column(String(255), default=None)
     signature_path: Mapped[str | None] = mapped_column(String(500), default=None)
     # Bumped on password change / admin reset to invalidate outstanding tokens.

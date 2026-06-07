@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,11 +20,18 @@ class ReferenceNumberConfig(BaseModel):
     project+doc_type+discipline). This model only holds the format pattern,
     the per-(project, doc_type) starting value, and the short codes.
     """
-    __tablename__ = "reference_number_configs"
-    __table_args__ = (UniqueConstraint("project_id", "doc_type", name="uq_refnum_project_doctype"),)
 
-    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
-    doc_type: Mapped[str] = mapped_column(String(10), index=True)  # WIR, MIR, CIR, FAT, CRS
+    __tablename__ = "reference_number_configs"
+    __table_args__ = (
+        UniqueConstraint("project_id", "doc_type", name="uq_refnum_project_doctype"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id")
+    )
+    doc_type: Mapped[str] = mapped_column(
+        String(10), index=True
+    )  # WIR, MIR, CIR, FAT, CRS
     pattern: Mapped[str] = mapped_column(String(500))
     project_code: Mapped[str] = mapped_column(String(50))  # e.g. "MERC"
     contractor_code: Mapped[str] = mapped_column(String(50), default="")  # e.g. "JMJV"

@@ -3,10 +3,10 @@
 Merges the returned PDF with additional user-uploaded attachments at specified
 page positions to create a complete bundle for download.
 """
+
 from __future__ import annotations
 
 import io
-from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
 
@@ -20,6 +20,7 @@ def _bytes_to_pdf_reader(data: bytes) -> PdfReader:
         return PdfReader(io.BytesIO(data))
     # Assume it's an image — convert to PDF via Pillow
     from PIL import Image
+
     img = Image.open(io.BytesIO(data))
     if img.mode == "RGBA":
         img = img.convert("RGB")
@@ -69,8 +70,10 @@ def merge_pdf_bundle(
         writer.add_page(main_reader.pages[page_num])
 
         # Check if any attachments should be inserted after this page
-        while (attachment_idx < len(sorted_attachments) and
-               sorted_attachments[attachment_idx][1] == page_num):
+        while (
+            attachment_idx < len(sorted_attachments)
+            and sorted_attachments[attachment_idx][1] == page_num
+        ):
             att_bytes, _ = sorted_attachments[attachment_idx]
             att_reader = _bytes_to_pdf_reader(att_bytes)
             for att_page in att_reader.pages:

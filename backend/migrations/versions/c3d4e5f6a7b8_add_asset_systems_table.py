@@ -5,6 +5,7 @@ Revises: b2c3d4e5f6a7
 Create Date: 2026-05-29
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -20,8 +21,18 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "asset_systems",
-        sa.Column("asset_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True),
-        sa.Column("system_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("systems.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "asset_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("assets.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "system_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("systems.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
     )
 
 

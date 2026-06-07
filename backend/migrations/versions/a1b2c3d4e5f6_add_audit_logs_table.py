@@ -5,6 +5,7 @@ Revises: 817cd846ce17
 Create Date: 2026-05-28
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -22,8 +23,18 @@ def upgrade() -> None:
     op.create_table(
         "audit_logs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("timestamp", sa.DateTime(timezone=True), server_default=sa.func.now(), index=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column(
+            "timestamp",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            index=True,
+        ),
+        sa.Column(
+            "user_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id"),
+            nullable=True,
+        ),
         sa.Column("action", sa.String(50), index=True, nullable=False),
         sa.Column("entity_type", sa.String(100), index=True, nullable=False),
         sa.Column("entity_id", postgresql.UUID(as_uuid=True), nullable=True),

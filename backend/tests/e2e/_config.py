@@ -7,6 +7,7 @@ Imported by the test files. The base URL is configurable via the
 
     TEST_BASE_URL=http://localhost:50000 uv run pytest tests/e2e
 """
+
 import os
 
 

@@ -18,6 +18,7 @@ Schema changes for the external approval workflow:
 * document_attachments: add document_approval_round_id and kind so cover and
   attachment splits associate with their round.
 """
+
 from typing import Sequence, Union
 
 from alembic import op

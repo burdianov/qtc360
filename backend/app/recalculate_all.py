@@ -3,22 +3,28 @@
 Fixes stale cached statuses that have drifted from actual evidence.
 Run: cd backend && uv run python -m app.recalculate_all
 """
+
 import asyncio
-import uuid
 
 from sqlalchemy import select
 
 from app.core.database import async_session_factory
 from app.models.commissioning import AssetRequirement
-from app.services.commissioning import recalculate_requirement_status, recalculate_tag_status
+from app.services.commissioning import (
+    recalculate_requirement_status,
+    recalculate_tag_status,
+)
 
 
 async def recalculate_all():
     async with async_session_factory() as db:
         async with db.begin():
             result = await db.execute(
-                select(AssetRequirement.id, AssetRequirement.asset_id, AssetRequirement.status)
-                .where(AssetRequirement.is_deleted == False)  # noqa: E712
+                select(
+                    AssetRequirement.id,
+                    AssetRequirement.asset_id,
+                    AssetRequirement.status,
+                ).where(AssetRequirement.is_deleted == False)  # noqa: E712
             )
             rows = result.all()
             print(f"Recalculating {len(rows)} requirements...")
