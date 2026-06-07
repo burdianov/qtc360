@@ -10,6 +10,7 @@ import { ArrowLeft, Copy, Plus, Trash2, Eye, Download } from "lucide-react";
 import api from "@/lib/api";
 import { useSelectedProject } from "@/hooks/use-project";
 import { toast } from "sonner";
+import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,6 +98,7 @@ function NewCRSPageContent() {
   const queryClient = useQueryClient();
 
   const [sourceDocType, setSourceDocType] = useState<string>("");
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [selectedSourceDocId, setSelectedSourceDocId] = useState<string>("");
   const [selectedApproverOrder, setSelectedApproverOrder] = useState<
     number | null
@@ -316,7 +318,7 @@ function NewCRSPageContent() {
         { responseType: "blob" },
       );
       const url = URL.createObjectURL(res.data);
-      window.open(url, "_blank");
+      setPdfPreviewUrl(url);
     } catch {
       toast.error("Failed to generate PDF");
     }
@@ -732,6 +734,7 @@ function NewCRSPageContent() {
           </div>
         </form>
       </Form>
+      <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="CRS Preview" />
     </div>
   );
 }

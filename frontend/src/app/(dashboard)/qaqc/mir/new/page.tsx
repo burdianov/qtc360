@@ -40,6 +40,7 @@ import {
   type CommissioningLinkage,
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
+import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
@@ -144,6 +145,7 @@ function NewMIRPageContent() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [isDirty, setIsDirty] = useState(!editId);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<"new" | "revision">(
     "new",
   );
@@ -1048,6 +1050,9 @@ function NewMIRPageContent() {
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),
                 )}
+                allAssetNames={Object.fromEntries(
+                  assets.map((a) => [a.id, a.name]),
+                )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="MIR"
                 applicableTemplateIds={applicableTemplateIds}
@@ -1314,8 +1319,7 @@ function NewMIRPageContent() {
                   responseType: "blob",
                 });
                 const url = URL.createObjectURL(res.data);
-                window.open(url, "_blank");
-                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                setPdfPreviewUrl(url);
               } catch (e: any) {
                 let msg = "PDF generation failed";
                 try {
@@ -1376,10 +1380,10 @@ function NewMIRPageContent() {
           </CardContent>
         </Card>
       )}
+      <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="Document Preview" />
     </div>
   );
 }
-
 
 function SignatureImage({ userId }: { userId: string | undefined }) {
   const [src, setSrc] = useState<string | null>(null);

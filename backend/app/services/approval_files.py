@@ -263,6 +263,15 @@ async def _assemble_sN(
     password: str | None,
 ) -> bytes:
     """S{N} = R{N-1} (decrypted if needed) + extra_attachments appended."""
+    # Check if a pre-composed bundle exists (from the visual bundle composer)
+    composed_key = f"responses/{doc.id}/S{round_order}_composed.pdf"
+    if storage.exists(composed_key):
+        composed = storage.read(composed_key)
+        if composed:
+            # Clean up the composed file after use
+            storage.delete(composed_key)
+            return composed
+
     prev_path = returned_path(str(doc.id), round_order - 1)
     if not storage.exists(prev_path):
         raise HTTPException(

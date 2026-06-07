@@ -14,6 +14,7 @@ class RequirementTemplate(BaseModel):
     project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"))
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str] = mapped_column(String(50), index=True)
+    display_name: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     level_code: Mapped[str] = mapped_column(String(10), index=True)  # L1, L2A, L2B, L3, L4
     requirement_category: Mapped[str] = mapped_column(String(30))  # fat, delivery, activity, test, integration_test, final_level_test

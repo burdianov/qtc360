@@ -92,10 +92,15 @@ async def upload_template(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("reports.templates")),
 ):
-    """Upload a new DOCX template."""
+    """Upload a DOCX or XLSX template."""
     await assert_user_in_project(user, project_id)
-    if not file.filename or not file.filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="Only .docx files allowed")
+    fname = (file.filename or "").lower()
+    if fname.endswith(".docx"):
+        file_format = "docx"
+    elif fname.endswith(".xlsx"):
+        file_format = "xlsx"
+    else:
+        raise HTTPException(status_code=400, detail="Only .docx and .xlsx files allowed")
 
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:
@@ -103,16 +108,17 @@ async def upload_template(
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    # Validate template placeholders
-    try:
-        from docxtpl import DocxTemplate
-        tpl = DocxTemplate(io.BytesIO(data))
-        env = SandboxedEnvironment(undefined=Undefined)
-        env.parse(tpl.get_xml())
-    except TemplateSyntaxError as e:
-        raise HTTPException(status_code=400, detail=f"Template placeholder error: {e.message}. Use underscores in variable names (e.g. {{{{ delivery_notes }}}} not {{{{ delivery notes }}}}).")
-    except Exception:
-        pass  # Non-Jinja errors (e.g. corrupt DOCX) will be caught later
+    # Validate template placeholders (DOCX only)
+    if file_format == "docx":
+        try:
+            from docxtpl import DocxTemplate
+            tpl = DocxTemplate(io.BytesIO(data))
+            env = SandboxedEnvironment(undefined=Undefined)
+            env.parse(tpl.get_xml())
+        except TemplateSyntaxError as e:
+            raise HTTPException(status_code=400, detail=f"Template placeholder error: {e.message}. Use underscores in variable names (e.g. {{{{ delivery_notes }}}} not {{{{ delivery notes }}}}).")
+        except Exception:
+            pass
 
     # Deactivate previous active templates for this project+doc_type
     result = await db.execute(
@@ -136,11 +142,11 @@ async def upload_template(
     )
     version = len(ver_result.scalars().all()) + 1
 
-    # Auto-detect cover page count by converting the template to PDF and
-    # counting pages. Used by the external approval workflow to split returned
-    # PDFs into cover + per-page attachments.
-    from app.services.pdf import count_pages_in_docx
-    cover_pages = count_pages_in_docx(data)
+    # Auto-detect cover page count (DOCX only — used by approval workflow)
+    cover_pages = 1
+    if file_format == "docx":
+        from app.services.pdf import count_pages_in_docx
+        cover_pages = count_pages_in_docx(data)
 
     template = DocTemplate(
         project_id=project_id,
@@ -148,6 +154,7 @@ async def upload_template(
         name=name,
         file=data,
         filename=file.filename,
+        file_format=file_format,
         version=version,
         is_active=True,
         cover_page_count=cover_pages,
@@ -155,7 +162,7 @@ async def upload_template(
     db.add(template)
     await db.commit()
     await db.refresh(template)
-    return {"id": str(template.id), "name": name, "version": version}
+    return {"id": str(template.id), "name": name, "version": version, "file_format": file_format}
 
 
 @router.get("/templates")
@@ -352,7 +359,7 @@ async def generate_report(
     from app.models.document_attachment import DocumentAttachment
     att_result = await db.execute(
         select(DocumentAttachment)
-        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.kind == "user", DocumentAttachment.is_deleted == False)  # noqa: E712
+        .where(DocumentAttachment.document_id == body.document_id, DocumentAttachment.kind.in_(["user", "checklist"]), DocumentAttachment.is_deleted == False)  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     attachments = att_result.scalars().all()
@@ -407,6 +414,187 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
     except Exception:
         logger.exception("PDF engine health check failed")
         raise HTTPException(status_code=503, detail="PDF engine unhealthy")
+
+
+# ─── Bundle Composer (Approver 2 submission) ─────────────────────────────────
+
+
+@router.get("/bundle-pages/{document_id}")
+async def get_bundle_pages(
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return page thumbnails from Approver 1's returned PDF for the bundle composer.
+
+    Returns JSON: { page_count: int, thumbnails: [base64 PNG strings] }
+    """
+    import fitz
+    import base64
+
+    from app.models.document_approval_round import DocumentApprovalRound
+
+    doc = await db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    # Find approver 1's returned file
+    round_result = await db.execute(
+        select(DocumentApprovalRound)
+        .where(
+            DocumentApprovalRound.document_id == document_id,
+            DocumentApprovalRound.approver_order == 1,
+        )
+        .order_by(DocumentApprovalRound.round_no.desc())
+    )
+    round1 = round_result.scalar_one_or_none()
+    if not round1 or not round1.returned_file_path:
+        raise HTTPException(status_code=404, detail="Approver 1 response not found")
+
+    pdf_bytes = storage.read(round1.returned_file_path)
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF file not found on disk")
+
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    thumbnails = []
+    for page in pdf_doc:
+        # Render at 0.3x zoom for thumbnails (~180px wide for A4)
+        mat = fitz.Matrix(0.3, 0.3)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        thumbnails.append(base64.b64encode(pix.tobytes("png")).decode())
+    pdf_doc.close()
+
+    return {"page_count": len(thumbnails), "thumbnails": thumbnails}
+
+
+@router.post("/bundle-compose/{document_id}")
+async def compose_bundle(
+    document_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.edit")),
+):
+    """Compose the S2 bundle with attachments at specific positions.
+
+    Body: { insertions: [ { attachment_id: str, insert_after_page: int } ] }
+
+    Builds the merged PDF from R1 + user attachments at specified positions,
+    saves to storage, returns the composed PDF inline.
+    """
+    from app.models.document_approval_round import DocumentApprovalRound
+    from app.models.document_attachment import DocumentAttachment
+
+    doc = await db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    # Get R1
+    round_result = await db.execute(
+        select(DocumentApprovalRound)
+        .where(
+            DocumentApprovalRound.document_id == document_id,
+            DocumentApprovalRound.approver_order == 1,
+        )
+        .order_by(DocumentApprovalRound.round_no.desc())
+    )
+    round1 = round_result.scalar_one_or_none()
+    if not round1 or not round1.returned_file_path:
+        raise HTTPException(status_code=404, detail="Approver 1 response not found")
+
+    pdf_bytes = storage.read(round1.returned_file_path)
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="PDF file not found")
+
+    insertions = body.get("insertions", [])
+    if not insertions:
+        # No attachments to insert — return R1 as-is
+        return Response(content=pdf_bytes, media_type="application/pdf")
+
+    # Load attachment files
+    att_data: list[tuple[bytes, int]] = []
+    for ins in insertions:
+        att_id = ins.get("attachment_id")
+        after_page = ins.get("insert_after_page", 0)
+        att = await db.get(DocumentAttachment, att_id)
+        if not att or att.is_deleted:
+            continue
+        file_bytes = storage.read(att.storage_path)
+        if file_bytes:
+            att_data.append((file_bytes, after_page))
+            # Update the attachment's stored position
+            att.insert_after_page = after_page
+
+    await db.commit()
+
+    # Merge
+    from app.services.pdf_merge import merge_pdf_bundle
+    try:
+        merged = merge_pdf_bundle(pdf_bytes, att_data)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e))
+
+    # Save as pre-composed bundle for S2
+    bundle_key = f"responses/{document_id}/S2_composed.pdf"
+    storage.save(bundle_key, merged)
+
+    return Response(content=merged, media_type="application/pdf")
+
+
+# ─── Latest PDF (follows approval chain) ─────────────────────────────────────
+
+
+@router.get("/latest-pdf/{document_id}")
+async def get_latest_pdf(
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return the latest PDF for a document based on its approval chain state.
+
+    Priority (newest first):
+    1. Approver 2 returned file
+    2. Approver 2 submitted file
+    3. Approver 1 returned file
+    4. Approver 1 submitted file
+    5. Fall through to on-the-fly generation
+    """
+    from app.models.document_approval_round import DocumentApprovalRound
+
+    doc = await db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    # Get rounds ordered by approver_order desc
+    rounds_result = await db.execute(
+        select(DocumentApprovalRound)
+        .where(DocumentApprovalRound.document_id == document_id)
+        .order_by(DocumentApprovalRound.approver_order.desc(), DocumentApprovalRound.round_no.desc())
+    )
+    rounds = rounds_result.scalars().all()
+
+    # Walk from latest round to earliest, find first available file
+    for rnd in rounds:
+        if rnd.returned_file_path:
+            data = storage.read(rnd.returned_file_path)
+            if data:
+                rev = str(doc.revision_no or 0).zfill(2)
+                fname = f"{doc.reference_no}_{rev}.pdf"
+                return Response(content=data, media_type="application/pdf",
+                                headers={"Content-Disposition": f"inline; filename=\"{fname}\""})
+        if rnd.submitted_file_path:
+            data = storage.read(rnd.submitted_file_path)
+            if data:
+                rev = str(doc.revision_no or 0).zfill(2)
+                fname = f"{doc.reference_no}_{rev}.pdf"
+                return Response(content=data, media_type="application/pdf",
+                                headers={"Content-Disposition": f"inline; filename=\"{fname}\""})
+
+    # No approval files exist — generate on the fly
+    raise HTTPException(status_code=307, headers={"Location": f"/api/v1/reports/generate/{doc.document_type}"},
+                        detail="No approval files; use generate endpoint")
 
 
 # ─── CRS PDF Generation ──────────────────────────────────────────────────────

@@ -417,6 +417,9 @@ function NewFATPageContent() {
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),
                 )}
+                allAssetNames={Object.fromEntries(
+                  assets.map((a) => [a.id, a.name]),
+                )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="FAT"
                 value={commissioningLinkage}

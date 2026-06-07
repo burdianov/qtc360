@@ -27,6 +27,7 @@ interface RequirementTemplate {
   id: string;
   name: string;
   code: string;
+  display_name: string | null;
   description: string | null;
   level_code: string;
   requirement_category: string;
@@ -40,6 +41,7 @@ interface RequirementTemplate {
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   code: z.string().min(1, "Code is required"),
+  display_name: z.string().optional(),
   description: z.string().optional(),
   level_code: z.string().min(1, "Level is required"),
   requirement_category: z.string().min(1, "Category is required"),
@@ -57,7 +59,7 @@ const CATEGORIES = ["fat", "delivery", "activity", "test", "integration_test", "
 const EVIDENCE_TYPES = ["FAT", "MIR", "WIR", "CIR"];
 
 const defaultValues: FormValues = {
-  name: "", code: "", description: "", level_code: "", requirement_category: "",
+  name: "", code: "", display_name: "", description: "", level_code: "", requirement_category: "",
   evidence_document_type: "", requires_work_breakdown: false, is_gate_requirement: false,
   is_optional: false, sort_order: 0,
 };
@@ -100,7 +102,7 @@ export default function RequirementTemplatesPage() {
   const openCreate = () => { setEditing(null); form.reset(defaultValues); setDialogOpen(true); };
   const openEdit = (item: RequirementTemplate) => {
     setEditing(item);
-    form.reset({ name: item.name, code: item.code, description: item.description || "", level_code: item.level_code, requirement_category: item.requirement_category, evidence_document_type: item.evidence_document_type, requires_work_breakdown: item.requires_work_breakdown, is_gate_requirement: item.is_gate_requirement, is_optional: item.is_optional, sort_order: item.sort_order });
+    form.reset({ name: item.name, code: item.code, display_name: item.display_name || "", description: item.description || "", level_code: item.level_code, requirement_category: item.requirement_category, evidence_document_type: item.evidence_document_type, requires_work_breakdown: item.requires_work_breakdown, is_gate_requirement: item.is_gate_requirement, is_optional: item.is_optional, sort_order: item.sort_order });
     setDialogOpen(true);
   };
   const closeDialog = () => { setDialogOpen(false); setEditing(null); };
@@ -147,6 +149,7 @@ export default function RequirementTemplatesPage() {
                 <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               </div>
               <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="display_name" render={({ field }) => (<FormItem><FormLabel>Display Name (Checklist)</FormLabel><FormControl><Input {...field} placeholder="Used as {{ display_name }} in checklist template" /></FormControl><FormMessage /></FormItem>)} />
               <div className="grid grid-cols-3 gap-4">
                 <FormField control={form.control} name="level_code" render={({ field }) => (
                   <FormItem><FormLabel>Level</FormLabel><FormControl>

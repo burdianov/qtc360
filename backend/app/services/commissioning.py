@@ -2,7 +2,7 @@
 import uuid
 from datetime import date
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -96,9 +96,6 @@ async def recalculate_requirement_status(
         # Work breakdown mode: status derived from work item completion
         approved_count = sum(1 for wi in work_items if wi.status == "approved")
         total = len(work_items)
-        # Work breakdown mode: status derived from work item completion
-        approved_count = sum(1 for wi in work_items if wi.status == "approved")
-        total = len(work_items)
 
         if approved_count == 0:
             # Check if any are submitted
@@ -136,7 +133,7 @@ async def recalculate_requirement_status(
                 new_status = "rejected"
                 progress = 0.0
             elif any(
-                s in ("with_approver_1", "approver_1_returned", "with_approver_2", "internally_signed")
+                s in ("with_approver_1", "approver_1_returned", "with_approver_2")
                 for s in doc_statuses
             ):
                 new_status = "submitted"

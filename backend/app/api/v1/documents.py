@@ -4,7 +4,7 @@ from uuid import UUID
 from pathlib import Path as FilePath
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Path, Query, UploadFile, status
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -678,7 +678,7 @@ async def delete_document(
         # before the link + document are gone — that path would otherwise see a
         # still-present, still-"approved" document and stamp the requirement
         # "achieved", which then survives the link/doc deletion as a stale
-        # green dot in the matrix with no evidence behind it. Snapshot the
+        # green dot in the inspection tracker with no evidence behind it. Snapshot the
         # affected requirement ids first, wipe the FK chain, then recalc each
         # requirement on its own (the doc row no longer exists, so the
         # document-scoped recalc helper would short-circuit).
@@ -1831,8 +1831,6 @@ async def list_attachments(
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(
-            # Checklist attachments come first
-            case((DocumentAttachment.kind == "checklist", 0), else_=1),
             DocumentAttachment.sort_order,
             DocumentAttachment.id,
         )

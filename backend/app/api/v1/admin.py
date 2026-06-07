@@ -60,7 +60,8 @@ async def create_user(body: UserAdminCreate, db: AsyncSession = Depends(get_db),
         await db.rollback()
         raise HTTPException(status_code=409, detail="Email already registered")
     await db.refresh(user)
-    return user
+    result = await db.execute(select(User).where(User.id == user.id).options(selectinload(User.roles), selectinload(User.designation)))
+    return result.scalar_one()
 
 @router.patch("/users/{user_id}", response_model=UserAdminResponse)
 async def update_user(user_id: UUID, body: UserAdminUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):

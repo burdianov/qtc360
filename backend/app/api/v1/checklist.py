@@ -326,7 +326,8 @@ async def download_checklist_pdf(
 
 async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uuid.UUID):
     """Generate checklist PDF and create/update DocumentAttachment."""
-    from app.services.checklist_pdf import generate_checklist_pdf
+    from app.models.doc_template import DocTemplate
+    from app.services.checklist_xlsx import build_checklist_context, convert_xlsx_to_pdf, fill_xlsx_template
 
     checklist = (await db.execute(
         select(DocumentChecklist)
@@ -343,7 +344,32 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
         .options(selectinload(Document.project))
     )).scalar_one()
 
-    pdf_bytes = await generate_checklist_pdf(db, doc, checklist)
+    # Try XLSX template (CHECKLIST type for the project)
+    tmpl_result = await db.execute(
+        select(DocTemplate).where(
+            DocTemplate.project_id == doc.project_id,
+            DocTemplate.doc_type == "CHECKLIST",
+            DocTemplate.file_format == "xlsx",
+            DocTemplate.is_active == True,  # noqa: E712
+            DocTemplate.is_deleted == False,  # noqa: E712
+        )
+    )
+    xlsx_template = tmpl_result.scalar_one_or_none()
+
+    if xlsx_template:
+        # Use XLSX template approach
+        tmpl = checklist.requirement_template
+        display_name = tmpl.display_name or tmpl.name if tmpl else ""
+        responses = sorted(checklist.responses, key=lambda r: r.display_order)
+        response_data = [{"item_text": r.item_text, "response": r.response} for r in responses]
+        ctx = build_checklist_context(display_name, response_data)
+        ctx["wir_no"] = doc.reference_no or ""
+        filled_xlsx = fill_xlsx_template(xlsx_template.file, ctx)
+        pdf_bytes = await convert_xlsx_to_pdf(filled_xlsx)
+    else:
+        # Fallback to reportlab
+        from app.services.checklist_pdf import generate_checklist_pdf
+        pdf_bytes = await generate_checklist_pdf(db, doc, checklist)
 
     filename = f"Checklist - {checklist.requirement_template.name}.pdf"
     file_id = str(uuid.uuid4())
@@ -351,7 +377,6 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
     storage.save(storage_key, pdf_bytes)
 
     if checklist.attachment_id:
-        # Update existing attachment
         att = await db.get(DocumentAttachment, checklist.attachment_id)
         if att:
             storage.delete(att.storage_path)
@@ -359,14 +384,20 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
             att.filename = filename
             att.size = len(pdf_bytes)
     else:
-        # Create new attachment with kind='checklist' and sort_order before user attachments
+        # Place new checklist as first attachment; bump existing ones down
+        from sqlalchemy import update as sa_update
+        await db.execute(
+            sa_update(DocumentAttachment)
+            .where(DocumentAttachment.document_id == doc.id, DocumentAttachment.is_deleted == False)
+            .values(sort_order=DocumentAttachment.sort_order + 1)
+        )
         att = DocumentAttachment(
             document_id=doc.id,
             filename=filename,
             storage_path=storage_key,
             content_type="application/pdf",
             size=len(pdf_bytes),
-            sort_order=checklist.sort_order,
+            sort_order=0,
             kind="checklist",
         )
         db.add(att)

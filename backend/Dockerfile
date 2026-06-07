@@ -2,9 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps for pymupdf, pillow, reportlab
+# System deps for pymupdf, pillow, reportlab, tesseract OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev libffi-dev libjpeg-dev libfreetype6-dev \
+    tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv

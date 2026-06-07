@@ -76,7 +76,7 @@ export const navigation: NavGroup[] = [
   {
     label: "Commissioning",
     items: [
-      { title: "Matrix", url: "/commissioning/matrix", icon: Layers },
+      { title: "Inspection Tracker", url: "/commissioning/inspection-tracker", icon: Layers },
       { title: "Requirements", url: "/commissioning/requirements", icon: ListChecks },
       { title: "Tag Targets", url: "/commissioning/tag-targets", icon: Gauge },
       { title: "Tracking", url: "/commissioning/tracking", icon: Layers },

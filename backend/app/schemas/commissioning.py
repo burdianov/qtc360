@@ -17,6 +17,7 @@ class RequirementTemplateCreate(BaseModel):
     project_id: uuid.UUID | None = None
     name: str
     code: str
+    display_name: str | None = None
     description: str | None = None
     level_code: LEVEL_CODES
     requirement_category: REQUIREMENT_CATEGORIES
@@ -30,6 +31,7 @@ class RequirementTemplateCreate(BaseModel):
 class RequirementTemplateUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+    display_name: str | None = None
     description: str | None = None
     level_code: LEVEL_CODES | None = None
     requirement_category: REQUIREMENT_CATEGORIES | None = None
@@ -46,6 +48,7 @@ class RequirementTemplateOut(BaseModel):
     project_id: uuid.UUID | None
     name: str
     code: str
+    display_name: str | None
     description: str | None
     level_code: str
     requirement_category: str

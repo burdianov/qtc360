@@ -41,6 +41,7 @@ import {
   type CommissioningLinkage,
 } from "@/components/commissioning-linkage";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
+import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
@@ -131,6 +132,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [isDirty, setIsDirty] = useState(!editId);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<"new" | "revision">(
     "new",
   );
@@ -1106,6 +1108,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),
                 )}
+                allAssetNames={Object.fromEntries(
+                  assets.map((a) => [a.id, a.name]),
+                )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="WIR"
                 applicableTemplateIds={applicableTemplateIds}
@@ -1516,8 +1521,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                   responseType: "blob",
                 });
                 const url = URL.createObjectURL(res.data);
-                window.open(url, "_blank");
-                setTimeout(() => URL.revokeObjectURL(url), 60000);
+                setPdfPreviewUrl(url);
               } catch (e: any) {
                 let msg = "PDF generation failed";
                 try {
@@ -1579,6 +1583,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           </CardContent>
         </Card>
       )}
+      <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="Document Preview" />
     </div>
   );
 }

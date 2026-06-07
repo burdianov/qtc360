@@ -12,6 +12,7 @@ from app.core.types import TAG_LEVEL_MAP
 from app.core.deps import (
     assert_user_in_project,
     get_current_user,
+    require_admin,
     require_permission,
     require_project_access,
 )
@@ -766,22 +767,58 @@ async def list_gate_overrides(
 
 
 
-# ─── Matrix endpoint ─────────────────────────────────────────────────────────
+# ─── Admin: recalculate all ───────────────────────────────────────────────────
 
 
-@router.get("/matrix")
-async def get_commissioning_matrix(
+@router.post("/recalculate-all", status_code=status.HTTP_200_OK)
+async def recalculate_all_requirements(
+    project_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Admin-only: recalculate all requirement statuses and tag achievements for a project."""
+    from app.models.asset import Asset
+    from app.services.commissioning import recalculate_tag_status
+
+    result = await db.execute(
+        select(AssetRequirement.id, AssetRequirement.asset_id, AssetRequirement.status)
+        .where(AssetRequirement.is_deleted == False, AssetRequirement.asset_id.in_(  # noqa: E712
+            select(Asset.id).where(Asset.project_id == project_id, Asset.is_deleted == False)  # noqa: E712
+        ))
+    )
+    rows = result.all()
+    changed = 0
+    for ar_id, _, old_status in rows:
+        new_status = await recalculate_requirement_status(db, ar_id)
+        if new_status != old_status:
+            changed += 1
+
+    asset_ids = list({r[1] for r in rows})
+    for aid in asset_ids:
+        await recalculate_tag_status(db, aid)
+
+    await db.commit()
+    return {"recalculated": len(rows), "changed": changed}
+
+
+# ─── Inspection Tracker endpoint ──────────────────────────────────────────────
+
+
+@router.get("/inspection-tracker")
+async def get_inspection_tracker(
     project_id: uuid.UUID = Query(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_project_access()),
 ):
-    """Return the full requirements achievement matrix for a project.
+    """Return the full requirements achievement tracker for a project.
 
     Shape optimized for a virtualized grid:
     - columns: ordered requirement templates with level grouping
     - rows: one per asset with frozen fields + cell statuses
     """
     from app.models.asset import Asset
+    from app.models.asset_type import AssetType
+    from app.models.service import Service
     from app.models.document import Document
 
     # 1. Load requirement templates for project
@@ -798,7 +835,7 @@ async def get_commissioning_matrix(
     # 2. Load assets
     assets_result = await db.execute(
         select(Asset).where(Asset.is_deleted == False, Asset.project_id == project_id)  # noqa: E712
-        .options(selectinload(Asset.asset_type))
+        .options(selectinload(Asset.asset_type).selectinload(AssetType.service).selectinload(Service.discipline))
     )
     assets = assets_result.scalars().all()
     if not assets:
@@ -828,6 +865,22 @@ async def get_commissioning_matrix(
     links_by_ar: dict[uuid.UUID, list] = {}
     for link in all_links:
         links_by_ar.setdefault(link.asset_requirement_id, []).append(link)
+
+    # 5. Load work items for all requirements
+    wi_result = await db.execute(
+        select(RequirementWorkItem)
+        .where(
+            RequirementWorkItem.is_deleted == False,  # noqa: E712
+            RequirementWorkItem.asset_requirement_id.in_([r.id for r in all_reqs]),
+        )
+        .order_by(RequirementWorkItem.sequence_no)
+    )
+    all_work_items = wi_result.scalars().all()
+
+    # Group work items by asset_requirement_id
+    wi_by_ar: dict[uuid.UUID, list] = {}
+    for wi in all_work_items:
+        wi_by_ar.setdefault(wi.asset_requirement_id, []).append(wi)
 
     # Group requirements by asset
     reqs_by_asset: dict[uuid.UUID, dict[uuid.UUID, AssetRequirement]] = {}
@@ -878,12 +931,16 @@ async def get_commissioning_matrix(
                     doc_refs.append({
                         "id": str(doc.id),
                         "reference_no": doc.reference_no,
+                        "revision_no": doc.revision_no or 0,
                         "status": doc.status,
                     })
+            work_items = wi_by_ar.get(req.id, [])
+            wi_data = [{"name": wi.name, "status": wi.status} for wi in work_items] if work_items else []
             cells[str(tmpl_id)] = {
                 "status": req.status,
                 "progress": req.progress_percent,
                 "docs": doc_refs,
+                "work_items": wi_data,
             }
 
         # Determine achieved levels
@@ -898,7 +955,10 @@ async def get_commissioning_matrix(
             "asset_name": asset.name,
             "tag_number": asset.tag_number,
             "asset_type": asset.asset_type.name if asset.asset_type else None,
+            "discipline": asset.asset_type.service.discipline.name if asset.asset_type and asset.asset_type.service and asset.asset_type.service.discipline else None,
+            "service": asset.asset_type.service.name if asset.asset_type and asset.asset_type.service else None,
             "pod": (asset.custom_fields or {}).get("field_1", ""),
+            "custom_fields": asset.custom_fields or {},
             "location": asset.location,
             "progress": progress,
             "achieved_count": achieved,

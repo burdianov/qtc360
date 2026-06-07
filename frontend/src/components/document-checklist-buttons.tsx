@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { FillChecklistModal } from "@/components/fill-checklist-modal";
+import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 
 interface Props {
   documentId: string;
@@ -17,6 +18,7 @@ interface Props {
 export function DocumentChecklistButtons({ documentId, requirementTemplateId, requirementName }: Props) {
   const queryClient = useQueryClient();
   const [fillOpen, setFillOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const { data: checklists = [] } = useQuery<any[]>({
     queryKey: ["document-checklists", documentId],
@@ -41,7 +43,7 @@ export function DocumentChecklistButtons({ documentId, requirementTemplateId, re
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
-      window.open(url, "_blank");
+      setPreviewUrl(url);
     } catch {
       toast.error("Failed to preview checklist");
     }
@@ -97,6 +99,7 @@ export function DocumentChecklistButtons({ documentId, requirementTemplateId, re
         requirementTemplateId={requirementTemplateId}
         requirementName={requirementName}
       />
+      <PdfPreviewModal open={!!previewUrl} onOpenChange={(o) => { if (!o) { if (previewUrl) URL.revokeObjectURL(previewUrl); setPreviewUrl(null); } }} pdfUrl={previewUrl} title={`Checklist - ${requirementName}`} />
     </>
   );
 }

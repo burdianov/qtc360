@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { statusColors } from "@/lib/constants";
 import { formatDate } from "@/lib/format-date";
 import { TableSkeleton } from "@/components/loaders/table-skeleton";
+import { usePdfPreview } from "@/components/pdf-preview-modal";
 
 interface Document {
   id: string;
@@ -34,6 +35,7 @@ export default function FATPage() {
   const router = useRouter();
   const project = useSelectedProject();
   const queryClient = useQueryClient();
+  const { openPreview, PreviewModal } = usePdfPreview();
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ["documents", "FAT", project?.id],
@@ -88,6 +90,32 @@ export default function FATPage() {
       label: "Edit",
       onClick: (row) => router.push(`/qaqc/fat/new?id=${row.id}`),
       hidden: (row) => isTerminal(row),
+    },
+    {
+      label: "Preview PDF",
+      onClick: async (row) => {
+        try {
+          let res;
+          try { res = await api.get(`/reports/latest-pdf/${row.id}`, { responseType: "blob" }); }
+          catch { res = await api.post(`/reports/generate/FAT`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" }); }
+          const url = URL.createObjectURL(res.data);
+          openPreview(url, row.reference_no);
+        } catch { toast.error("PDF generation failed"); }
+      },
+    },
+    {
+      label: "Download PDF",
+      onClick: async (row) => {
+        try {
+          let res;
+          try { res = await api.get(`/reports/latest-pdf/${row.id}`, { responseType: "blob" }); }
+          catch { res = await api.post(`/reports/generate/FAT`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" }); }
+          const url = URL.createObjectURL(res.data);
+          const a = document.createElement("a"); a.href = url;
+          a.download = `${row.reference_no}_${String(row.revision_no ?? 0).padStart(2, "0")}.pdf`;
+          a.click(); URL.revokeObjectURL(url);
+        } catch { toast.error("PDF generation failed"); }
+      },
     },
     {
       label: (row) => (isSubmitted(row) ? "Supersede" : "Delete"),
@@ -177,6 +205,7 @@ export default function FATPage() {
         searchKey="title"
         searchPlaceholder="Search by title..."
       />
+      <PreviewModal />
     </div>
   );
 }

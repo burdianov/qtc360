@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { statusColors } from "@/lib/constants";
 import { formatDate } from "@/lib/format-date";
 import { TableSkeleton } from "@/components/loaders/table-skeleton";
+import { usePdfPreview } from "@/components/pdf-preview-modal";
 
 interface Document {
   id: string;
@@ -35,6 +36,7 @@ export default function WIRPage() {
   const router = useRouter();
   const project = useSelectedProject();
   const queryClient = useQueryClient();
+  const { openPreview, PreviewModal } = usePdfPreview();
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ["documents", "WIR", project?.id],
@@ -91,17 +93,39 @@ export default function WIRPage() {
       hidden: (row) => isTerminal(row),
     },
     {
-      label: "Generate PDF",
+      label: "Preview PDF",
       onClick: async (row) => {
         try {
-          const res = await api.post(
-            `/reports/generate/WIR`,
-            { document_id: row.id, project_id: project!.id },
-            { responseType: "blob" },
-          );
+          let res;
+          try {
+            res = await api.get(`/reports/latest-pdf/${row.id}`, { responseType: "blob" });
+          } catch {
+            res = await api.post(`/reports/generate/WIR`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" });
+          }
           const url = URL.createObjectURL(res.data);
-          window.open(url, "_blank");
-          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          openPreview(url, row.reference_no);
+        } catch {
+          toast.error("PDF generation failed");
+        }
+      },
+    },
+    {
+      label: "Download PDF",
+      onClick: async (row) => {
+        try {
+          let res;
+          try {
+            res = await api.get(`/reports/latest-pdf/${row.id}`, { responseType: "blob" });
+          } catch {
+            res = await api.post(`/reports/generate/WIR`, { document_id: row.id, project_id: project!.id }, { responseType: "blob" });
+          }
+          const url = URL.createObjectURL(res.data);
+          const a = document.createElement("a");
+          a.href = url;
+          const rev = String(row.revision_no ?? 0).padStart(2, "0");
+          a.download = `${row.reference_no}_${rev}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
         } catch {
           toast.error("PDF generation failed");
         }
@@ -196,6 +220,7 @@ export default function WIRPage() {
         searchKey="title"
         searchPlaceholder="Search by title..."
       />
+      <PreviewModal />
     </div>
   );
 }

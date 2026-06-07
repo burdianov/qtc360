@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, LogOut, Menu, Moon, Search, Settings, Sun, User } from "lucide-react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -9,6 +9,16 @@ import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
 import { ProjectSwitcher } from "@/components/layout/project-switcher";
 import { useSelectedProject } from "@/hooks/use-project";
+import { useCurrentUser, useLogout } from "@/hooks/use-auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import api from "@/lib/api";
 
 interface NavbarProps {
@@ -36,6 +46,8 @@ export function Navbar({ onSearchClick }: NavbarProps) {
   const { toggleSidebar } = useSidebar();
   const router = useRouter();
   const project = useSelectedProject();
+  const { data: currentUser } = useCurrentUser();
+  const logout = useLogout();
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["notifications", "unread-count", project?.id],
     queryFn: async () => (await api.get("/notifications/unread-count", { params: { project_id: project?.id } })).data,
@@ -107,6 +119,40 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         </div>
 
         <ProjectSwitcher />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium cursor-pointer hover:bg-primary/20 transition-colors">
+              {currentUser?.full_name?.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase() || <User className="h-4 w-4" />}
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>
+                <p className="text-sm font-medium">{currentUser?.full_name || "User"}</p>
+                <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/admin/settings")}>
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={logout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

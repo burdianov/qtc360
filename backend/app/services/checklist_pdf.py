@@ -158,8 +158,6 @@ async def generate_checklist_pdf(
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        # Span header for verification columns
-        ("SPAN", (2, 0), (4, 0)) if False else ("TOPPADDING", (0, 0), (0, 0), 4),
     ]))
 
     # Multi-page support: split table if it doesn't fit

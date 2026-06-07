@@ -17,7 +17,7 @@ import { useSelectedProject } from "@/hooks/use-project";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 
-const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT"] as const;
+const DOC_TYPES = ["WIR", "MIR", "CIR", "FAT", "CHECKLIST"] as const;
 
 export default function TemplatesPage() {
   const router = useRouter();
@@ -44,7 +44,7 @@ export default function TemplatesPage() {
   const handleUpload = async (docType: string) => {
     if (!projectId) { toast.error("Select a project first"); return; }
     if (!name[docType]) { toast.error("Enter a template name"); return; }
-    if (!file[docType]) { toast.error("Select a DOCX file"); return; }
+    if (!file[docType]) { toast.error("Select a template file"); return; }
     setUploading(true);
     try {
       const form = new FormData();
@@ -75,8 +75,8 @@ export default function TemplatesPage() {
                 <Input value={name[docType] || ""} onChange={(e) => setName((prev) => ({ ...prev, [docType]: e.target.value }))} placeholder={`e.g. ${docType} Template v1`} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">DOCX File</label>
-                <input type="file" accept=".docx" onChange={(e) => setFile((prev) => ({ ...prev, [docType]: e.target.files?.[0] || null }))} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
+                <label className="text-xs text-muted-foreground mb-1.5 block">{docType === "CHECKLIST" ? "XLSX File" : "DOCX File"}</label>
+                <input type="file" accept={docType === "CHECKLIST" ? ".xlsx" : ".docx,.xlsx"} onChange={(e) => setFile((prev) => ({ ...prev, [docType]: e.target.files?.[0] || null }))} className="block text-sm text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border file:border-border file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer" />
               </div>
               <div className="pt-5">
                 <Button onClick={() => handleUpload(docType)} disabled={uploading || !file[docType] || !name[docType]} aria-busy={uploading || undefined}>
@@ -85,7 +85,7 @@ export default function TemplatesPage() {
                 </Button>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Accepted format: DOCX</p>
+            <p className="text-xs text-muted-foreground mt-2">Accepted format: {docType === "CHECKLIST" ? "XLSX" : "DOCX"}</p>
           </CardContent>
         </Card>
 

@@ -80,6 +80,8 @@ interface Props {
   /** All project assets */
   allAssetIds: string[];
   allAssetLabels?: Record<string, string>;
+  /** Asset names keyed by id — shown alongside tag_number for clarity */
+  allAssetNames?: Record<string, string>;
   /** All asset requirements for the project — used to filter assets per block */
   allAssetRequirements?: { id: string; asset_id: string; requirement_template_id: string; status: string }[];
   documentType: string;
@@ -97,6 +99,7 @@ export function CommissioningLinkagePanel({
   projectId,
   allAssetIds,
   allAssetLabels,
+  allAssetNames,
   allAssetRequirements,
   documentType,
   applicableTemplateIds,
@@ -174,6 +177,7 @@ export function CommissioningLinkagePanel({
               usedTemplateIds={usedTemplateIds}
               allAssetIds={allAssetIds}
               allAssetLabels={allAssetLabels}
+              allAssetNames={allAssetNames}
               allAssetRequirements={allAssetRequirements}
               onChange={(patch) => updateBlock(idx, patch)}
               onRemove={() => removeBlock(idx)}
@@ -205,6 +209,7 @@ interface BlockProps {
   usedTemplateIds: Set<string>;
   allAssetIds: string[];
   allAssetLabels?: Record<string, string>;
+  allAssetNames?: Record<string, string>;
   allAssetRequirements?: { id: string; asset_id: string; requirement_template_id: string; status: string }[];
   onChange: (patch: Partial<CommissioningLinkageBlock>) => void;
   onRemove: () => void;
@@ -212,7 +217,7 @@ interface BlockProps {
   documentId?: string;
 }
 
-function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetRequirements, onChange, onRemove, onUnlinkAssets, documentId }: BlockProps) {
+function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetNames, allAssetRequirements, onChange, onRemove, onUnlinkAssets, documentId }: BlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");
@@ -319,6 +324,7 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
                     .map((ar) => ar.asset_id)
                 : allAssetIds}
               allAssetLabels={allAssetLabels}
+              allAssetNames={allAssetNames}
               selectedIds={block.assetIds}
               onToggle={toggleAsset}
             />
@@ -404,6 +410,7 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
                   key={assetId}
                   assetId={assetId}
                   assetLabel={allAssetLabels?.[assetId] ?? assetId.slice(0, 8)}
+                  assetName={allAssetNames?.[assetId]}
                   requirementTemplateId={block.requirementTemplateId}
                   state={block.assetStates[assetId]}
                   onStateChange={(patch) => updateAssetState(assetId, patch)}
@@ -419,26 +426,36 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
 
 // ─── Asset picker with search ─────────────────────────────────────────────────
 
-function AssetPicker({ allAssetIds, allAssetLabels, selectedIds, onToggle }: {
+function AssetPicker({ allAssetIds, allAssetLabels, allAssetNames, selectedIds, onToggle }: {
   allAssetIds: string[];
   allAssetLabels?: Record<string, string>;
+  allAssetNames?: Record<string, string>;
   selectedIds: string[];
   onToggle: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState(selectedIds.length === 0);
   const q = search.toLowerCase();
   const filtered = q
-    ? allAssetIds.filter((id) => (allAssetLabels?.[id] ?? id).toLowerCase().includes(q))
+    ? allAssetIds.filter((id) => {
+        const label = allAssetLabels?.[id] ?? id;
+        const name = allAssetNames?.[id] ?? "";
+        return label.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+      })
     : allAssetIds;
 
   return (
     <div className="space-y-1.5">
-      <label className="text-xs text-muted-foreground block">Assets</label>
+      <button type="button" onClick={() => setExpanded(!expanded)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        Assets{selectedIds.length > 0 && ` (${selectedIds.length})`}
+      </button>
       {selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {selectedIds.map((id) => (
             <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border bg-primary/10 border-primary/50 text-primary">
-              {allAssetLabels?.[id] ?? id.slice(0, 8)}
+              <span className="font-mono">{allAssetLabels?.[id] ?? id.slice(0, 8)}</span>
+              {allAssetNames?.[id] && <span className="text-muted-foreground">- {allAssetNames[id]}</span>}
               <button type="button" onClick={() => onToggle(id)} className="ml-0.5 rounded-full p-0.5 hover:bg-destructive/20 hover:text-destructive transition-colors" aria-label={`Remove ${allAssetLabels?.[id] ?? id}`}>
                 <X className="h-2.5 w-2.5" />
               </button>
@@ -446,24 +463,29 @@ function AssetPicker({ allAssetIds, allAssetLabels, selectedIds, onToggle }: {
           ))}
         </div>
       )}
-      {allAssetIds.length > 6 && (
-        <Input placeholder="Search assets..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 text-xs" />
+      {expanded && (
+        <>
+          {allAssetIds.length > 6 && (
+            <Input placeholder="Search assets..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 text-xs" />
+          )}
+          <div className="rounded-md border max-h-32 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">No assets found.</p>
+            ) : (
+              filtered.slice(0, 50).map((assetId) => {
+                const selected = selectedIds.includes(assetId);
+                return (
+                  <label key={assetId} className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent/50 cursor-pointer border-b last:border-b-0 text-xs">
+                    <input type="checkbox" checked={selected} onChange={() => onToggle(assetId)} className="h-3.5 w-3.5 rounded border-input" />
+                    <span className={`font-mono ${selected ? "font-medium" : ""}`} style={{ minWidth: "10rem" }}>{allAssetLabels?.[assetId] ?? assetId.slice(0, 8)}</span>
+                    {allAssetNames?.[assetId] && <span className="text-muted-foreground">{allAssetNames[assetId]}</span>}
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
-      <div className="rounded-md border max-h-32 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No assets found.</p>
-        ) : (
-          filtered.slice(0, 50).map((assetId) => {
-            const selected = selectedIds.includes(assetId);
-            return (
-              <label key={assetId} className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent/50 cursor-pointer border-b last:border-b-0 text-xs">
-                <input type="checkbox" checked={selected} onChange={() => onToggle(assetId)} className="h-3.5 w-3.5 rounded border-input" />
-                <span className={selected ? "font-medium" : ""}>{allAssetLabels?.[assetId] ?? assetId.slice(0, 8)}</span>
-              </label>
-            );
-          })
-        )}
-      </div>
     </div>
   );
 }
@@ -473,12 +495,13 @@ function AssetPicker({ allAssetIds, allAssetLabels, selectedIds, onToggle }: {
 interface AssetWorkItemSectionProps {
   assetId: string;
   assetLabel: string;
+  assetName?: string;
   requirementTemplateId: string;
   state?: AssetLinkageState;
   onStateChange: (patch: Partial<AssetLinkageState>) => void;
 }
 
-function AssetWorkItemSection({ assetId, assetLabel, requirementTemplateId, state, onStateChange }: AssetWorkItemSectionProps) {
+function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTemplateId, state, onStateChange }: AssetWorkItemSectionProps) {
   const [newItemName, setNewItemName] = useState("");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -509,7 +532,7 @@ function AssetWorkItemSection({ assetId, assetLabel, requirementTemplateId, stat
   if (!assetReq) {
     return (
       <div className="rounded-md border px-3 py-2 flex items-center justify-between">
-        <span className="text-sm font-medium">{assetLabel}</span>
+        <span className="text-sm font-medium">{assetLabel}{assetName && <span className="text-muted-foreground font-normal ml-2">- {assetName}</span>}</span>
         <span className="text-xs text-muted-foreground">No requirement assigned to this asset</span>
       </div>
     );
@@ -531,7 +554,7 @@ function AssetWorkItemSection({ assetId, assetLabel, requirementTemplateId, stat
     <div className="rounded-md border">
       <div className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onClick={() => setCollapsed(!collapsed)}>
         {collapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
-        <span className="text-sm font-medium flex-1">{assetLabel}</span>
+        <span className="text-sm font-medium flex-1">{assetLabel}{assetName && <span className="text-muted-foreground font-normal ml-2">- {assetName}</span>}</span>
         {existingItems.length > 0 && <span className="text-xs text-muted-foreground">{approvedCount}/{existingItems.length} done</span>}
         {assetReq.status === "achieved" && <Badge className="text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Achieved</Badge>}
       </div>

@@ -17,7 +17,6 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
@@ -28,6 +27,8 @@ import {
 import api from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
 import { MAX_ATTACHMENT_BYTES } from "@/lib/constants";
+import { BundleComposerModal } from "./bundle-composer-modal";
+import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { formatSizeCap, validateFileSize } from "@/lib/upload";
 import type {
   ApprovalRound,
@@ -103,6 +104,7 @@ function RoundCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const letter = decision?.letter?.toUpperCase() || null;
   const tone = letter === "C" ? "danger" : letter ? "success" : "muted";
 
@@ -214,8 +216,7 @@ function RoundCard({
                         { responseType: "blob" },
                       );
                       const url = URL.createObjectURL(res.data);
-                      window.open(url, "_blank");
-                      setTimeout(() => URL.revokeObjectURL(url), 60000);
+                      setPdfPreviewUrl(url);
                     } catch {
                       toast.error("Failed to open file");
                     }
@@ -256,8 +257,7 @@ function RoundCard({
                         { responseType: "blob" },
                       );
                       const url = URL.createObjectURL(res.data);
-                      window.open(url, "_blank");
-                      setTimeout(() => URL.revokeObjectURL(url), 120000);
+                      setPdfPreviewUrl(url);
                     } catch {
                       toast.error("Failed to preview PDF");
                     }
@@ -301,6 +301,7 @@ function RoundCard({
         documentId={documentId}
         roundId={round.id}
       />
+      <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="Bundle Preview" />
     </div>
   );
 }
@@ -413,7 +414,6 @@ function RoundAttachmentsList({
   const [pageModalAtt, setPageModalAtt] = useState<RoundAttachment | null>(
     null,
   );
-  const [pageValue, setPageValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<RoundAttachment | null>(
     null,
   );
@@ -509,7 +509,6 @@ function RoundAttachmentsList({
                       className="h-6 px-1.5 text-[11px] text-emerald-600 hover:text-emerald-700"
                       onClick={() => {
                         setPageModalAtt(att);
-                        setPageValue("");
                       }}
                     >
                       Add to Bundle
@@ -532,66 +531,16 @@ function RoundAttachmentsList({
         })}
       </div>
 
-      <Dialog
+      <BundleComposerModal
         open={!!pageModalAtt}
-        onOpenChange={(open) => {
-          if (!open) setPageModalAtt(null);
+        onOpenChange={(open) => { if (!open) setPageModalAtt(null); }}
+        documentId={documentId}
+        attachments={pageModalAtt ? [{ id: pageModalAtt.id, name: pageModalAtt.filename, size: pageModalAtt.size, kind: "user" }] : []}
+        onComposed={() => {
+          queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
+          setPageModalAtt(null);
         }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Add to Bundle</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Insert{" "}
-              <span className="font-medium text-foreground">
-                {pageModalAtt?.filename}
-              </span>{" "}
-              into the bundle.
-            </p>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">
-                After page number:
-              </label>
-              <Input
-                type="number"
-                min="1"
-                value={pageValue}
-                onChange={(e) => setPageValue(e.target.value)}
-                placeholder="e.g. 1"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Enter the page number after which this attachment should be
-                inserted (starts from 1).
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button variant="outline" onClick={() => setPageModalAtt(null)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!pageValue || patchMutation.isPending}
-              aria-busy={patchMutation.isPending || undefined}
-              onClick={() => {
-                const page = parseInt(pageValue);
-                if (isNaN(page) || page < 1) {
-                  toast.error("Enter a valid page number");
-                  return;
-                }
-                patchMutation.mutate({
-                  attId: pageModalAtt!.id,
-                  insertAfterPage: page - 1,
-                });
-              }}
-            >
-              {patchMutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
-              {patchMutation.isPending ? "Saving…" : "Add to Bundle"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      />
 
       <Dialog
         open={!!deleteTarget}
