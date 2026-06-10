@@ -6,12 +6,22 @@ End-to-end test suite for the QTC360 API.
 
 ```
 tests/
-├── e2e/                # Full HTTP roundtrip against a live backend
-│   ├── conftest.py     # `client` fixture (httpx.AsyncClient)
-│   ├── test_approval_workflow.py
-│   └── test_deferred_allocation.py
+├── e2e/                    # Full HTTP roundtrip against a live backend
+│   ├── conftest.py         # `client` fixture (httpx.AsyncClient)
+│   ├── e2e_documents/      # Isolated document tests (per-session DB)
+│   │   ├── conftest.py     # Session-scoped test DB, uvicorn, seed data
+│   │   ├── helpers.py      # Shared test helpers
+│   │   ├── test_document_creation_and_crud.py
+│   │   ├── test_document_signing.py
+│   │   ├── test_document_attachments_and_bundles.py
+│   │   ├── test_document_lifecycle_matrix.py
+│   │   ├── test_document_state_machine_and_permissions.py
+│   │   ├── test_document_resubmission_and_captured_information.py
+│   │   ├── test_document_approval_rounds.py
+│   │   └── test_document_concurrency.py
+│   └── _config.py          # Shared base URL config
 └── helpers/
-    └── cleanup.py      # `hard_delete_documents()` for teardown
+    └── cleanup.py          # `hard_delete_documents()` for teardown
 ```
 
 Tests are organised by *how they run*, not by *what they cover*:
@@ -30,8 +40,8 @@ From the `backend/` directory:
 # Everything that pytest can find
 uv run pytest
 
-# Just e2e
-uv run pytest tests/e2e
+# Just e2e document tests (isolated per-session test DB)
+uv run pytest tests/e2e/e2e_documents -v
 
 # A single test by name
 uv run pytest -k wir
@@ -40,32 +50,18 @@ uv run pytest -k wir
 uv run pytest -v --tb=long
 ```
 
-The e2e tests assume the backend is running on `http://localhost:8000`
-(see `tests/e2e/conftest.py`). They also expect specific test users
-(creator, qaqc, approver) to exist in the dev DB.
+### Test Database
 
-## Teardown
+The `e2e_documents` tests use a fully isolated workflow:
+- Each session creates a fresh test database (`qtc360_e2e_{pid}_{uuid}`)
+- Migrations and seeds run automatically
+- A uvicorn instance starts on a random free port
+- The database is dropped at session end
 
-E2E tests create real documents and must clean up after themselves.
-`tests/helpers/cleanup.py` exposes `hard_delete_documents(ids)` which
-bypasses the API's soft-delete and issues a direct `DELETE` against
-the DB in FK-respecting order, then rolls back the per-discipline
-reference-number counters so re-runs are idempotent.
+To debug a failing test, keep the database and server alive:
 
-Use it in a `try / finally` block:
-
-```python
-from tests.helpers.cleanup import hard_delete_documents
-
-async def test_something(client):
-    doc_id = None
-    try:
-        r = await client.post(...)
-        doc_id = r.json()["id"]
-        # ... assertions ...
-    finally:
-        if doc_id:
-            await hard_delete_documents([doc_id])
+```bash
+QTC360_E2E_KEEP_DB=1 uv run pytest tests/e2e/e2e_documents -k <test_name>
 ```
 
 ## CI

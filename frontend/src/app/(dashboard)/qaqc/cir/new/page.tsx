@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
@@ -49,58 +48,18 @@ import { DocumentAttachments } from "@/components/document-attachments";
 import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 import { CenteredSpinner } from "@/components/loaders/centered-spinner";
-
-interface Discipline {
-  id: string;
-  name: string;
-  code: string;
-}
-interface User {
-  id: string;
-  full_name: string;
-  designation: { id: string; name: string } | null;
-  signature_text: string | null;
-  signature_font: string | null;
-  has_signature: boolean;
-}
-interface Asset {
-  id: string;
-  name: string;
-  tag_number: string;
-  asset_type_id: string;
-}
-interface AssetType {
-  id: string;
-  name: string;
-  code: string;
-  service_id: string;
-  parent_type_id: string | null;
-}
-interface Service {
-  id: string;
-  name: string;
-  code: string;
-  discipline_id: string;
-}
-
-const schema = z.object({
-  subject: z.string().min(1, "Subject is required"),
-  discipline_id: z.string().min(1, "Discipline is required"),
-  description: z.string().min(1, "Description is required"),
-  general_location: z.string().optional(),
-  floor_level_room: z.string().optional(),
-  approved_rams: z.string().optional(),
-  drawing_reference: z.string().optional(),
-  inspector_1_id: z.string().optional(),
-  inspector_2_id: z.string().optional(),
-  remarks_1: z.string().optional(),
-  remarks_2: z.string().optional(),
-  inspector_date_1: z.string().optional(),
-  inspector_time_1: z.string().optional(),
-  date: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
+import { SignatureImage } from "@/components/SignatureImage";
+import {
+  cirSchema,
+  cirDefaultValues,
+  buildCirPayload,
+  type CirFormValues,
+  type Discipline,
+  type InspectorUser,
+  type CirAsset,
+  type CirAssetType,
+  type CirService,
+} from "./_lib/cir-form";
 
 export default function NewCIRPage() {
   return (
@@ -148,7 +107,7 @@ function NewCIRPageContent() {
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [isDirty, setIsDirty] = useState(!editId);
+  const programmaticDirtyRef = useRef(!editId);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<"new" | "revision">(
     "new",
@@ -159,7 +118,7 @@ function NewCIRPageContent() {
     queryKey: ["disciplines"],
     queryFn: async () => (await api.get("/disciplines")).data,
   });
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: users = [] } = useQuery<InspectorUser[]>({
     queryKey: ["users"],
     queryFn: async () => (await api.get("/auth/users")).data,
   });
@@ -172,17 +131,17 @@ function NewCIRPageContent() {
   const canSignFor = (assignedId: string | undefined) =>
     assignedId === currentUser?.id || (!!assignedId && delegatedByIds.has(assignedId));
 
-  const { data: assets = [] } = useQuery<Asset[]>({
+  const { data: assets = [] } = useQuery<CirAsset[]>({
     queryKey: ["assets", project?.id],
     queryFn: async () =>
       (await api.get("/assets", { params: { project_id: project?.id } })).data,
     enabled: !!project?.id,
   });
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services = [] } = useQuery<CirService[]>({
     queryKey: ["services"],
     queryFn: async () => (await api.get("/services")).data,
   });
-  const { data: assetTypes = [] } = useQuery<AssetType[]>({
+  const { data: assetTypes = [] } = useQuery<CirAssetType[]>({
     queryKey: ["asset-types"],
     queryFn: async () => (await api.get("/asset-types")).data,
   });
@@ -254,24 +213,9 @@ function NewCIRPageContent() {
     enabled: !!project?.id && !editId && submissionMode === "revision",
   });
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      subject: "",
-      discipline_id: "",
-      description: "",
-      general_location: "",
-      floor_level_room: "",
-      approved_rams: "",
-      drawing_reference: "",
-      inspector_1_id: "",
-      inspector_2_id: "",
-      remarks_1: "",
-      remarks_2: "",
-      inspector_date_1: "",
-      inspector_time_1: "",
-      date: new Date().toISOString().split("T")[0],
-    },
+  const form = useForm<CirFormValues>({
+    resolver: zodResolver(cirSchema),
+    defaultValues: cirDefaultValues,
   });
 
   const { data: existingDoc } = useQuery({
@@ -303,8 +247,11 @@ function NewCIRPageContent() {
       "superseded",
     ].includes(existingDoc.status);
 
+  const existingDocLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (existingDoc) {
+    if (existingDoc && !existingDocLoadedRef.current) {
+      existingDocLoadedRef.current = true;
       form.reset({
         subject: existingDoc.title || "",
         discipline_id: existingDoc.discipline_id || "",
@@ -330,13 +277,20 @@ function NewCIRPageContent() {
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
     }
-  }, [existingDoc, assets, form]);
+  // Only runs when existingDoc first becomes available (guarded by existingDocLoadedRef).
+  // form.reset, setSigned, setReferenceNo, setRevisionNo are stable and don't need to be deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDoc]);
 
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)
       return;
+    const controller = new AbortController();
     api
-      .get("/commissioning/document-links", { params: { document_id: editId } })
+      .get("/commissioning/document-links", {
+        params: { document_id: editId },
+        signal: controller.signal,
+      })
       .then(async (res) => {
         const links = res.data as {
           asset_requirement_id: string;
@@ -402,33 +356,45 @@ function NewCIRPageContent() {
           setTimeout(() => { restoringLinkageRef.current = false; }, 500);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (err && typeof err === "object" && "code" in err && (err as any).code === "ERR_CANCELED") return;
+        console.error("Failed to restore commissioning linkage:", err);
+      });
+    return () => controller.abort();
   }, [editId, allAssetRequirements, commissioningLinkage]);
 
   useEffect(() => {
-    if (editId) {
-      api
-        .get(`/documents/${editId}/attachments`)
-        .then((res) => {
-          setAttachments(
-            res.data.map((a: any) => ({
-              id: a.id,
-              name: a.filename,
-              size: a.size,
-              isExisting: true,
-            })),
-          );
-        })
-        .catch(() => {});
-    }
+    if (!editId) return;
+    const controller = new AbortController();
+    api
+      .get(`/documents/${editId}/attachments`, { signal: controller.signal })
+      .then((res) => {
+        setAttachments(
+          res.data.map((a: any) => ({
+            id: a.id,
+            name: a.filename,
+            size: a.size,
+            isExisting: true,
+          })),
+        );
+      })
+      .catch((err) => {
+        if (err && typeof err === "object" && "code" in err && (err as any).code === "ERR_CANCELED") return;
+        console.error("Failed to load existing attachments:", err);
+      });
+    return () => controller.abort();
   }, [editId]);
 
   // Pre-fill from rejected document for revision
   useEffect(() => {
     if (!revisionOfId || editId) return;
+    const controller = new AbortController();
     (async () => {
       try {
-        const { data: doc } = await api.get(`/documents/${revisionOfId}`);
+        const { data: doc } = await api.get(`/documents/${revisionOfId}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         form.reset({
           subject: doc.title || "",
           discipline_id: doc.discipline_id || "",
@@ -449,7 +415,9 @@ function NewCIRPageContent() {
         setRevisionNo(doc.revision_no + 1);
         const linksRes = await api.get("/commissioning/document-links", {
           params: { document_id: revisionOfId },
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
         const links = linksRes.data as {
           asset_requirement_id: string;
           requirement_work_item_id: string | null;
@@ -486,11 +454,14 @@ function NewCIRPageContent() {
             linkageDirtyRef.current = true;
           }
         }
-        setIsDirty(true);
-      } catch {
+        programmaticDirtyRef.current = true;
+      } catch (err: any) {
+        if (err && typeof err === "object" && "code" in err && err.code === "ERR_CANCELED") return;
         toast.error("Failed to load rejected document data");
+        console.error("Failed to load rejected document data:", err);
       }
     })();
+    return () => controller.abort();
   }, [revisionOfId, editId, assets, allAssetRequirements, form]);
 
   const disciplineId = form.watch("discipline_id");
@@ -540,7 +511,7 @@ function NewCIRPageContent() {
       toast.error("Please save the document first before signing");
       return;
     }
-    if (isDirty || form.formState.isDirty) {
+    if (programmaticDirtyRef.current || form.formState.isDirty) {
       toast.error("Please save your changes before signing");
       return;
     }
@@ -576,28 +547,8 @@ function NewCIRPageContent() {
     }
   };
 
-  const buildPayload = (values: FormValues) => ({
-    project_id: project!.id,
-    document_type: "CIR",
-    title: values.subject,
-    description: values.description,
-    discipline_id: values.discipline_id,
-    location: values.general_location || null,
-    floor_level: values.floor_level_room || null,
-    rams_ref: values.approved_rams || null,
-    drawing_ref: values.drawing_reference || null,
-    inspection_date: values.date || null,
-    site_engineer_id: values.inspector_1_id || null,
-    qaqc_engineer_id: values.inspector_2_id || null,
-    remarks_1: values.remarks_1 || null,
-    remarks_2: values.remarks_2 || null,
-    inspector_date_1: values.inspector_date_1 || null,
-    inspector_time_1: values.inspector_time_1 || null,
-    asset_ids: commissioningLinkage
-      ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
-      : [],
-    ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
-  });
+  const buildPayload = (values: CirFormValues) =>
+    buildCirPayload(values, project!.id, commissioningLinkage, revisionOfId);
 
   const saveCommissioningLinkage = async (docId: string | null) => {
     if (!commissioningLinkage || !docId) return;
@@ -617,7 +568,7 @@ function NewCIRPageContent() {
           for (const delId of s?.deleteExistingIds ?? [])
             await api
               .delete(`/commissioning/work-items/${delId}`)
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to delete work item:", err); });
           const created: string[] = [];
           for (let i = 0; i < (s?.newItems ?? []).length; i++) {
             const wi = await api.post("/commissioning/work-items", {
@@ -635,7 +586,7 @@ function NewCIRPageContent() {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to delete work item:", err); });
           }
         } else {
           await api
@@ -643,7 +594,7 @@ function NewCIRPageContent() {
               document_id: docId,
               asset_requirement_id: assetReq.id,
             })
-            .catch(() => {});
+            .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
         }
       }
       if (block.gateWarningAcknowledged) {
@@ -656,14 +607,17 @@ function NewCIRPageContent() {
               incomplete_requirements: block.incompleteRequirements || [],
               notes: block.gateOverrideNotes || null,
             })
-            .catch(() => {});
+            .catch((err: any) => {
+              console.error("Failed to record gate override:", err);
+              toast.error("Failed to record gate override acknowledgement");
+            });
         }
       }
     }
   };
 
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async (values: CirFormValues) => {
       let res;
       const payload = buildPayload(values);
 
@@ -702,7 +656,7 @@ function NewCIRPageContent() {
     },
     onSuccess: (res) => {
       toast.success(editId ? "CIR updated" : "CIR saved as draft");
-      setIsDirty(false);
+      programmaticDirtyRef.current = false;
       setRevisionOfId(null);
       // Server returns the assigned reference number; surface it immediately
       // so the user sees the value before the page navigates to the edit URL.
@@ -725,7 +679,9 @@ function NewCIRPageContent() {
               })),
             );
           })
-          .catch(() => {});
+          .catch((err: any) => {
+            console.error("Failed to reload attachments after save:", err);
+          });
       if (!editId && res?.data?.id)
         router.replace(`/qaqc/cir/new?id=${res.data.id}`);
     },
@@ -891,7 +847,7 @@ function NewCIRPageContent() {
                       }
                       onValueChange={(v: any) => {
                         setSelectedTemplateId(v);
-                        setIsDirty(true);
+                        programmaticDirtyRef.current = true;
                       }}
                       disabled={docTemplates.length <= 1}
                     >
@@ -1074,7 +1030,7 @@ function NewCIRPageContent() {
                   setCommissioningLinkage(linkage);
                   if (!restoringLinkageRef.current) {
                     linkageDirtyRef.current = true;
-                    setIsDirty(true);
+                    programmaticDirtyRef.current = true;
                   }
                 }}
                 onRemoveBlock={async (block) => {
@@ -1097,7 +1053,7 @@ function NewCIRPageContent() {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to delete work item:", err); });
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
@@ -1118,7 +1074,7 @@ function NewCIRPageContent() {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to delete work item:", err); });
                   }
                 }}
               />
@@ -1404,7 +1360,7 @@ function NewCIRPageContent() {
                   documentId={editId || undefined}
                   attachments={attachments}
                   onAttachmentsChange={setAttachments}
-                  onDirtyChange={() => setIsDirty(true)}
+                  onDirtyChange={() => programmaticDirtyRef.current = true}
                   showPagePosition={false}
                   showDownloadBundle={false}
                 />
@@ -1423,7 +1379,7 @@ function NewCIRPageContent() {
                     disabled={
                       mutation.isPending ||
                       notifyMutation.isPending ||
-                      (!isDirty && !form.formState.isDirty)
+                      (!programmaticDirtyRef.current && !form.formState.isDirty)
                     }
                   >
                     {mutation.isPending && (
@@ -1537,20 +1493,4 @@ function NewCIRPageContent() {
       <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="Document Preview" />
     </div>
   );
-}
-
-function SignatureImage({ userId }: { userId: string | undefined }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    if (!userId) return;
-    let active = true;
-    let objectUrl: string | null = null;
-    api.get(`/auth/users/${userId}/signature`, { responseType: "blob" })
-      .then((res) => { if (active) { objectUrl = URL.createObjectURL(res.data); setSrc(objectUrl); } })
-      .catch(() => {});
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [userId]);
-  if (!src) return <span className="text-xs text-muted-foreground">Signed</span>;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt="Signature" className="h-10 max-w-full object-contain" />;
 }

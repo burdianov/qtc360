@@ -37,10 +37,11 @@ function performRefresh(refresh: string) {
       return data;
     })
     .finally(() => {
-      // Defer clearing so concurrent .then callbacks see the same resolved promise.
-      setTimeout(() => {
-        refreshPromise = null;
-      }, 0);
+      // Clear the in-flight promise so the next 401 burst starts a fresh
+      // refresh. By the time .finally() executes, all .then()/.catch()
+      // handlers attached to this promise have already resolved — no
+      // consumer is left waiting.
+      refreshPromise = null;
     });
   return refreshPromise;
 }

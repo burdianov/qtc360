@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Loader2, Send, Download, X } from "lucide-react";
 import api from "@/lib/api";
@@ -43,58 +42,18 @@ import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { Spinner } from "@/components/ui/spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
-
-interface Discipline {
-  id: string;
-  name: string;
-  code: string;
-}
-interface User {
-  id: string;
-  full_name: string;
-  designation: { id: string; name: string } | null;
-  signature_text: string | null;
-  signature_font: string | null;
-  has_signature: boolean;
-}
-interface Asset {
-  id: string;
-  name: string;
-  tag_number: string;
-  asset_type_id: string;
-}
-interface AssetType {
-  id: string;
-  name: string;
-  code: string;
-  service_id: string;
-  parent_type_id: string | null;
-}
-interface Service {
-  id: string;
-  name: string;
-  code: string;
-  discipline_id: string;
-}
-
-const schema = z.object({
-  subject: z.string().min(1, "Subject is required"),
-  discipline_id: z.string().min(1, "Discipline is required"),
-  description: z.string().min(1, "Description is required"),
-  general_location: z.string().optional(),
-  floor_level_room: z.string().optional(),
-  approved_rams: z.string().optional(),
-  drawing_reference: z.string().optional(),
-  inspector_1_id: z.string().optional(),
-  inspector_2_id: z.string().optional(),
-  remarks_1: z.string().optional(),
-  remarks_2: z.string().optional(),
-  inspector_date_1: z.string().optional(),
-  inspector_time_1: z.string().optional(),
-  date: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
+import { SignatureImage } from "@/components/SignatureImage";
+import {
+  wirSchema,
+  wirDefaultValues,
+  buildWirPayload,
+  type WirFormValues,
+  type Discipline,
+  type InspectorUser,
+  type WirAsset,
+  type WirAssetType,
+  type WirService,
+} from "./_lib/wir-form";
 
 export default function NewWIRPage() {
   return <NewWIRPageContent editId={null} />;
@@ -129,7 +88,10 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [isDirty, setIsDirty] = useState(!editId);
+  // Tracks dirtiness from sources React Hook Form can't detect (commissioning
+  // linkage changes, attachment reordering, etc.). Combined with
+  // form.formState.isDirty for a single authoritative dirty check.
+  const programmaticDirtyRef = useRef(!editId);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<"new" | "revision">(
     "new",
@@ -166,7 +128,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     queryFn: async () => (await api.get("/disciplines")).data,
   });
 
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: users = [] } = useQuery<InspectorUser[]>({
     queryKey: ["users"],
     queryFn: async () => (await api.get("/auth/users")).data,
   });
@@ -179,19 +141,19 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const canSignFor = (assignedId: string | undefined) =>
     assignedId === currentUser?.id || (!!assignedId && delegatedByIds.has(assignedId));
 
-  const { data: assets = [] } = useQuery<Asset[]>({
+  const { data: assets = [] } = useQuery<WirAsset[]>({
     queryKey: ["assets", project?.id],
     queryFn: async () =>
       (await api.get("/assets", { params: { project_id: project?.id } })).data,
     enabled: !!project?.id,
   });
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services = [] } = useQuery<WirService[]>({
     queryKey: ["services"],
     queryFn: async () => (await api.get("/services")).data,
   });
 
-  const { data: assetTypes = [] } = useQuery<AssetType[]>({
+  const { data: assetTypes = [] } = useQuery<WirAssetType[]>({
     queryKey: ["asset-types"],
     queryFn: async () => (await api.get("/asset-types")).data,
   });
@@ -241,24 +203,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     enabled: !!project?.id,
   });
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      subject: "",
-      discipline_id: "",
-      description: "",
-      general_location: "",
-      floor_level_room: "",
-      approved_rams: "",
-      drawing_reference: "",
-      inspector_1_id: "",
-      inspector_2_id: "",
-      remarks_1: "",
-      remarks_2: "",
-      inspector_date_1: "",
-      inspector_time_1: "",
-      date: new Date().toISOString().split("T")[0],
-    },
+  const form = useForm<WirFormValues>({
+    resolver: zodResolver(wirSchema),
+    defaultValues: wirDefaultValues,
   });
 
   // Load existing document if editing
@@ -280,8 +227,11 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       "superseded",
     ].includes(existingDoc.status);
 
+  const existingDocLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (existingDoc) {
+    if (existingDoc && !existingDocLoadedRef.current) {
+      existingDocLoadedRef.current = true;
       form.reset({
         subject: existingDoc.title || "",
         discipline_id: existingDoc.discipline_id || "",
@@ -307,14 +257,21 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       setReferenceNo(existingDoc.reference_no || "");
       setRevisionNo(existingDoc.revision_no || 0);
     }
-  }, [existingDoc, assets, form]);
+  // Only runs when existingDoc first becomes available (guarded by existingDocLoadedRef).
+  // form.reset, setSigned, setReferenceNo, setRevisionNo are stable and don't need to be deps.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDoc]);
 
   // Restore commissioning linkage from server
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)
       return;
+    const controller = new AbortController();
     api
-      .get("/commissioning/document-links", { params: { document_id: editId } })
+      .get("/commissioning/document-links", {
+        params: { document_id: editId },
+        signal: controller.signal,
+      })
       .then(async (res) => {
         const links = res.data as {
           asset_requirement_id: string;
@@ -385,34 +342,46 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           setTimeout(() => { restoringLinkageRef.current = false; }, 500);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (err && typeof err === "object" && "code" in err && (err as any).code === "ERR_CANCELED") return;
+        console.error("Failed to restore commissioning linkage:", err);
+      });
+    return () => controller.abort();
   }, [editId, allAssetRequirements, commissioningLinkage]);
 
   // Load existing attachments
   useEffect(() => {
-    if (editId) {
-      api
-        .get(`/documents/${editId}/attachments`)
-        .then((res) => {
-          setAttachments(
-            res.data.map((a: any) => ({
-              id: a.id,
-              name: a.filename,
-              size: a.size,
-              isExisting: true,
-            })),
-          );
-        })
-        .catch(() => {});
-    }
+    if (!editId) return;
+    const controller = new AbortController();
+    api
+      .get(`/documents/${editId}/attachments`, { signal: controller.signal })
+      .then((res) => {
+        setAttachments(
+          res.data.map((a: any) => ({
+            id: a.id,
+            name: a.filename,
+            size: a.size,
+            isExisting: true,
+          })),
+        );
+      })
+      .catch((err) => {
+        if (err && typeof err === "object" && "code" in err && (err as any).code === "ERR_CANCELED") return;
+        console.error("Failed to load existing attachments:", err);
+      });
+    return () => controller.abort();
   }, [editId]);
 
   // Pre-fill form from selected rejected document for revision
   useEffect(() => {
     if (!revisionOfId || editId) return;
+    const controller = new AbortController();
     (async () => {
       try {
-        const { data: doc } = await api.get(`/documents/${revisionOfId}`);
+        const { data: doc } = await api.get(`/documents/${revisionOfId}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         form.reset({
           subject: doc.title || "",
           discipline_id: doc.discipline_id || "",
@@ -431,11 +400,12 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         });
         setReferenceNo(doc.reference_no || "");
         setRevisionNo(doc.revision_no + 1);
-        // Restore assets
         // Restore commissioning linkage
         const linksRes = await api.get("/commissioning/document-links", {
           params: { document_id: revisionOfId },
+          signal: controller.signal,
         });
+        if (controller.signal.aborted) return;
         const links = linksRes.data as {
           asset_requirement_id: string;
           requirement_work_item_id: string | null;
@@ -467,11 +437,14 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
             linkageDirtyRef.current = true;
           }
         }
-        setIsDirty(true);
-      } catch {
+        programmaticDirtyRef.current = true;
+      } catch (err: any) {
+        if (err && typeof err === "object" && "code" in err && err.code === "ERR_CANCELED") return;
         toast.error("Failed to load rejected document data");
+        console.error("Failed to load rejected document data:", err);
       }
     })();
+    return () => controller.abort();
   }, [revisionOfId, editId, assets, allAssetRequirements, form]);
 
   // Auto-generate reference number for new WIR when discipline is selected
@@ -524,7 +497,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       toast.error("Please save the document first before signing");
       return;
     }
-    if (isDirty || form.formState.isDirty) {
+    if (programmaticDirtyRef.current || form.formState.isDirty) {
       toast.error("Please save your changes before signing");
       return;
     }
@@ -560,28 +533,8 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     }
   };
 
-  const buildPayload = (values: FormValues) => ({
-    project_id: project!.id,
-    document_type: "WIR",
-    title: values.subject,
-    description: values.description,
-    discipline_id: values.discipline_id,
-    location: values.general_location || null,
-    floor_level: values.floor_level_room || null,
-    rams_ref: values.approved_rams || null,
-    drawing_ref: values.drawing_reference || null,
-    inspection_date: values.date || null,
-    site_engineer_id: values.inspector_1_id || null,
-    qaqc_engineer_id: values.inspector_2_id || null,
-    remarks_1: values.remarks_1 || null,
-    remarks_2: values.remarks_2 || null,
-    inspector_date_1: values.inspector_date_1 || null,
-    inspector_time_1: values.inspector_time_1 || null,
-    asset_ids: commissioningLinkage
-      ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
-      : [],
-    ...(revisionOfId ? { revision_of_id: revisionOfId } : {}),
-  });
+  const buildPayload = (values: WirFormValues) =>
+    buildWirPayload(values, project!.id, commissioningLinkage, revisionOfId);
 
   const saveCommissioningLinkage = async (docId: string | null) => {
     if (!commissioningLinkage || !docId) return;
@@ -605,7 +558,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
           for (const delId of assetState?.deleteExistingIds ?? []) {
             await api
               .delete(`/commissioning/work-items/${delId}`)
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to delete work item:", err); });
           }
 
           const createdLinkedIds: string[] = [];
@@ -627,7 +580,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to delete work item:", err); });
           }
           for (const wiId of createdLinkedIds) {
             await api
@@ -636,7 +589,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to delete work item:", err); });
           }
         } else {
           await api
@@ -644,7 +597,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
               document_id: docId,
               asset_requirement_id: assetReq.id,
             })
-            .catch(() => {});
+            .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
         }
       }
 
@@ -658,15 +611,16 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
               incomplete_requirements: block.incompleteRequirements || [],
               notes: block.gateOverrideNotes || null,
             })
-            .catch(() =>
-              toast.error("Failed to record gate override acknowledgement"),
-            );
+            .catch((err: any) => {
+              console.error("Failed to record gate override:", err);
+              toast.error("Failed to record gate override acknowledgement");
+            });
         }
       }
     }
   };
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async (values: WirFormValues) => {
       let res;
       const payload = buildPayload(values);
 
@@ -708,7 +662,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     },
     onSuccess: (res) => {
       toast.success(editId ? "WIR updated" : "WIR saved as draft");
-      setIsDirty(false);
+      programmaticDirtyRef.current = false;
       setRevisionOfId(null);
       // Server returns the assigned reference number; surface it immediately
       // so the user sees the value before the page navigates to the edit URL.
@@ -731,7 +685,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
               })),
             );
           })
-          .catch(() => {});
+          .catch((err: any) => {
+            console.error("Failed to reload attachments after save:", err);
+          });
       if (!editId && res?.data?.id) {
         router.replace(`/qaqc/wir/${res.data.id}`);
       }
@@ -742,7 +698,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     mutationFn: async () => {
       let docId = editId;
 
-      if (!docId || isDirty || form.formState.isDirty) {
+      if (!docId || programmaticDirtyRef.current || form.formState.isDirty) {
         const values = form.getValues();
         let res;
 
@@ -760,7 +716,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         }
 
         form.reset(form.getValues());
-        setIsDirty(false);
+        programmaticDirtyRef.current = false;
       }
 
       if (!docId) {
@@ -933,7 +889,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                       }
                       onValueChange={(v: any) => {
                         setSelectedTemplateId(v);
-                        setIsDirty(true);
+                        programmaticDirtyRef.current = true;
                       }}
                       disabled={docTemplates.length <= 1}
                     >
@@ -1117,7 +1073,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                   setCommissioningLinkage(linkage);
                   if (!restoringLinkageRef.current) {
                     linkageDirtyRef.current = true;
-                    setIsDirty(true);
+                    programmaticDirtyRef.current = true;
                   }
                 }}
                 onRemoveBlock={async (block) => {
@@ -1140,7 +1096,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to delete work item:", err); });
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
@@ -1161,7 +1117,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to delete work item:", err); });
                   }
                 }}
               />
@@ -1191,7 +1147,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                           <div className="flex gap-1.5 w-[48%]">
                           <div className="flex-1 min-w-0">
                           <Select
-                            onValueChange={(v) => { field.onChange(v); setIsDirty(true); setSigTouched((t) => ({ ...t, inspector1: true })); }}
+                            onValueChange={(v) => { field.onChange(v); programmaticDirtyRef.current = true; setSigTouched((t) => ({ ...t, inspector1: true })); }}
                             value={field.value}
                             disabled={
                               !!editId &&
@@ -1305,7 +1261,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                           <div className="flex gap-1.5 w-[48%]">
                           <div className="flex-1 min-w-0">
                           <Select
-                            onValueChange={(v) => { field.onChange(v); setIsDirty(true); setSigTouched((t) => ({ ...t, inspector2: true })); }}
+                            onValueChange={(v) => { field.onChange(v); programmaticDirtyRef.current = true; setSigTouched((t) => ({ ...t, inspector2: true })); }}
                             value={field.value}
                             disabled={
                               !!editId &&
@@ -1449,7 +1405,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                   documentId={editId || undefined}
                   attachments={attachments}
                   onAttachmentsChange={setAttachments}
-                  onDirtyChange={() => setIsDirty(true)}
+                  onDirtyChange={() => programmaticDirtyRef.current = true}
                   showPagePosition={false}
                   showDownloadBundle={false}
                 />
@@ -1469,7 +1425,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                     disabled={
                       mutation.isPending ||
                       notifyMutation.isPending ||
-                      (!isDirty && !form.formState.isDirty)
+                      (!programmaticDirtyRef.current && !form.formState.isDirty)
                     }
                   >
                     {mutation.isPending && (
@@ -1584,21 +1540,4 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
       <PdfPreviewModal open={!!pdfPreviewUrl} onOpenChange={(o) => { if (!o) { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); } }} pdfUrl={pdfPreviewUrl} title="Document Preview" />
     </div>
   );
-}
-
-
-function SignatureImage({ userId }: { userId: string | undefined }) {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    if (!userId) return;
-    let active = true;
-    let objectUrl: string | null = null;
-    api.get(`/auth/users/${userId}/signature`, { responseType: "blob" })
-      .then((res) => { if (active) { objectUrl = URL.createObjectURL(res.data); setSrc(objectUrl); } })
-      .catch(() => {});
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [userId]);
-  if (!src) return <span className="text-xs text-muted-foreground">Signed</span>;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt="Signature" className="h-10 max-w-full object-contain" />;
 }

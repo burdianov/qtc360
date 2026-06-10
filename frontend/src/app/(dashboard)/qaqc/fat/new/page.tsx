@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft } from "lucide-react";
 import api from "@/lib/api";
@@ -36,33 +35,15 @@ import {
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 import { Spinner } from "@/components/ui/spinner";
 import { CenteredSpinner } from "@/components/loaders/centered-spinner";
-
-interface Discipline {
-  id: string;
-  name: string;
-  code: string;
-}
-interface AssetType {
-  id: string;
-  name: string;
-  code: string;
-  service_id: string;
-  parent_type_id: string | null;
-}
-interface Asset {
-  id: string;
-  name: string;
-  tag_number: string;
-  asset_type_id: string;
-}
-
-const schema = z.object({
-  reference_no: z.string().optional(),
-  description: z.string().optional(),
-  discipline_id: z.string().min(1, "Discipline is required"),
-});
-
-type FormValues = z.infer<typeof schema>;
+import {
+  fatSchema,
+  fatDefaultValues,
+  buildFatPayload,
+  type FatFormValues,
+  type Discipline,
+  type FatAssetType,
+  type FatAsset,
+} from "./_lib/fat-form";
 
 export default function NewFATPage() {
   return (
@@ -91,7 +72,7 @@ function NewFATPageContent() {
     enabled: !!project?.id,
   });
 
-  const { data: assetTypes = [] } = useQuery<AssetType[]>({
+  const { data: assetTypes = [] } = useQuery<FatAssetType[]>({
     queryKey: ["asset-types"],
     queryFn: async () => (await api.get("/asset-types")).data,
   });
@@ -103,7 +84,7 @@ function NewFATPageContent() {
     queryFn: async () => (await api.get("/services")).data,
   });
 
-  const { data: assets = [] } = useQuery<Asset[]>({
+  const { data: assets = [] } = useQuery<FatAsset[]>({
     queryKey: ["assets", project?.id],
     queryFn: async () =>
       (await api.get("/assets", { params: { project_id: project?.id } })).data,
@@ -128,9 +109,9 @@ function NewFATPageContent() {
     enabled: !!project?.id,
   });
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { reference_no: "", description: "", discipline_id: "" },
+  const form = useForm<FatFormValues>({
+    resolver: zodResolver(fatSchema),
+    defaultValues: fatDefaultValues,
   });
 
   const disciplineId = form.watch("discipline_id");
@@ -142,15 +123,21 @@ function NewFATPageContent() {
     enabled: !!editId,
   });
 
+  const existingDocLoadedRef = useRef(false);
+
   useEffect(() => {
-    if (existingDoc) {
+    if (existingDoc && !existingDocLoadedRef.current) {
+      existingDocLoadedRef.current = true;
       form.reset({
         reference_no: existingDoc.reference_no || "",
         description: existingDoc.description || "",
         discipline_id: existingDoc.discipline_id || "",
       });
     }
-  }, [existingDoc, assets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only runs when existingDoc first becomes available (guarded by existingDocLoadedRef).
+  // form.reset is stable and doesn't need to be a dep.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDoc]);
 
   useEffect(() => {
     // Reference number is allocated server-side at the moment of save.
@@ -165,8 +152,12 @@ function NewFATPageContent() {
   useEffect(() => {
     if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)
       return;
+    const controller = new AbortController();
     api
-      .get("/commissioning/document-links", { params: { document_id: editId } })
+      .get("/commissioning/document-links", {
+        params: { document_id: editId },
+        signal: controller.signal,
+      })
       .then(async (res) => {
         const links = res.data as {
           asset_requirement_id: string;
@@ -201,8 +192,12 @@ function NewFATPageContent() {
         }
         if (blocks.length > 0) setCommissioningLinkage(blocks);
       })
-      .catch(() => {});
-  }, [editId, allAssetRequirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((err) => {
+        if (err && typeof err === "object" && "code" in err && (err as any).code === "ERR_CANCELED") return;
+        console.error("Failed to restore commissioning linkage:", err);
+      });
+    return () => controller.abort();
+  }, [editId, allAssetRequirements, commissioningLinkage]);
 
   // Filter assets by discipline (via AssetType → Service → Discipline chain)
   const _disciplineTypeIds = disciplineId
@@ -234,7 +229,7 @@ function NewFATPageContent() {
           for (const delId of s?.deleteExistingIds ?? [])
             await api
               .delete(`/commissioning/work-items/${delId}`)
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to save commissioning linkage:", err); });
           const created: string[] = [];
           for (let i = 0; i < (s?.newItems ?? []).length; i++) {
             const wi = await api.post("/commissioning/work-items", {
@@ -252,7 +247,7 @@ function NewFATPageContent() {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch(() => {});
+              .catch((err: any) => { console.error("Failed to save commissioning linkage:", err); });
           }
         } else {
           await api
@@ -260,28 +255,21 @@ function NewFATPageContent() {
               document_id: docId,
               asset_requirement_id: assetReq.id,
             })
-            .catch(() => {});
+            .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
         }
       }
     }
   };
 
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
+    mutationFn: async (values: FatFormValues) => {
       const blockAssetIds = commissioningLinkage
         ? [...new Set(commissioningLinkage.flatMap((b) => b.assetIds))]
         : [];
-      const payload = {
-        project_id: project!.id,
-        document_type: "FAT",
-        title:
-          (blockAssetIds[0]
-            ? assets.find((a) => a.id === blockAssetIds[0])?.name
-            : null) || "Factory Acceptance Test",
-        description: values.description || null,
-        discipline_id: values.discipline_id,
-        asset_ids: blockAssetIds,
-      };
+      const assetName = blockAssetIds[0]
+        ? assets.find((a) => a.id === blockAssetIds[0])?.name ?? null
+        : null;
+      const payload = buildFatPayload(values, project!.id, blockAssetIds, assetName);
       let res;
       if (editId) {
         res = await api.patch(
@@ -446,7 +434,7 @@ function NewFATPageContent() {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to save commissioning linkage:", err); });
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
@@ -467,7 +455,7 @@ function NewFATPageContent() {
                             asset_requirement_id: ar.id,
                           },
                         })
-                        .catch(() => {});
+                        .catch((err: any) => { console.error("Failed to save commissioning linkage:", err); });
                   }
                 }}
               />

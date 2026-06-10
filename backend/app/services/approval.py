@@ -16,7 +16,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.approval_status import ApprovalStatus
@@ -126,6 +126,9 @@ async def submit_to_approver(
     if approver_order == 1:
         await _lock_template(db, doc)
 
+    # Check for non-deleted rounds (duplicate guard) and compute the next
+    # round_no so that soft-deleted rounds from a previous resubmit don't
+    # trip the (document_id, approver_order, round_no) unique constraint.
     existing = await db.execute(
         select(DocumentApprovalRound).where(
             DocumentApprovalRound.document_id == doc.id,
@@ -139,10 +142,18 @@ async def submit_to_approver(
             detail=f"A round already exists for approver {approver_order} on this revision",
         )
 
+    max_round_result = await db.execute(
+        select(func.max(DocumentApprovalRound.round_no)).where(
+            DocumentApprovalRound.document_id == doc.id,
+            DocumentApprovalRound.approver_order == approver_order,
+        )
+    )
+    next_round_no = (max_round_result.scalar() or 0) + 1
+
     round_ = DocumentApprovalRound(
         document_id=doc.id,
         approver_order=approver_order,
-        round_no=1,
+        round_no=next_round_no,
         project_approver_id=pa.id,
         submitted_at=submitted_at or datetime.now(timezone.utc),
     )
@@ -221,11 +232,16 @@ async def record_response(
         _assert_transition(doc.status, "rejected")
         doc.status = "rejected"
         doc.approved_date = round_.returned_at
+    elif letter == "D":
+        # "Review not Required" — approves immediately regardless of approver order.
+        _assert_transition(doc.status, "approved")
+        doc.status = "approved"
+        doc.approved_date = round_.returned_at
     elif approver_order == 1:
         _assert_transition(doc.status, "approver_1_returned")
         doc.status = "approver_1_returned"
     else:
-        # Final approver. B → approved_with_comments, A/D → approved.
+        # Final approver. B → approved_with_comments, A → approved.
         target = "approved_with_comments" if letter == "B" else "approved"
         _assert_transition(doc.status, target)
         doc.status = target

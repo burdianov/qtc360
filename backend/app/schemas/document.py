@@ -35,7 +35,7 @@ TAG_CODES = Literal["red", "yellow", "green", "blue"]
 VALID_STATUS_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"internally_signed", "cancelled"},
     "internally_signed": {"with_approver_1", "draft", "cancelled"},
-    "with_approver_1": {"approver_1_returned", "rejected", "cancelled"},
+    "with_approver_1": {"approver_1_returned", "rejected", "approved", "cancelled"},
     "approver_1_returned": {
         "with_approver_2",
         "approved",

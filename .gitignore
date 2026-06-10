@@ -34,7 +34,8 @@ venv/
 
 NEXT_SESSION_PROMPT.md
 domain/
-.claude/
+.claude/local/
+.claude/*.local.json
 
 # Docker
 docker/postgres_data/

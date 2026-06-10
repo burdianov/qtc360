@@ -1,0 +1,30 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(git status)",
+            "Bash(git diff:*)",
+            "Bash(grep:*)",
+            "Bash(find:*)",
+            "Bash(cd backend && uv run python -m compileall app)",
+            "Bash(cd backend && uv run pytest tests/e2e -k *)",
+            "Bash(cd frontend && npx tsc --noEmit)",
+            "Bash(cd frontend && npm run lint)"
+        ],
+        "deny": [
+            "Read(.env)",
+            "Read(.env.*)",
+            "Read(frontend/package-lock.json)",
+            "Read(backend/uv.lock)",
+            "Read(backend/app/fonts/*)",
+            "Read(backend/db_dump/*)",
+            "Read(frontend/.next/*)",
+            "Read(node_modules/*)",
+            "Bash(npm install:*)",
+            "Bash(uv sync:*)",
+            "Bash(docker compose:*)",
+            "Bash(alembic upgrade:*)",
+            "Bash(python -m app.seed:*)",
+            "Bash(rm -rf:*)"
+        ]
+    }
+}

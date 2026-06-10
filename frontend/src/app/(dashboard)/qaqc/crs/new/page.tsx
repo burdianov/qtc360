@@ -4,7 +4,6 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { z } from "zod/v4";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Copy, Plus, Trash2, Eye, Download } from "lucide-react";
 import api from "@/lib/api";
@@ -34,43 +33,17 @@ import {
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 import { Spinner } from "@/components/ui/spinner";
 import { CenteredSpinner } from "@/components/loaders/centered-spinner";
-
-interface Discipline {
-  id: string;
-  name: string;
-  code: string;
-}
-interface SourceDoc {
-  id: string;
-  reference_no: string;
-  title: string;
-  revision_no: number;
-  description: string | null;
-  full_reference_no?: string;
-}
-interface ApprovalRound {
-  id: string;
-  approver_order: number;
-  comments: string | null;
-  decision_status_id: string | null;
-}
-interface ApprovalStatus {
-  id: string;
-  letter: string;
-  name: string;
-}
-interface CrsRow {
-  sn: number;
-  comment: string;
-  response: string;
-}
-
-const schema = z.object({
-  subject: z.string().min(1, "Subject is required"),
-  discipline_id: z.string().min(1, "Discipline is required"),
-});
-
-type FormValues = z.infer<typeof schema>;
+import {
+  crsSchema,
+  crsDefaultValues,
+  buildCrsPayload,
+  type CrsFormValues,
+  type Discipline,
+  type SourceDoc,
+  type ApprovalRound,
+  type ApprovalStatus,
+  type CrsRow,
+} from "./_lib/crs-form";
 
 export default function NewCRSPage() {
   return (
@@ -108,9 +81,9 @@ function NewCRSPageContent() {
   ]);
   const [refNumber, setRefNumber] = useState("");
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { subject: "", discipline_id: "" },
+  const form = useForm<CrsFormValues>({
+    resolver: zodResolver(crsSchema),
+    defaultValues: crsDefaultValues,
   });
 
   const disciplineId = form.watch("discipline_id");
@@ -258,22 +231,14 @@ function NewCRSPageContent() {
   );
 
   const mutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      const payload = {
-        project_id: project!.id,
-        document_type: "CRS",
-        // reference_no is allocated server-side; do not send.
-        title: values.subject,
-        status: "approved",
-        discipline_id: values.discipline_id,
-        crs_data: {
-          source_document_id: selectedSourceDocId || null,
-          source_doc_type: sourceDocType || null,
-          source_approver_order: selectedApproverOrder,
-          approver_status: selectedStatus,
-          rows: rows.map((r) => ({ ...r, status: selectedStatus })),
-        },
-      };
+    mutationFn: async (values: CrsFormValues) => {
+      const payload = buildCrsPayload(values, project!.id, {
+        sourceDocumentId: selectedSourceDocId,
+        sourceDocType,
+        sourceApproverOrder: selectedApproverOrder,
+        approverStatus: selectedStatus,
+        rows,
+      });
       if (editId) {
         return api.patch(
           `/documents/${editId}`,
