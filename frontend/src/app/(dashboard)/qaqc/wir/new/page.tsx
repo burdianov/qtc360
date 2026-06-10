@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import { useForm } from "react-hook-form";
@@ -46,6 +46,7 @@ import { ApprovalActionPanel } from "@/components/approval/approval-action-panel
 import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { Spinner } from "@/components/ui/spinner";
+import { CenteredSpinner } from "@/components/loaders/centered-spinner";
 import { omitDocumentCreateOnlyFields } from "@/lib/document-payload";
 import { SignatureImage } from "@/components/SignatureImage";
 import {
@@ -61,10 +62,41 @@ import {
 } from "./_lib/wir-form";
 
 export default function NewWIRPage() {
-  return <NewWIRPageContent editId={null} />;
+  return (
+    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
+      <NewWIRPageInner />
+    </Suspense>
+  );
 }
 
-export function NewWIRPageContent({ editId }: { editId: string | null }) {
+function NewWIRPageInner() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+  // Preserve component state when transitioning from new → edit after save.
+  // Only force a fresh mount when coming directly to an edit page (different doc)
+  // or when clearing the id to create a brand-new document.
+  const keyRef = useRef(editId || "new");
+  const wasNewRef = useRef(!editId);
+
+  if (!editId) {
+    // Navigating to "new" — always force a fresh mount
+    wasNewRef.current = true;
+    keyRef.current = "new-" + Math.random().toString(36).slice(2);
+  } else if (wasNewRef.current) {
+    // Transitioning from new → edit (after save) — preserve the key
+    wasNewRef.current = false;
+  } else {
+    // Directly navigating to an edit page — use editId as key
+    keyRef.current = editId;
+    wasNewRef.current = false;
+  }
+
+  return <NewWIRPageContent key={keyRef.current} />;
+}
+
+function NewWIRPageContent() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
   const router = useRouter();
   const project = useSelectedProject();
   const { data: currentUser } = useCurrentUser();
@@ -92,6 +124,43 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   const [selectedRequirements, setSelectedRequirements] = useState<
     SelectedRequirement[]
   >([]);
+
+  // Backup/restore selectedRequirements via sessionStorage to survive
+  // any mechanism that might reset state during save.
+  const STORAGE_KEY = "wir_reqs_backup";
+  const userClearedRef = useRef(false);
+
+  // If requirements become empty but we have a backup, restore them
+  // (unless the user intentionally cleared them, or we're in new-document mode).
+  // Only restores when editId is non-null, to avoid contaminating genuinely
+  // new documents with stale data from a previous session.
+  useEffect(() => {
+    if (selectedRequirements.length > 0) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(selectedRequirements));
+      return;
+    }
+    if (userClearedRef.current) {
+      userClearedRef.current = false;
+      sessionStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    if (!editId) {
+      // Genuinely new document — clean stale backup
+      sessionStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    // State is empty in edit mode — try to recover from sessionStorage
+    const stored = sessionStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSelectedRequirements(parsed);
+        }
+      } catch { /* ignore */ }
+    }
+  }, [selectedRequirements, editId]);
+
   const [pendingChecklists, setPendingChecklists] = useState<
     Map<string, PendingChecklistData>
   >(new Map());
@@ -559,6 +628,10 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
     if (confirmed) {
       const incompatibleIds = new Set(incompatible.map((r) => r.id));
+      // Mark as intentional clear if all requirements are being removed
+      if (incompatibleIds.size === selectedRequirements.length) {
+        userClearedRef.current = true;
+      }
       setSelectedRequirements((prev) =>
         prev.filter((r) => !incompatibleIds.has(r.id)),
       );
@@ -849,7 +922,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
             console.error("Failed to reload attachments after save:", err);
           });
       if (!editId && res?.data?.id) {
-        router.replace(`/qaqc/wir/${res.data.id}`);
+        router.replace(`/qaqc/wir/new?id=${res.data.id}`);
       }
     },
   });
@@ -872,7 +945,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         } else {
           res = await api.post("/documents", payload);
           docId = res.data.id;
-          router.replace(`/qaqc/wir/${docId}`);
+          router.replace(`/qaqc/wir/new?id=${docId}`);
         }
 
         form.reset(form.getValues());
@@ -1242,6 +1315,9 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 applicableTemplateIds={applicableTemplateIds}
                 selectedRequirements={selectedRequirements}
                 onRequirementsChange={(reqs) => {
+                  if (reqs.length === 0 && !restoringSelectedRef.current) {
+                    userClearedRef.current = true;
+                  }
                   setSelectedRequirements(reqs);
                   if (!restoringSelectedRef.current) {
                     programmaticDirtyRef.current = true;

@@ -71,7 +71,20 @@ export default function NewMIRPage() {
 function NewMIRPageInner() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
-  return <NewMIRPageContent key={editId || "new"} />;
+  const keyRef = useRef(editId || "new");
+  const wasNewRef = useRef(!editId);
+
+  if (!editId) {
+    wasNewRef.current = true;
+    keyRef.current = "new-" + Math.random().toString(36).slice(2);
+  } else if (wasNewRef.current) {
+    wasNewRef.current = false;
+  } else {
+    keyRef.current = editId;
+    wasNewRef.current = false;
+  }
+
+  return <NewMIRPageContent key={keyRef.current} />;
 }
 
 function NewMIRPageContent() {

@@ -1,14 +1,10 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { use } from "react";
-import { NewWIRPageContent } from "../new/page";
-
-export default function WIREditPage({
+export default async function WIREditPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
-
-  return <NewWIRPageContent key={id} editId={id} />;
+  const { id } = await params;
+  redirect(`/qaqc/wir/new?id=${id}`);
 }

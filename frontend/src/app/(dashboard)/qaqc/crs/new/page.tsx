@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -60,7 +60,20 @@ export default function NewCRSPage() {
 function NewCRSPageInner() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
-  return <NewCRSPageContent key={editId || "new"} />;
+  const keyRef = useRef(editId || "new");
+  const wasNewRef = useRef(!editId);
+
+  if (!editId) {
+    wasNewRef.current = true;
+    keyRef.current = "new-" + Math.random().toString(36).slice(2);
+  } else if (wasNewRef.current) {
+    wasNewRef.current = false;
+  } else {
+    keyRef.current = editId;
+    wasNewRef.current = false;
+  }
+
+  return <NewCRSPageContent key={keyRef.current} />;
 }
 
 function NewCRSPageContent() {

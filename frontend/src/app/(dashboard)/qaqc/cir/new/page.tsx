@@ -77,7 +77,26 @@ export default function NewCIRPage() {
 function NewCIRPageInner() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
-  return <NewCIRPageContent key={editId || "new"} />;
+  // Preserve component state when transitioning from new → edit after save.
+  // Only force a fresh mount when coming directly to an edit page (different doc)
+  // or when clearing the id to create a brand-new document.
+  const keyRef = useRef(editId || "new");
+  const wasNewRef = useRef(!editId);
+
+  if (!editId) {
+    // Navigating to "new" — always force a fresh mount
+    wasNewRef.current = true;
+    keyRef.current = "new-" + Math.random().toString(36).slice(2);
+  } else if (wasNewRef.current) {
+    // Transitioning from new → edit (after save) — preserve the key
+    wasNewRef.current = false;
+  } else {
+    // Directly navigating to an edit page — use editId as key
+    keyRef.current = editId;
+    wasNewRef.current = false;
+  }
+
+  return <NewCIRPageContent key={keyRef.current} />;
 }
 
 function NewCIRPageContent() {
