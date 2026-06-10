@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -134,7 +134,7 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
 
   // Snapshot of the original state when the modal opens — used to detect
   // whether the user has made any changes so we can disable Save when dirty.
-  const initialRef = useRef<{ comments: string; responses: ResponseState[] } | null>(null);
+  const [initialSnapshot, setInitialSnapshot] = useState<{ comments: string; responses: ResponseState[] } | null>(null);
 
   const isPendingMode = !documentId && !!onSaveLocally;
 
@@ -197,10 +197,10 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
     setComments(initialComments);
     setResponses(initialResponses);
     // Capture snapshot for dirty detection
-    initialRef.current = {
+    setInitialSnapshot({
       comments: initialComments,
       responses: [...initialResponses],
-    };
+    });
   }, [open, masterItems, existingChecklists, requirementTemplateId, pendingData, isPendingMode, documentId]);
 
   const sensors = useSensors(
@@ -260,10 +260,10 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
 
   // Disable Save when nothing has changed since the modal opened
   const isDirty =
-    initialRef.current &&
-    (initialRef.current.comments !== comments ||
-      initialRef.current.responses.length !== responses.length ||
-      initialRef.current.responses.some(
+    initialSnapshot &&
+    (initialSnapshot.comments !== comments ||
+      initialSnapshot.responses.length !== responses.length ||
+      initialSnapshot.responses.some(
         (r, i) =>
           r.checklist_item_id !== responses[i]?.checklist_item_id ||
           r.response !== responses[i]?.response,

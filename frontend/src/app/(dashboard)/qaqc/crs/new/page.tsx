@@ -60,20 +60,25 @@ export default function NewCRSPage() {
 function NewCRSPageInner() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
-  const keyRef = useRef(editId || "new");
   const wasNewRef = useRef(!editId);
+  const [componentKey, setComponentKey] = useState(() => {
+    if (!editId) return "new-" + Math.random().toString(36).slice(2);
+    return editId;
+  });
 
-  if (!editId) {
-    wasNewRef.current = true;
-    keyRef.current = "new-" + Math.random().toString(36).slice(2);
-  } else if (wasNewRef.current) {
-    wasNewRef.current = false;
-  } else {
-    keyRef.current = editId;
-    wasNewRef.current = false;
-  }
+  useEffect(() => {
+    if (!editId) {
+      wasNewRef.current = true;
+      setComponentKey("new-" + Math.random().toString(36).slice(2));
+    } else if (wasNewRef.current) {
+      wasNewRef.current = false;
+    } else {
+      setComponentKey(editId);
+      wasNewRef.current = false;
+    }
+  }, [editId]);
 
-  return <NewCRSPageContent key={keyRef.current} />;
+  return <NewCRSPageContent key={componentKey} />;
 }
 
 function NewCRSPageContent() {

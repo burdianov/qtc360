@@ -80,23 +80,28 @@ function NewCIRPageInner() {
   // Preserve component state when transitioning from new → edit after save.
   // Only force a fresh mount when coming directly to an edit page (different doc)
   // or when clearing the id to create a brand-new document.
-  const keyRef = useRef(editId || "new");
   const wasNewRef = useRef(!editId);
+  const [componentKey, setComponentKey] = useState(() => {
+    if (!editId) return "new-" + Math.random().toString(36).slice(2);
+    return editId;
+  });
 
-  if (!editId) {
-    // Navigating to "new" — always force a fresh mount
-    wasNewRef.current = true;
-    keyRef.current = "new-" + Math.random().toString(36).slice(2);
-  } else if (wasNewRef.current) {
-    // Transitioning from new → edit (after save) — preserve the key
-    wasNewRef.current = false;
-  } else {
-    // Directly navigating to an edit page — use editId as key
-    keyRef.current = editId;
-    wasNewRef.current = false;
-  }
+  useEffect(() => {
+    if (!editId) {
+      // Navigating to "new" — always force a fresh mount
+      wasNewRef.current = true;
+      setComponentKey("new-" + Math.random().toString(36).slice(2));
+    } else if (wasNewRef.current) {
+      // Transitioning from new → edit (after save) — preserve the key
+      wasNewRef.current = false;
+    } else {
+      // Directly navigating to an edit page — use editId as key
+      setComponentKey(editId);
+      wasNewRef.current = false;
+    }
+  }, [editId]);
 
-  return <NewCIRPageContent key={keyRef.current} />;
+  return <NewCIRPageContent key={componentKey} />;
 }
 
 function NewCIRPageContent() {
