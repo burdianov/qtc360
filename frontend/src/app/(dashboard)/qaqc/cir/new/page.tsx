@@ -388,7 +388,6 @@ function NewCIRPageContent() {
                 );
                 assetStates[assetId] = {
                   assetRequirementId: ar?.id,
-                  existingItems: [],
                   checkedExistingIds: [...checked],
                   deleteExistingIds: [],
                   newItems: [],
@@ -715,6 +714,8 @@ function NewCIRPageContent() {
 
   const saveCommissioningLinkage = async (docId: string | null) => {
     if (!commissioningLinkage || !docId) return;
+    // Track created work item IDs so we can clear newItems after persisting.
+    const createdIdsByBlockAndAsset = new Map<string, Map<string, string[]>>();
     for (const block of commissioningLinkage) {
       if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
       for (const assetId of block.assetIds) {
@@ -742,6 +743,21 @@ function NewCIRPageContent() {
             });
             if (s!.newItems[i].checked) created.push(wi.data.id);
           }
+          // Track created IDs so we can move them into checkedExistingIds
+          if (created.length > 0) {
+            if (!createdIdsByBlockAndAsset.has(block.id)) {
+              createdIdsByBlockAndAsset.set(block.id, new Map());
+            }
+            createdIdsByBlockAndAsset.get(block.id)!.set(assetId, [...created]);
+          }
+          // Delete all existing document-links for this asset_requirement
+          // so we can recreate a clean set (prevents duplicates and handles
+          // unchecked items).
+          await api
+            .delete("/commissioning/document-links", {
+              params: { document_id: docId, asset_requirement_id: assetReq.id },
+            })
+            .catch(() => {});
           for (const wiId of [...(s?.checkedExistingIds ?? []), ...created]) {
             await api
               .post("/commissioning/document-links", {
@@ -749,9 +765,15 @@ function NewCIRPageContent() {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch((err: any) => { console.error("Failed to delete work item:", err); });
+              .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
           }
         } else {
+          // Clean up existing links first to prevent duplicates on re-save
+          await api
+            .delete("/commissioning/document-links", {
+              params: { document_id: docId, asset_requirement_id: assetReq.id },
+            })
+            .catch(() => {});
           await api
             .post("/commissioning/document-links", {
               document_id: docId,
@@ -777,6 +799,28 @@ function NewCIRPageContent() {
         }
       }
     }
+    // After persisting, clear newItems and move created IDs into
+    // checkedExistingIds so a subsequent save won't re-create duplicates.
+    if (createdIdsByBlockAndAsset.size > 0) {
+      setCommissioningLinkage((prev) => {
+        if (!prev) return null;
+        return prev.map((b) => {
+          const assetMap = createdIdsByBlockAndAsset.get(b.id);
+          if (!assetMap) return b;
+          const newAssetStates = { ...b.assetStates };
+          for (const [assetId, createdIds] of assetMap.entries()) {
+            const s = newAssetStates[assetId];
+            if (!s) continue;
+            newAssetStates[assetId] = {
+              ...s,
+              checkedExistingIds: [...s.checkedExistingIds, ...createdIds],
+              newItems: [],
+            };
+          }
+          return { ...b, assetStates: newAssetStates };
+        });
+      });
+    }
   };
 
   const mutation = useMutation({
@@ -793,7 +837,7 @@ function NewCIRPageContent() {
         res = await api.post("/documents", payload);
       }
       const docId = res.data?.id || editId;
-      if (linkageDirtyRef.current) {
+      if (linkageDirtyRef.current || editId) {
         await saveCommissioningLinkage(docId);
         linkageDirtyRef.current = false;
       }

@@ -48,6 +48,8 @@ interface Props {
   documentId: string;
   attachments: Attachment[];
   onComposed: () => void;
+  /** Modal title. Defaults to "Compose Bundle". */
+  title?: string;
 }
 
 // Draggable attachment card
@@ -103,7 +105,7 @@ function DropZone({ id, isOver }: { id: string; isOver: boolean }) {
   );
 }
 
-export function BundleComposerModal({ open, onOpenChange, documentId, attachments, onComposed }: Props) {
+export function BundleComposerModal({ open, onOpenChange, documentId, attachments, onComposed, title = "Compose Bundle" }: Props) {
   const [insertions, setInsertions] = useState<Insertion[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overDropZone, setOverDropZone] = useState<string | null>(null);
@@ -197,7 +199,7 @@ export function BundleComposerModal({ open, onOpenChange, documentId, attachment
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="6xl" className="max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Compose Bundle for Approver 2</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Drag attachments from the left and drop them between pages.
           </DialogDescription>
@@ -246,9 +248,11 @@ export function BundleComposerModal({ open, onOpenChange, documentId, attachment
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => composeMutation.mutate()} disabled={composeMutation.isPending || validInsertions.length === 0}>
+          <Button onClick={() => composeMutation.mutate()} disabled={composeMutation.isPending}>
             {composeMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Compose Bundle ({validInsertions.length} attachment{validInsertions.length !== 1 ? "s" : ""})
+            {validInsertions.length > 0
+              ? `Compose Bundle (${validInsertions.length} attachment${validInsertions.length !== 1 ? "s" : ""})`
+              : "Continue to Submission"}
           </Button>
         </DialogFooter>
       </DialogContent>

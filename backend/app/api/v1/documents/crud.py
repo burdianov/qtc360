@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     HTTPException,
@@ -187,6 +188,7 @@ async def get_document(
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def create_document(
     body: DocumentCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.submit")),
 ):
@@ -311,6 +313,10 @@ async def create_document(
     doc_with_assets = result.scalar_one()
     resp = DocumentResponse.model_validate(doc_with_assets)
     resp.asset_ids = [a.id for a in doc_with_assets.assets]
+    # Pre-generate the main PDF in the background so the first download is fast
+    from app.api.v1.documents.attachments import pre_warm_main_pdf_cache
+
+    background_tasks.add_task(pre_warm_main_pdf_cache, doc.id)
     return resp
 
 
@@ -320,6 +326,7 @@ async def create_document(
 async def update_document(
     doc_id: UUID,
     body: DocumentUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -387,6 +394,10 @@ async def update_document(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(doc)
+    # Pre-generate the main PDF in the background so the first download is fast
+    from app.api.v1.documents.attachments import pre_warm_main_pdf_cache
+
+    background_tasks.add_task(pre_warm_main_pdf_cache, doc.id)
     return doc
 
 

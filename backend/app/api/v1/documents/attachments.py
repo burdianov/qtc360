@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import async_session_factory, get_db
 from app.core.deps import (
     get_current_user,
     require_permission,
@@ -210,6 +210,79 @@ async def reorder_attachments(
 
 # ── Download document bundle ─────────────────────────────────────────────────
 
+CACHE_KIND = "generated_main"  # attachment kind for cached main-PDF bytes
+
+
+async def _get_or_generate_cached_main_pdf(
+    db: AsyncSession, doc, template
+) -> bytes:
+    """Return main PDF bytes, using cache when not stale.
+
+    Caches the raw filled template PDF (before signature stamping) as a
+    DocumentAttachment with kind=CACHE_KIND.  Subsequent downloads skip the slow
+    Gotenberg round-trip as long as the document hasnʼt been modified.
+    """
+    from datetime import timezone
+
+    # Look for an existing cache entry that is still fresh
+    existing = (
+        await db.execute(
+            select(DocumentAttachment)
+            .where(
+                DocumentAttachment.document_id == doc.id,
+                DocumentAttachment.kind == CACHE_KIND,
+                DocumentAttachment.is_deleted == False,  # noqa: E712
+            )
+            .order_by(DocumentAttachment.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    doc_updated = doc.updated_at
+    if doc_updated.tzinfo is None:
+        doc_updated = doc_updated.replace(tzinfo=timezone.utc)
+
+    if existing and existing.created_at is not None:
+        cache_created = existing.created_at
+        if cache_created.tzinfo is None:
+            cache_created = cache_created.replace(tzinfo=timezone.utc)
+        if cache_created >= doc_updated:
+            cached_bytes = storage.read(existing.storage_path)
+            if cached_bytes:
+                return cached_bytes
+
+    # Generate fresh PDF via Gotenberg
+    from app.api.v1.reports import _build_context, _fill_template, _convert_to_pdf
+
+    context = _build_context(doc)
+    docx_bytes = _fill_template(template.file, context, doc)
+    pdf_bytes = await _convert_to_pdf(docx_bytes)
+
+    # Persist as cache (replace any stale entry)
+    storage_key = f"attachments/{doc.id}/_cached_main.pdf"
+    storage.save(storage_key, pdf_bytes)
+
+    if existing:
+        existing.storage_path = storage_key
+        existing.filename = "_cached_main.pdf"
+        existing.size = len(pdf_bytes)
+        existing.created_at = func.now()
+    else:
+        cache = DocumentAttachment(
+            document_id=doc.id,
+            filename="_cached_main.pdf",
+            storage_path=storage_key,
+            content_type="application/pdf",
+            size=len(pdf_bytes),
+            sort_order=-1,
+            kind=CACHE_KIND,
+        )
+        db.add(cache)
+    await db.commit()
+
+    return pdf_bytes
+
+
 @router.get("/{doc_id}/bundle")
 async def download_document_bundle(
     doc_id: UUID,
@@ -239,11 +312,11 @@ async def download_document_bundle(
             )
         )
     ).scalar_one_or_none()
+    from app.core.deps import assert_user_in_project
+
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     await assert_user_in_project(user, doc.project_id)
-
-    from app.core.deps import assert_user_in_project
 
     if doc.template_id:
         template = (
@@ -267,9 +340,9 @@ async def download_document_bundle(
             status_code=404, detail="No template found for this document type"
         )
 
-    context = _build_context(doc)
-    docx_bytes = _fill_template(template.file, context, doc)
-    main_pdf_bytes = await _convert_to_pdf(docx_bytes)
+    # Use cached main PDF when available (skips slow Gotenberg conversion on
+    # repeated downloads of the same document revision).
+    main_pdf_bytes = await _get_or_generate_cached_main_pdf(db, doc, template)
 
     import json as _json
     from app.models.app_setting import AppSetting
@@ -297,7 +370,7 @@ async def download_document_bundle(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == doc_id,
-            DocumentAttachment.kind == "user",
+            DocumentAttachment.kind.in_(["user", "checklist"]),
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(DocumentAttachment.sort_order)
@@ -325,3 +398,55 @@ async def download_document_bundle(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+async def pre_warm_main_pdf_cache(doc_id: uuid.UUID):
+    """Background task: pre-generate the cached main PDF after document save.
+
+    Import-friendly — opens its own DB session so it can be used from any
+    BackgroundTasks context without session conflicts.
+    """
+    import logging
+    from app.models.doc_template import DocTemplate
+
+    logger = logging.getLogger(__name__)
+    async with async_session_factory() as db:
+        try:
+            doc = (
+                await db.execute(
+                    select(Document)
+                    .where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+                    .options(
+                        selectinload(Document.discipline),
+                        selectinload(Document.project),
+                        selectinload(Document.site_engineer).selectinload(User.designation),
+                        selectinload(Document.qaqc_engineer).selectinload(User.designation),
+                    )
+                )
+            ).scalar_one_or_none()
+            if not doc:
+                return
+
+            if doc.template_id:
+                template = (
+                    await db.execute(
+                        select(DocTemplate).where(DocTemplate.id == doc.template_id)
+                    )
+                ).scalar_one_or_none()
+            else:
+                template = (
+                    await db.execute(
+                        select(DocTemplate).where(
+                            DocTemplate.project_id == doc.project_id,
+                            DocTemplate.doc_type == doc.document_type,
+                            DocTemplate.is_active == True,  # noqa: E712
+                            DocTemplate.is_deleted == False,  # noqa: E712
+                        )
+                    )
+                ).scalar_one_or_none()
+            if not template:
+                return
+
+            await _get_or_generate_cached_main_pdf(db, doc, template)
+        except Exception:
+            logger.exception("Background main-PDF cache warm failed for %s", doc_id)

@@ -460,7 +460,7 @@ function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTempl
       <div className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" onClick={() => setCollapsed(!collapsed)}>
         {collapsed ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
         <span className="text-sm font-medium flex-1">{assetLabel}{assetName && <span className="text-muted-foreground font-normal ml-2">- {assetName}</span>}</span>
-        {existingItems.length > 0 && <span className="text-xs text-muted-foreground">{approvedCount}/{existingItems.length} done</span>}
+        {existingItems.length > 0 && <span className="text-xs text-muted-foreground">{approvedCount}/{existingItems.length} approved</span>}
         {assetReq.status === "achieved" && <Badge className="text-[10px] bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Achieved</Badge>}
       </div>
 

@@ -440,9 +440,11 @@ async def get_inspection_tracker(
         for tmpl_id, req in asset_reqs.items():
             links = links_by_ar.get(req.id, [])
             doc_refs = []
+            seen_doc_ids: set[uuid.UUID] = set()
             for link in links:
                 doc = link.document
-                if doc and not doc.is_deleted:
+                if doc and not doc.is_deleted and doc.id not in seen_doc_ids:
+                    seen_doc_ids.add(doc.id)
                     doc_refs.append(
                         {
                             "id": str(doc.id),

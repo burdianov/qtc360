@@ -536,6 +536,7 @@ function RoundAttachmentsList({
         onOpenChange={(open) => { if (!open) setPageModalAtt(null); }}
         documentId={documentId}
         attachments={pageModalAtt ? [{ id: pageModalAtt.id, name: pageModalAtt.filename, size: pageModalAtt.size, kind: "user" }] : []}
+        title="Position Attachment in Bundle"
         onComposed={() => {
           queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
           setPageModalAtt(null);

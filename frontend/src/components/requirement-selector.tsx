@@ -219,17 +219,19 @@ export function RequirementSelector({
           </p>
         </div>
         <Popover open={addOpen} onOpenChange={setAddOpen}>
-          <PopoverTrigger>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1.5"
-              disabled={availableTemplates.length === 0}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Requirement
-            </Button>
-          </PopoverTrigger>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5"
+                disabled={availableTemplates.length === 0}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Requirement
+              </Button>
+            }
+          />
           <PopoverContent
             className="w-[440px] p-0"
             align="start"

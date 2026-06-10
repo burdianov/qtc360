@@ -19,7 +19,7 @@ import { SubmitToApproverDialog } from "./submit-to-approver-dialog";
 import { RecordResponseDialog } from "./record-response-dialog";
 import { AddRemarksDialog } from "./add-remarks-dialog";
 import { ApprovalRoundsList } from "./approval-rounds-list";
-import { BundleComposerModal } from "./bundle-composer-modal";
+
 import { useRouter } from "next/navigation";
 
 export interface ApprovalStatus {
@@ -96,7 +96,6 @@ export function ApprovalActionPanel({
   const [recordOrder, setRecordOrder] = useState<number>(1);
   const [remarksOpen, setRemarksOpen] = useState(false);
   const [remarksRound] = useState<ApprovalRound | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
 
   const { data: rounds = [] } = useQuery<ApprovalRound[]>({
     queryKey: ["approval-rounds", documentId],
@@ -125,12 +124,6 @@ export function ApprovalActionPanel({
         })
       ).data,
     enabled: !!projectId,
-  });
-
-  const { data: docAttachments = [] } = useQuery<{ id: string; filename: string; size: number; kind: string; insert_after_page?: number | null }[]>({
-    queryKey: ["document-attachments", documentId],
-    queryFn: async () => (await api.get(`/documents/${documentId}/attachments`)).data,
-    enabled: !!documentId,
   });
 
   const chain = useMemo(() => {
@@ -214,7 +207,10 @@ export function ApprovalActionPanel({
       // A / B / D → submit to Approver 2.
       primary = (
         <Button
-          onClick={() => setComposerOpen(true)}
+          onClick={() => {
+            setSubmitOrder(2);
+            setSubmitOpen(true);
+          }}
         >
           <Send className="mr-2 h-4 w-4" />
           Submit to Approver 2
@@ -364,16 +360,6 @@ export function ApprovalActionPanel({
         documentId={documentId}
         round={remarksRound}
         onSuccess={refresh}
-      />
-      <BundleComposerModal
-        open={composerOpen}
-        onOpenChange={setComposerOpen}
-        documentId={documentId}
-        attachments={docAttachments.map((a) => ({ id: a.id, name: a.filename, size: a.size, kind: a.kind, insert_after_page: a.insert_after_page }))}
-        onComposed={() => {
-          setSubmitOrder(2);
-          setSubmitOpen(true);
-        }}
       />
     </div>
   );

@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel as PydanticBase
 from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,6 +207,7 @@ async def list_document_checklists(
 @router.post("/documents", response_model=DocumentChecklistOut, status_code=201)
 async def save_document_checklist(
     body: DocumentChecklistSave,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -268,8 +269,9 @@ async def save_document_checklist(
 
     await db.commit()
 
-    # Generate PDF and attach
-    await _generate_and_attach_checklist_pdf(db, checklist.id)
+    # Generate PDF in the background so the save response returns immediately.
+    # The PDF generation (XLSX filling + conversion) can take several seconds.
+    background_tasks.add_task(_generate_checklist_pdf_background, checklist.id)
 
     # Reload with responses
     await db.refresh(checklist)
@@ -343,6 +345,20 @@ async def download_checklist_pdf(
 
 
 # ─── Internal helpers ────────────────────────────────────────────────────────
+
+
+async def _generate_checklist_pdf_background(checklist_id: uuid.UUID):
+    """Wrapper that opens its own DB session so the background task runs independently."""
+    from app.core.database import async_session_factory
+
+    async with async_session_factory() as db:
+        try:
+            await _generate_and_attach_checklist_pdf(db, checklist_id)
+        except Exception as exc:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.exception("Background checklist PDF generation failed for %s: %s", checklist_id, exc)
 
 
 async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uuid.UUID):

@@ -125,42 +125,6 @@ function NewWIRPageContent() {
     SelectedRequirement[]
   >([]);
 
-  // Backup/restore selectedRequirements via sessionStorage to survive
-  // any mechanism that might reset state during save.
-  const STORAGE_KEY = "wir_reqs_backup";
-  const userClearedRef = useRef(false);
-
-  // If requirements become empty but we have a backup, restore them
-  // (unless the user intentionally cleared them, or we're in new-document mode).
-  // Only restores when editId is non-null, to avoid contaminating genuinely
-  // new documents with stale data from a previous session.
-  useEffect(() => {
-    if (selectedRequirements.length > 0) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(selectedRequirements));
-      return;
-    }
-    if (userClearedRef.current) {
-      userClearedRef.current = false;
-      sessionStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-    if (!editId) {
-      // Genuinely new document — clean stale backup
-      sessionStorage.removeItem(STORAGE_KEY);
-      return;
-    }
-    // State is empty in edit mode — try to recover from sessionStorage
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSelectedRequirements(parsed);
-        }
-      } catch { /* ignore */ }
-    }
-  }, [selectedRequirements, editId]);
-
   const [pendingChecklists, setPendingChecklists] = useState<
     Map<string, PendingChecklistData>
   >(new Map());
@@ -424,7 +388,6 @@ function NewWIRPageContent() {
                 );
                 assetStates[assetId] = {
                   assetRequirementId: ar?.id,
-                  existingItems: [],
                   checkedExistingIds: [...checked],
                   deleteExistingIds: [],
                   newItems: [],
@@ -628,10 +591,6 @@ function NewWIRPageContent() {
 
     if (confirmed) {
       const incompatibleIds = new Set(incompatible.map((r) => r.id));
-      // Mark as intentional clear if all requirements are being removed
-      if (incompatibleIds.size === selectedRequirements.length) {
-        userClearedRef.current = true;
-      }
       setSelectedRequirements((prev) =>
         prev.filter((r) => !incompatibleIds.has(r.id)),
       );
@@ -756,6 +715,11 @@ function NewWIRPageContent() {
   const saveCommissioningLinkage = async (docId: string | null) => {
     if (!commissioningLinkage || !docId) return;
 
+    // Track created work item IDs so we can clear newItems after persisting.
+    // Without this, a second save without refresh would re-create the same
+    // work items, producing duplicates.
+    const createdIdsByBlockAndAsset = new Map<string, Map<string, string[]>>();
+
     for (const block of commissioningLinkage) {
       if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
 
@@ -790,6 +754,23 @@ function NewWIRPageContent() {
             if (newItem.checked) createdLinkedIds.push(wiCreated.data.id);
           }
 
+          // Track created IDs so we can move them into checkedExistingIds
+          if (createdLinkedIds.length > 0) {
+            if (!createdIdsByBlockAndAsset.has(block.id)) {
+              createdIdsByBlockAndAsset.set(block.id, new Map());
+            }
+            createdIdsByBlockAndAsset.get(block.id)!.set(assetId, [...createdLinkedIds]);
+          }
+
+          // Delete all existing document-links for this asset_requirement
+          // so we can recreate a clean set (prevents duplicates and handles
+          // unchecked items).
+          await api
+            .delete("/commissioning/document-links", {
+              params: { document_id: docId, asset_requirement_id: assetReq.id },
+            })
+            .catch(() => {});
+
           for (const wiId of assetState?.checkedExistingIds ?? []) {
             await api
               .post("/commissioning/document-links", {
@@ -797,7 +778,7 @@ function NewWIRPageContent() {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch((err: any) => { console.error("Failed to delete work item:", err); });
+              .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
           }
           for (const wiId of createdLinkedIds) {
             await api
@@ -806,9 +787,15 @@ function NewWIRPageContent() {
                 asset_requirement_id: assetReq.id,
                 requirement_work_item_id: wiId,
               })
-              .catch((err: any) => { console.error("Failed to delete work item:", err); });
+              .catch((err: any) => { console.error("Failed to create document-requirement link:", err); });
           }
         } else {
+          // Clean up existing links first to prevent duplicates on re-save
+          await api
+            .delete("/commissioning/document-links", {
+              params: { document_id: docId, asset_requirement_id: assetReq.id },
+            })
+            .catch(() => {});
           await api
             .post("/commissioning/document-links", {
               document_id: docId,
@@ -835,6 +822,30 @@ function NewWIRPageContent() {
         }
       }
     }
+
+    // After persisting, clear newItems and move created IDs into
+    // checkedExistingIds so a subsequent save (without refresh) won't
+    // re-create the same work items.
+    if (createdIdsByBlockAndAsset.size > 0) {
+      setCommissioningLinkage((prev) => {
+        if (!prev) return null;
+        return prev.map((b) => {
+          const assetMap = createdIdsByBlockAndAsset.get(b.id);
+          if (!assetMap) return b;
+          const newAssetStates = { ...b.assetStates };
+          for (const [assetId, createdIds] of assetMap.entries()) {
+            const s = newAssetStates[assetId];
+            if (!s) continue;
+            newAssetStates[assetId] = {
+              ...s,
+              checkedExistingIds: [...s.checkedExistingIds, ...createdIds],
+              newItems: [],
+            };
+          }
+          return { ...b, assetStates: newAssetStates };
+        });
+      });
+    }
   };
   const mutation = useMutation({
     mutationFn: async (values: WirFormValues) => {
@@ -850,7 +861,10 @@ function NewWIRPageContent() {
         res = await api.post("/documents", payload);
       }
       const docId = res.data?.id || editId;
-      if (linkageDirtyRef.current) {
+      // Always sync commissioning linkage on save for existing documents
+      // (to clean up any stale/duplicate links), and for new documents only
+      // when the user modified the linkage.
+      if (linkageDirtyRef.current || editId) {
         await saveCommissioningLinkage(docId);
         linkageDirtyRef.current = false;
       }
@@ -950,7 +964,7 @@ function NewWIRPageContent() {
 
         form.reset(form.getValues());
         programmaticDirtyRef.current = false;
-        if (linkageDirtyRef.current) {
+        if (linkageDirtyRef.current || docId) {
           await saveCommissioningLinkage(docId);
           linkageDirtyRef.current = false;
         }
@@ -1315,9 +1329,6 @@ function NewWIRPageContent() {
                 applicableTemplateIds={applicableTemplateIds}
                 selectedRequirements={selectedRequirements}
                 onRequirementsChange={(reqs) => {
-                  if (reqs.length === 0 && !restoringSelectedRef.current) {
-                    userClearedRef.current = true;
-                  }
                   setSelectedRequirements(reqs);
                   if (!restoringSelectedRef.current) {
                     programmaticDirtyRef.current = true;

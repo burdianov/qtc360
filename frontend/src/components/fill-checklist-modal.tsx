@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -132,66 +132,75 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
   const [responses, setResponses] = useState<ResponseState[]>([]);
   const [comments, setComments] = useState("");
 
+  // Snapshot of the original state when the modal opens — used to detect
+  // whether the user has made any changes so we can disable Save when dirty.
+  const initialRef = useRef<{ comments: string; responses: ResponseState[] } | null>(null);
+
   const isPendingMode = !documentId && !!onSaveLocally;
 
   // Load master checklist items
-  const { data: masterItems = EMPTY_ARR } = useQuery<ChecklistItem[]>({
+  const { data: masterItems = EMPTY_ARR, isLoading: masterLoading } = useQuery<ChecklistItem[]>({
     queryKey: ["checklist-items", requirementTemplateId],
     queryFn: async () => (await api.get(`/checklists/templates/${requirementTemplateId}/items`)).data,
     enabled: open && !!requirementTemplateId,
   });
 
   // Load existing saved checklist for this doc+requirement (only when doc exists)
-  const { data: existingChecklists = EMPTY_ARR } = useQuery<any[]>({
+  const { data: existingChecklists = EMPTY_ARR, isLoading: existingLoading } = useQuery<any[]>({
     queryKey: ["document-checklists", documentId],
     queryFn: async () => (await api.get(`/checklists/documents/${documentId}`)).data,
     enabled: open && !!documentId,
   });
 
+  const isLoading = (open && !!requirementTemplateId && masterLoading) || (open && !!documentId && existingLoading);
+
   // Initialize responses from master items, existing data, or pending data
   useEffect(() => {
     if (!open || masterItems.length === 0) return;
 
+    let initialComments = "";
+    let initialResponses: ResponseState[] = [];
+
     // Check pending data first (for unsaved documents)
     if (pendingData && isPendingMode) {
-      setComments(pendingData.comments || "");
-      setResponses(
-        pendingData.responses.map((r: any) => ({
-          checklist_item_id: r.checklist_item_id,
-          item_text: r.item_text,
-          response: r.response,
-        }))
-      );
-      return;
-    }
-
-    // Check existing saved data
-    if (documentId) {
+      initialComments = pendingData.comments || "";
+      initialResponses = pendingData.responses.map((r: any) => ({
+        checklist_item_id: r.checklist_item_id,
+        item_text: r.item_text,
+        response: r.response,
+      }));
+    } else if (documentId) {
+      // Check existing saved data
       const existing = existingChecklists.find((c: any) => c.requirement_template_id === requirementTemplateId);
       if (existing) {
-        setComments(existing.comments || "");
-        setResponses(
-          existing.responses
-            .sort((a: any, b: any) => a.display_order - b.display_order)
-            .map((r: any) => ({
-              checklist_item_id: r.checklist_item_id,
-              item_text: r.item_text,
-              response: r.response,
-            }))
-        );
-        return;
+        initialComments = existing.comments || "";
+        initialResponses = existing.responses
+          .sort((a: any, b: any) => a.display_order - b.display_order)
+          .map((r: any) => ({
+            checklist_item_id: r.checklist_item_id,
+            item_text: r.item_text,
+            response: r.response,
+          }));
       }
     }
 
-    // Fresh start from master items
-    setResponses(
-      masterItems.map((item) => ({
+    if (initialResponses.length === 0) {
+      // Fresh start from master items
+      initialResponses = masterItems.map((item) => ({
         checklist_item_id: item.id,
         item_text: item.text,
         response: "",
-      }))
-    );
-    setComments("");
+      }));
+      initialComments = "";
+    }
+
+    setComments(initialComments);
+    setResponses(initialResponses);
+    // Capture snapshot for dirty detection
+    initialRef.current = {
+      comments: initialComments,
+      responses: [...initialResponses],
+    };
   }, [open, masterItems, existingChecklists, requirementTemplateId, pendingData, isPendingMode, documentId]);
 
   const sensors = useSensors(
@@ -249,6 +258,17 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
 
   const allAnswered = responses.length > 0 && responses.every((r) => r.response !== "");
 
+  // Disable Save when nothing has changed since the modal opened
+  const isDirty =
+    initialRef.current &&
+    (initialRef.current.comments !== comments ||
+      initialRef.current.responses.length !== responses.length ||
+      initialRef.current.responses.some(
+        (r, i) =>
+          r.checklist_item_id !== responses[i]?.checklist_item_id ||
+          r.response !== responses[i]?.response,
+      ));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-hidden flex flex-col" size="5xl">
@@ -257,7 +277,11 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
         </DialogHeader>
 
         <div className="flex-1 overflow-auto min-h-0 border border-border rounded-md">
-          {responses.length === 0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Spinner size="default" className="text-muted-foreground" />
+            </div>
+          ) : responses.length === 0 ? (
             <p className="text-sm text-muted-foreground p-4 text-center">No checklist items defined for this requirement.</p>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -310,7 +334,7 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             onClick={() => saveMutation.mutate()}
-            disabled={!allAnswered || saveMutation.isPending}
+            disabled={!isDirty || !allAnswered || saveMutation.isPending}
           >
             {saveMutation.isPending && <Spinner size="sm" className="text-current mr-1" />}
             Save Checklist
