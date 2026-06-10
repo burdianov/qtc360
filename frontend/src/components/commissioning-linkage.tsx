@@ -1,23 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronRight, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, X, Plus, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DocumentChecklistButtons } from "@/components/document-checklist-buttons";
 import {
   Dialog,
   DialogContent,
@@ -67,16 +59,9 @@ export interface CommissioningLinkageBlock {
 
 export type CommissioningLinkage = CommissioningLinkageBlock[];
 
-function blockId() {
-  return Math.random().toString(36).slice(2);
-}
-
-function emptyBlock(): CommissioningLinkageBlock {
-  return { id: blockId(), requirementTemplateId: "", assetIds: [], isPartialScope: false, assetStates: {} };
-}
+// ─── Props ──────────────────────────────────────────────────────────────────────
 
 interface Props {
-  projectId: string;
   /** All project assets */
   allAssetIds: string[];
   allAssetLabels?: Record<string, string>;
@@ -85,117 +70,76 @@ interface Props {
   /** All asset requirements for the project — used to filter assets per block */
   allAssetRequirements?: { id: string; asset_id: string; requirement_template_id: string; status: string }[];
   documentType: string;
-  applicableTemplateIds?: Set<string> | null;
+  /** Requirement templates (passed from parent to avoid duplicate fetch) */
+  templates: RequirementTemplate[];
+  /** Requirements selected in the top section */
+  selectedRequirements: { id: string; requirementTemplateId: string }[];
   value: CommissioningLinkageBlock[] | null;
   onChange: (linkage: CommissioningLinkageBlock[] | null) => void;
-  onRemoveBlock?: (block: CommissioningLinkageBlock) => void;
-  /** Called when assets are removed from a block (requirement change or manual deselect) — for DB cleanup */
+  /** Called when assets are unlinked from a block — for DB cleanup */
   onUnlinkAssets?: (requirementTemplateId: string, assetIds: string[]) => void;
-  /** Document ID for checklist integration — if provided, shows checklist buttons per requirement */
-  documentId?: string;
 }
 
 export function CommissioningLinkagePanel({
-  projectId,
   allAssetIds,
   allAssetLabels,
   allAssetNames,
   allAssetRequirements,
-  documentType,
-  applicableTemplateIds,
+  documentType: _documentType,
+  templates,
+  selectedRequirements,
   value,
   onChange,
-  onRemoveBlock,
   onUnlinkAssets,
-  documentId,
 }: Props) {
-  const [enabled, setEnabled] = useState(!!value && value.length > 0);
-
-  useEffect(() => {
-    if (value && value.length > 0 && !enabled) setEnabled(true);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { data: templates = [] } = useQuery<RequirementTemplate[]>({
-    queryKey: ["requirement-templates", projectId, documentType],
-    queryFn: async () => {
-      const res = await api.get("/commissioning/requirement-templates", {
-        params: { project_id: projectId },
-      });
-      return (res.data as RequirementTemplate[]).filter(
-        (t) => t.evidence_document_type === documentType,
-      );
-    },
-    enabled: !!projectId,
-  });
-
-  const filteredTemplates = applicableTemplateIds
-    ? templates.filter((t) => applicableTemplateIds.has(t.id))
-    : templates;
-
   const blocks = value ?? [];
-
-  const handleToggle = (on: boolean) => {
-    setEnabled(on);
-    if (!on) onChange(null);
-    else if (blocks.length === 0) onChange([emptyBlock()]);
-  };
 
   const updateBlock = (idx: number, patch: Partial<CommissioningLinkageBlock>) => {
     onChange(blocks.map((b, i) => (i === idx ? { ...b, ...patch } : b)));
   };
 
-  const removeBlock = (idx: number) => {
-    const block = blocks[idx];
-    onRemoveBlock?.(block);
-    const next = blocks.filter((_, i) => i !== idx);
-    onChange(next.length > 0 ? next : null);
-    if (next.length === 0) setEnabled(false);
-  };
-
-  const usedTemplateIds = new Set(blocks.map((b) => b.requirementTemplateId).filter(Boolean));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+  if (selectedRequirements.length === 0) {
+    return (
+      <div className="space-y-3">
         <div>
           <p className="text-sm font-medium">Commissioning Requirement Linkage</p>
           <p className="text-xs text-muted-foreground">
-            Link this document to one or more commissioning requirements, each with their own assets
+            Select requirements above to link them to assets
           </p>
         </div>
-        <Switch checked={enabled} onCheckedChange={handleToggle} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-medium">Commissioning Requirement Linkage</p>
+        <p className="text-xs text-muted-foreground">
+          Link requirements to assets and manage partial scope
+        </p>
       </div>
 
-      {enabled && (
-        <div className="space-y-3">
-          {blocks.map((block, idx) => (
+      <div className="space-y-3">
+        {blocks.map((block, idx) => {
+          const template = templates.find((t) => t.id === block.requirementTemplateId);
+          if (!template) return null;
+          return (
             <LinkageBlock
               key={block.id}
               block={block}
+              template={template}
               index={idx}
-              templates={filteredTemplates}
-              usedTemplateIds={usedTemplateIds}
               allAssetIds={allAssetIds}
               allAssetLabels={allAssetLabels}
               allAssetNames={allAssetNames}
               allAssetRequirements={allAssetRequirements}
               onChange={(patch) => updateBlock(idx, patch)}
-              onRemove={() => removeBlock(idx)}
               onUnlinkAssets={onUnlinkAssets}
-              documentId={documentId}
             />
-          ))}
-
-          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onChange([...blocks, emptyBlock()])}>
-            <Plus className="h-3.5 w-3.5" />
-            Add Requirement Block
-          </Button>
-
-          {filteredTemplates.length === 0 && (
-            <p className="text-xs text-muted-foreground">No {documentType} requirement templates found.</p>
-          )}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -204,47 +148,47 @@ export function CommissioningLinkagePanel({
 
 interface BlockProps {
   block: CommissioningLinkageBlock;
+  template: RequirementTemplate;
   index: number;
-  templates: RequirementTemplate[];
-  usedTemplateIds: Set<string>;
   allAssetIds: string[];
   allAssetLabels?: Record<string, string>;
   allAssetNames?: Record<string, string>;
   allAssetRequirements?: { id: string; asset_id: string; requirement_template_id: string; status: string }[];
   onChange: (patch: Partial<CommissioningLinkageBlock>) => void;
-  onRemove: () => void;
   onUnlinkAssets?: (requirementTemplateId: string, assetIds: string[]) => void;
-  documentId?: string;
 }
 
-function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, allAssetLabels, allAssetNames, allAssetRequirements, onChange, onRemove, onUnlinkAssets: _onUnlinkAssets, documentId }: BlockProps) {
+function LinkageBlock({ block, template, index: _index, allAssetIds, allAssetLabels, allAssetNames, allAssetRequirements, onChange, onUnlinkAssets }: BlockProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [gateDialogOpen, setGateDialogOpen] = useState(false);
   const [gateNotes, setGateNotes] = useState("");
 
-  const selectedTemplate = templates.find((t) => t.id === block.requirementTemplateId);
   const firstAssetId = block.assetIds[0] ?? "";
 
   const { data: gateCheck } = useQuery<{
     complete: boolean;
     incomplete: { requirement_id: string; template_name: string; template_code: string; status: string; progress_percent: number }[];
   }>({
-    queryKey: ["gate-check", firstAssetId, selectedTemplate?.level_code],
+    queryKey: ["gate-check", firstAssetId, template.level_code],
     queryFn: async () => (await api.get("/commissioning/gate-check", {
-      params: { asset_id: firstAssetId, level_code: selectedTemplate!.level_code },
+      params: { asset_id: firstAssetId, level_code: template.level_code },
     })).data,
-    enabled: !!selectedTemplate?.is_gate_requirement && block.assetIds.length > 0,
+    enabled: !!template.is_gate_requirement && block.assetIds.length > 0,
   });
 
-  const isGateWarning = selectedTemplate?.is_gate_requirement && gateCheck && !gateCheck.complete;
+  const isGateWarning = template.is_gate_requirement && gateCheck && !gateCheck.complete;
 
-  const handleTemplateSelect = (templateId: string) => {
-    const validAssetIds = allAssetRequirements
-      ? new Set(allAssetRequirements.filter((ar) => ar.requirement_template_id === templateId && ar.status !== "achieved").map((ar) => ar.asset_id))
-      : null;
-    const retainedAssetIds = validAssetIds ? block.assetIds.filter((id) => validAssetIds.has(id)) : [];
-    onChange({ requirementTemplateId: templateId, assetIds: retainedAssetIds, isPartialScope: false, assetStates: {}, gateWarningAcknowledged: undefined, gateOverrideNotes: undefined, gateLevelCode: undefined, incompleteRequirements: undefined });
-  };
+  const templateLabel = `[${template.level_code}] ${template.name}`;
+  const assetSummary = block.assetIds.length > 0
+    ? block.assetIds.map((id) => allAssetLabels?.[id] ?? id.slice(0, 6)).join(", ")
+    : "no assets";
+
+  // Available assets for this requirement template
+  const availableAssetIds = allAssetRequirements
+    ? allAssetRequirements
+        .filter((ar) => ar.requirement_template_id === block.requirementTemplateId && ar.status !== "achieved")
+        .map((ar) => ar.asset_id)
+    : allAssetIds;
 
   const toggleAsset = (assetId: string) => {
     const removing = block.assetIds.includes(assetId);
@@ -254,6 +198,8 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
     const assetStates = { ...block.assetStates };
     if (removing) {
       delete assetStates[assetId];
+      // Clean up DB if asset is being unlinked
+      onUnlinkAssets?.(block.requirementTemplateId, [assetId]);
     }
     onChange({ assetIds: ids, assetStates });
   };
@@ -261,11 +207,6 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
   const updateAssetState = (assetId: string, patch: Partial<AssetLinkageState>) => {
     onChange({ assetStates: { ...block.assetStates, [assetId]: { ...block.assetStates[assetId], ...patch } } });
   };
-
-  const templateLabel = selectedTemplate ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}` : `Block ${index + 1}`;
-  const assetSummary = block.assetIds.length > 0
-    ? block.assetIds.map((id) => allAssetLabels?.[id] ?? id.slice(0, 6)).join(", ")
-    : "no assets";
 
   return (
     <div className="rounded-lg border">
@@ -275,60 +216,20 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
           <span className="text-sm font-medium truncate block">{templateLabel}</span>
           {collapsed && <span className="text-xs text-muted-foreground">{assetSummary}</span>}
         </div>
-        {block.requirementTemplateId && <Badge variant="outline" className="text-[10px] shrink-0">{selectedTemplate?.level_code}</Badge>}
-        <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} className="text-muted-foreground hover:text-destructive ml-1 shrink-0">
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <Badge variant="outline" className="text-[10px] shrink-0">{template.level_code}</Badge>
+        <Badge variant="outline" className="text-[10px] shrink-0">{template.requirement_category}</Badge>
       </div>
 
       {!collapsed && (
         <div className="px-3 pb-3 space-y-3 border-t pt-3">
-          {/* Requirement */}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Requirement</label>
-            <Select value={block.requirementTemplateId || ""} onValueChange={handleTemplateSelect}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select requirement...">
-                  {selectedTemplate ? `[${selectedTemplate.level_code}] ${selectedTemplate.name}` : ""}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id} disabled={usedTemplateIds.has(t.id) && t.id !== block.requirementTemplateId}>
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">[{t.level_code}]</span>
-                      <span>{t.name}</span>
-                      <Badge variant="outline" className="text-[10px] ml-2">{t.requirement_category}</Badge>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Checklist buttons */}
-          {block.requirementTemplateId && documentId && (
-            <DocumentChecklistButtons
-              documentId={documentId}
-              requirementTemplateId={block.requirementTemplateId}
-              requirementName={selectedTemplate?.name || ""}
-            />
-          )}
-
           {/* Asset picker — only assets that have this requirement assigned */}
-          {block.requirementTemplateId && (
-            <AssetPicker
-              allAssetIds={allAssetRequirements
-                ? allAssetRequirements
-                    .filter((ar) => ar.requirement_template_id === block.requirementTemplateId && ar.status !== "achieved")
-                    .map((ar) => ar.asset_id)
-                : allAssetIds}
-              allAssetLabels={allAssetLabels}
-              allAssetNames={allAssetNames}
-              selectedIds={block.assetIds}
-              onToggle={toggleAsset}
-            />
-          )}
+          <AssetPicker
+            allAssetIds={availableAssetIds}
+            allAssetLabels={allAssetLabels}
+            allAssetNames={allAssetNames}
+            selectedIds={block.assetIds}
+            onToggle={toggleAsset}
+          />
 
           {/* Gate warning */}
           {isGateWarning && (
@@ -359,7 +260,7 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
                       Confirm Gate Override
                     </DialogTitle>
                     <DialogDescription>
-                      Proceeding with incomplete {selectedTemplate?.level_code} prerequisites. This will be recorded.
+                      Proceeding with incomplete {template.level_code} prerequisites. This will be recorded.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3">
@@ -380,7 +281,7 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setGateDialogOpen(false)}>Cancel</Button>
                     <Button variant="destructive" onClick={() => {
-                      onChange({ gateWarningAcknowledged: true, gateOverrideNotes: gateNotes || undefined, gateLevelCode: selectedTemplate?.level_code, incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })) });
+                      onChange({ gateWarningAcknowledged: true, gateOverrideNotes: gateNotes || undefined, gateLevelCode: template.level_code, incompleteRequirements: gateCheck!.incomplete.map((r) => ({ requirement_id: r.requirement_id, status: r.status })) });
                       setGateDialogOpen(false);
                     }}>Confirm & Proceed</Button>
                   </DialogFooter>
@@ -389,8 +290,8 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
             </div>
           )}
 
-          {/* Partial scope */}
-          {block.requirementTemplateId && block.assetIds.length > 0 && (
+          {/* Partial scope — only when assets are selected */}
+          {block.assetIds.length > 0 && (
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm">Partial scope?</p>
@@ -417,6 +318,10 @@ function LinkageBlock({ block, index, templates, usedTemplateIds, allAssetIds, a
                 />
               ))}
             </div>
+          )}
+
+          {availableAssetIds.length === 0 && (
+            <p className="text-xs text-muted-foreground">No assets are linked to this requirement in the system.</p>
           )}
         </div>
       )}
@@ -504,6 +409,7 @@ interface AssetWorkItemSectionProps {
 function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTemplateId, state, onStateChange }: AssetWorkItemSectionProps) {
   const [newItemName, setNewItemName] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   const { data: assetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string; status: string }[]>({
     queryKey: ["asset-requirements-for-asset", assetId],
@@ -519,15 +425,13 @@ function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTempl
     enabled: !!assetReq?.id,
   });
 
-  useEffect(() => {
-    if (!assetReq || workItems.length === 0) return;
-    if (state?.assetRequirementId === assetReq.id && state.existingItems.length > 0) return;
-    // Deduplicate by id in case backend returns duplicates
+  // Initialize state from API (once)
+  if (!initialized && assetReq && workItems.length > 0 && !state?.assetRequirementId) {
+    setInitialized(true);
     const seen = new Set<string>();
     const unique = workItems.filter((w) => { if (seen.has(w.id)) return false; seen.add(w.id); return true; });
     onStateChange({ assetRequirementId: assetReq.id, existingItems: unique, checkedExistingIds: state?.checkedExistingIds ?? [], deleteExistingIds: state?.deleteExistingIds ?? [], newItems: state?.newItems ?? [] });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assetReq?.id, workItems.length]);
+  }
 
   if (!assetReq) {
     return (
@@ -546,7 +450,8 @@ function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTempl
 
   const addNew = () => {
     if (!newItemName.trim()) return;
-    onStateChange({ newItems: [...newItems, { name: newItemName.trim(), checked: false }] });
+    const updatedNewItems = [...newItems, { name: newItemName.trim(), checked: false }];
+    onStateChange({ newItems: updatedNewItems });
     setNewItemName("");
   };
 

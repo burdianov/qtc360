@@ -37,6 +37,11 @@ import {
   CommissioningLinkagePanel,
   type CommissioningLinkage,
 } from "@/components/commissioning-linkage";
+import {
+  RequirementSelector,
+  type SelectedRequirement,
+  type PendingChecklistData,
+} from "@/components/requirement-selector";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
@@ -84,6 +89,13 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     useState<CommissioningLinkage | null>(null); // CommissioningLinkage = CommissioningLinkageBlock[]
   const linkageDirtyRef = useRef(false);
   const restoringLinkageRef = useRef(false);
+  const [selectedRequirements, setSelectedRequirements] = useState<
+    SelectedRequirement[]
+  >([]);
+  const [pendingChecklists, setPendingChecklists] = useState<
+    Map<string, PendingChecklistData>
+  >(new Map());
+  const restoringSelectedRef = useRef(false);
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -184,6 +196,30 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
     });
   }, [docTemplates]);
 
+  // Fetch all requirement templates for the document type
+  const { data: allTemplates = [] } = useQuery<
+    {
+      id: string;
+      name: string;
+      code: string;
+      level_code: string;
+      requirement_category: string;
+      evidence_document_type: string;
+      is_gate_requirement: boolean;
+    }[]
+  >({
+    queryKey: ["requirement-templates", project?.id, "WIR"],
+    queryFn: async () => {
+      const res = await api.get("/commissioning/requirement-templates", {
+        params: { project_id: project?.id },
+      });
+      return (res.data as any[]).filter(
+        (t) => t.evidence_document_type === "WIR",
+      );
+    },
+    enabled: !!project?.id,
+  });
+
   // Fetch all asset requirements to filter templates by discipline and assets by template
   const { data: allAssetRequirements = [] } = useQuery<
     {
@@ -264,7 +300,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
   // Restore commissioning linkage from server
   useEffect(() => {
-    if (!editId || allAssetRequirements.length === 0 || commissioningLinkage)
+    if (!editId || allAssetRequirements.length === 0 || (commissioningLinkage && selectedRequirements.length > 0))
       return;
     const controller = new AbortController();
     api
@@ -338,8 +374,18 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
         if (blocks.length > 0) {
           restoringLinkageRef.current = true;
+          restoringSelectedRef.current = true;
+          // Restore selectedRequirements from blocks
+          const reqs: SelectedRequirement[] = blocks.map((b) => ({
+            id: Math.random().toString(36).slice(2),
+            requirementTemplateId: b.requirementTemplateId,
+          }));
+          setSelectedRequirements(reqs);
           setCommissioningLinkage(blocks);
-          setTimeout(() => { restoringLinkageRef.current = false; }, 500);
+          setTimeout(() => {
+            restoringLinkageRef.current = false;
+            restoringSelectedRef.current = false;
+          }, 500);
         }
       })
       .catch((err) => {
@@ -347,7 +393,7 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         console.error("Failed to restore commissioning linkage:", err);
       });
     return () => controller.abort();
-  }, [editId, allAssetRequirements, commissioningLinkage]);
+  }, [editId, allAssetRequirements, commissioningLinkage, selectedRequirements.length]);
 
   // Load existing attachments
   useEffect(() => {
@@ -433,8 +479,15 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
             });
           }
           if (blocks.length > 0) {
+            restoringSelectedRef.current = true;
+            const reqs: SelectedRequirement[] = blocks.map((b) => ({
+              id: Math.random().toString(36).slice(2),
+              requirementTemplateId: b.requirementTemplateId,
+            }));
+            setSelectedRequirements(reqs);
             setCommissioningLinkage(blocks);
             linkageDirtyRef.current = true;
+            setTimeout(() => { restoringSelectedRef.current = false; }, 500);
           }
         }
         programmaticDirtyRef.current = true;
@@ -474,6 +527,97 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
   })();
 
   // applicableAssetIds removed — each block manages its own asset selection
+
+  // ── Warn when discipline changes and incompatible requirements exist ──────────
+  const prevDisciplineRef = useRef<string | null>(null);
+  const revertingDisciplineRef = useRef(false);
+  const applicableTemplateIdsRef = useRef(applicableTemplateIds);
+  applicableTemplateIdsRef.current = applicableTemplateIds;
+
+  useEffect(() => {
+    const prev = prevDisciplineRef.current;
+    prevDisciplineRef.current = disciplineId ?? null;
+
+    if (revertingDisciplineRef.current) {
+      revertingDisciplineRef.current = false;
+      return;
+    }
+    if (prev === (disciplineId ?? null)) return;
+    if (!prev) return;
+    if (selectedRequirements.length === 0) return;
+
+    const currentSet = applicableTemplateIdsRef.current;
+    const incompatible = selectedRequirements.filter(
+      (req) => !currentSet || !currentSet.has(req.requirementTemplateId),
+    );
+
+    if (incompatible.length === 0) return;
+
+    const confirmed = window.confirm(
+      `${incompatible.length} requirement(s) don't belong to the newly selected discipline. They will be removed along with any filled checklists. Continue?`,
+    );
+
+    if (confirmed) {
+      const incompatibleIds = new Set(incompatible.map((r) => r.id));
+      setSelectedRequirements((prev) =>
+        prev.filter((r) => !incompatibleIds.has(r.id)),
+      );
+      const next = new Map(pendingChecklists);
+      for (const req of incompatible) {
+        next.delete(req.requirementTemplateId);
+      }
+      setPendingChecklists(next);
+      programmaticDirtyRef.current = true;
+    } else {
+      revertingDisciplineRef.current = true;
+      form.setValue("discipline_id", prev);
+    }
+  }, [disciplineId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync selectedRequirements with commissioningLinkage blocks
+  // - Add blocks for newly selected requirements
+  // - Remove blocks for deselected requirements
+  useEffect(() => {
+    if (restoringSelectedRef.current || restoringLinkageRef.current) return;
+
+    const currentBlocks = commissioningLinkage ?? [];
+    const selectedTmplIds = new Set(
+      selectedRequirements.map((r) => r.requirementTemplateId),
+    );
+
+    // Remove blocks whose requirement is no longer selected
+    let updated = currentBlocks.filter((b) =>
+      selectedTmplIds.has(b.requirementTemplateId),
+    );
+
+    // Add blocks for newly selected requirements that don't have a block yet
+    const existingTmplIds = new Set(updated.map((b) => b.requirementTemplateId));
+    for (const req of selectedRequirements) {
+      if (!existingTmplIds.has(req.requirementTemplateId)) {
+        updated = [
+          ...updated,
+          {
+            id: Math.random().toString(36).slice(2),
+            requirementTemplateId: req.requirementTemplateId,
+            assetIds: [],
+            isPartialScope: false,
+            assetStates: {},
+          },
+        ];
+      }
+    }
+
+    const changed =
+      updated.length !== currentBlocks.length ||
+      updated.some((b, i) => b.requirementTemplateId !== currentBlocks[i]?.requirementTemplateId);
+
+    if (changed) {
+      setCommissioningLinkage(updated.length > 0 ? updated : null);
+      linkageDirtyRef.current = true;
+      programmaticDirtyRef.current = true;
+    }
+    // selectedRequirements.length is covered by selectedRequirements identity change
+  }, [selectedRequirements, commissioningLinkage]);
 
   useEffect(() => {
     // Reference number is allocated server-side at the moment of save.
@@ -637,6 +781,22 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
         await saveCommissioningLinkage(docId);
         linkageDirtyRef.current = false;
       }
+      // Flush pending checklists (saved locally before document existed)
+      if (pendingChecklists.size > 0 && docId) {
+        for (const [requirementTemplateId, data] of pendingChecklists.entries()) {
+          await api
+            .post("/checklists/documents", {
+              document_id: docId,
+              requirement_template_id: requirementTemplateId,
+              comments: data.comments || null,
+              responses: data.responses,
+            })
+            .catch((err: any) => {
+              console.error("Failed to flush pending checklist:", err);
+            });
+        }
+        setPendingChecklists(new Map());
+      }
       // Upload new attachments to server
       const newAtts = attachments.filter((a) => !a.isExisting && a.file);
       if (newAtts.length > 0 && docId) {
@@ -717,6 +877,26 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
 
         form.reset(form.getValues());
         programmaticDirtyRef.current = false;
+        if (linkageDirtyRef.current) {
+          await saveCommissioningLinkage(docId);
+          linkageDirtyRef.current = false;
+        }
+        // Flush pending checklists
+        if (pendingChecklists.size > 0 && docId) {
+          for (const [requirementTemplateId, data] of pendingChecklists.entries()) {
+            await api
+              .post("/checklists/documents", {
+                document_id: docId,
+                requirement_template_id: requirementTemplateId,
+                comments: data.comments || null,
+                responses: data.responses,
+              })
+              .catch((err: any) => {
+                console.error("Failed to flush pending checklist:", err);
+              });
+          }
+          setPendingChecklists(new Map());
+        }
       }
 
       if (!docId) {
@@ -1052,12 +1232,31 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
             </Card>
           </fieldset>
 
+          {/* Requirements */}
+          <Card>
+            <CardContent className="pt-6">
+              <RequirementSelector
+                projectId={project?.id || ""}
+                documentType="WIR"
+                documentId={editId || undefined}
+                applicableTemplateIds={applicableTemplateIds}
+                selectedRequirements={selectedRequirements}
+                onRequirementsChange={(reqs) => {
+                  setSelectedRequirements(reqs);
+                  if (!restoringSelectedRef.current) {
+                    programmaticDirtyRef.current = true;
+                  }
+                }}
+                pendingChecklists={pendingChecklists}
+                onPendingChecklistsChange={setPendingChecklists}
+              />
+            </CardContent>
+          </Card>
+
           {/* Commissioning Linkage */}
           <Card>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
-                projectId={project?.id || ""}
-                documentId={editId || undefined}
                 allAssetIds={assets.map((a) => a.id)}
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),
@@ -1067,36 +1266,14 @@ export function NewWIRPageContent({ editId }: { editId: string | null }) {
                 )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="WIR"
-                applicableTemplateIds={applicableTemplateIds}
+                templates={allTemplates}
+                selectedRequirements={selectedRequirements}
                 value={commissioningLinkage}
                 onChange={(linkage) => {
                   setCommissioningLinkage(linkage);
                   if (!restoringLinkageRef.current) {
                     linkageDirtyRef.current = true;
                     programmaticDirtyRef.current = true;
-                  }
-                }}
-                onRemoveBlock={async (block) => {
-                  if (!editId || !block.requirementTemplateId) return;
-                  for (const assetId of block.assetIds) {
-                    const arRes = await api.get(
-                      "/commissioning/asset-requirements",
-                      { params: { asset_id: assetId } },
-                    );
-                    const ar = (arRes.data as any[]).find(
-                      (r: any) =>
-                        r.requirement_template_id ===
-                        block.requirementTemplateId,
-                    );
-                    if (ar)
-                      await api
-                        .delete("/commissioning/document-links", {
-                          params: {
-                            document_id: editId,
-                            asset_requirement_id: ar.id,
-                          },
-                        })
-                        .catch((err: any) => { console.error("Failed to delete work item:", err); });
                   }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {

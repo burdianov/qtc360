@@ -20,7 +20,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Check, X, Minus } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +39,17 @@ interface ResponseState {
   response: "" | "yes" | "no" | "na";
 }
 
+export interface PendingChecklistData {
+  requirementTemplateId: string;
+  comments: string;
+  responses: {
+    checklist_item_id: string;
+    response: "yes" | "no" | "na";
+    display_order: number;
+    item_text: string;
+  }[];
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -46,6 +57,10 @@ interface Props {
   requirementTemplateId: string;
   requirementName: string;
   onSaved?: () => void;
+  /** Pre-populated pending data (when doc hasn't been saved yet) */
+  pendingData?: PendingChecklistData | null;
+  /** Called instead of API save when doc hasn't been saved yet — stores data locally */
+  onSaveLocally?: (data: PendingChecklistData) => void;
 }
 
 function SortableChecklistRow({
@@ -62,6 +77,11 @@ function SortableChecklistRow({
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.checklist_item_id });
   const style = { transform: CSS.Transform.toString(transform), transition };
 
+  // Prevent dnd-kit PointerSensor from intercepting clicks on response buttons
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <tr ref={setNodeRef} style={style} className="border-b border-border">
       <td className="w-8 px-1 py-2 text-center">
@@ -74,79 +94,105 @@ function SortableChecklistRow({
       <td className="w-14 text-center py-2">
         <button
           type="button"
+          onPointerDown={handlePointerDown}
           onClick={() => onResponseChange("yes")}
-          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "yes" ? "border-emerald-500 bg-emerald-500/15 text-emerald-500" : "border-muted-foreground/30 hover:border-emerald-500/50"}`}
+          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "yes" ? "border-emerald-500 bg-emerald-500/15 text-emerald-500" : "border-muted-foreground/30 hover:border-emerald-500/50 text-muted-foreground"}`}
         >
-          {response === "yes" && <span className="text-xs font-bold">✓</span>}
+          <Check className={`h-3.5 w-3.5 transition-opacity ${response === "yes" ? "opacity-100" : "opacity-0"}`} />
         </button>
       </td>
       <td className="w-14 text-center py-2">
         <button
           type="button"
+          onPointerDown={handlePointerDown}
           onClick={() => onResponseChange("no")}
-          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "no" ? "border-red-500 bg-red-500/15 text-red-500" : "border-muted-foreground/30 hover:border-red-500/50"}`}
+          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "no" ? "border-red-500 bg-red-500/15 text-red-500" : "border-muted-foreground/30 hover:border-red-500/50 text-muted-foreground"}`}
         >
-          {response === "no" && <span className="text-xs font-bold">✗</span>}
+          <X className={`h-3.5 w-3.5 transition-opacity ${response === "no" ? "opacity-100" : "opacity-0"}`} />
         </button>
       </td>
       <td className="w-14 text-center py-2">
         <button
           type="button"
+          onPointerDown={handlePointerDown}
           onClick={() => onResponseChange("na")}
-          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "na" ? "border-muted-foreground bg-muted-foreground/15 text-muted-foreground" : "border-muted-foreground/30 hover:border-muted-foreground/50"}`}
+          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "na" ? "border-muted-foreground bg-muted-foreground/15 text-muted-foreground" : "border-muted-foreground/30 hover:border-muted-foreground/50 text-muted-foreground"}`}
         >
-          {response === "na" && <span className="text-[10px] font-bold">—</span>}
+          <Minus className={`h-3.5 w-3.5 transition-opacity ${response === "na" ? "opacity-100" : "opacity-0"}`} />
         </button>
       </td>
     </tr>
   );
 }
 
-export function FillChecklistModal({ open, onOpenChange, documentId, requirementTemplateId, requirementName, onSaved }: Props) {
+const EMPTY_ARR: never[] = [];
+
+export function FillChecklistModal({ open, onOpenChange, documentId, requirementTemplateId, requirementName, onSaved, pendingData, onSaveLocally }: Props) {
   const queryClient = useQueryClient();
   const [responses, setResponses] = useState<ResponseState[]>([]);
   const [comments, setComments] = useState("");
 
+  const isPendingMode = !documentId && !!onSaveLocally;
+
   // Load master checklist items
-  const { data: masterItems = [] } = useQuery<ChecklistItem[]>({
+  const { data: masterItems = EMPTY_ARR } = useQuery<ChecklistItem[]>({
     queryKey: ["checklist-items", requirementTemplateId],
     queryFn: async () => (await api.get(`/checklists/templates/${requirementTemplateId}/items`)).data,
     enabled: open && !!requirementTemplateId,
   });
 
-  // Load existing saved checklist for this doc+requirement
-  const { data: existingChecklists = [] } = useQuery<any[]>({
+  // Load existing saved checklist for this doc+requirement (only when doc exists)
+  const { data: existingChecklists = EMPTY_ARR } = useQuery<any[]>({
     queryKey: ["document-checklists", documentId],
     queryFn: async () => (await api.get(`/checklists/documents/${documentId}`)).data,
     enabled: open && !!documentId,
   });
 
-  // Initialize responses from master items or existing data
+  // Initialize responses from master items, existing data, or pending data
   useEffect(() => {
     if (!open || masterItems.length === 0) return;
-    const existing = existingChecklists.find((c: any) => c.requirement_template_id === requirementTemplateId);
-    if (existing) {
-      setComments(existing.comments || "");
+
+    // Check pending data first (for unsaved documents)
+    if (pendingData && isPendingMode) {
+      setComments(pendingData.comments || "");
       setResponses(
-        existing.responses
-          .sort((a: any, b: any) => a.display_order - b.display_order)
-          .map((r: any) => ({
-            checklist_item_id: r.checklist_item_id,
-            item_text: r.item_text,
-            response: r.response,
-          }))
-      );
-    } else {
-      setResponses(
-        masterItems.map((item) => ({
-          checklist_item_id: item.id,
-          item_text: item.text,
-          response: "",
+        pendingData.responses.map((r: any) => ({
+          checklist_item_id: r.checklist_item_id,
+          item_text: r.item_text,
+          response: r.response,
         }))
       );
-      setComments("");
+      return;
     }
-  }, [open, masterItems, existingChecklists, requirementTemplateId]);
+
+    // Check existing saved data
+    if (documentId) {
+      const existing = existingChecklists.find((c: any) => c.requirement_template_id === requirementTemplateId);
+      if (existing) {
+        setComments(existing.comments || "");
+        setResponses(
+          existing.responses
+            .sort((a: any, b: any) => a.display_order - b.display_order)
+            .map((r: any) => ({
+              checklist_item_id: r.checklist_item_id,
+              item_text: r.item_text,
+              response: r.response,
+            }))
+        );
+        return;
+      }
+    }
+
+    // Fresh start from master items
+    setResponses(
+      masterItems.map((item) => ({
+        checklist_item_id: item.id,
+        item_text: item.text,
+        response: "",
+      }))
+    );
+    setComments("");
+  }, [open, masterItems, existingChecklists, requirementTemplateId, pendingData, isPendingMode, documentId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -162,21 +208,38 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
   };
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.post("/checklists/documents", {
+    mutationFn: async (): Promise<any> => {
+      if (isPendingMode) {
+        // Save locally — no API call
+        onSaveLocally!({
+          requirementTemplateId,
+          comments: comments || "",
+          responses: responses.map((r, idx) => ({
+            checklist_item_id: r.checklist_item_id,
+            response: r.response as "yes" | "no" | "na",
+            display_order: idx,
+            item_text: r.item_text,
+          })),
+        });
+        return;
+      }
+      return api.post("/checklists/documents", {
         document_id: documentId,
         requirement_template_id: requirementTemplateId,
         comments: comments || null,
         responses: responses.map((r, idx) => ({
           checklist_item_id: r.checklist_item_id,
-          response: r.response,
+          response: r.response as "yes" | "no" | "na",
           display_order: idx,
           item_text: r.item_text,
         })),
-      }),
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["document-checklists", documentId] });
-      queryClient.invalidateQueries({ queryKey: ["document-attachments", documentId] });
+      if (!isPendingMode) {
+        queryClient.invalidateQueries({ queryKey: ["document-checklists", documentId] });
+        queryClient.invalidateQueries({ queryKey: ["document-attachments", documentId] });
+      }
       toast.success("Checklist saved");
       onSaved?.();
       onOpenChange(false);

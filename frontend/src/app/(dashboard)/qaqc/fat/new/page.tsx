@@ -399,7 +399,6 @@ function NewFATPageContent() {
           <Card>
             <CardContent className="pt-6">
               <CommissioningLinkagePanel
-                projectId={project?.id || ""}
                 allAssetIds={assets.map((a) => a.id)}
                 allAssetLabels={Object.fromEntries(
                   assets.map((a) => [a.id, a.tag_number || a.name]),
@@ -409,33 +408,12 @@ function NewFATPageContent() {
                 )}
                 allAssetRequirements={allAssetRequirements}
                 documentType="FAT"
+                templates={[]}
+                selectedRequirements={[]}
                 value={commissioningLinkage}
                 onChange={(linkage) => {
                   setCommissioningLinkage(linkage);
                   linkageDirtyRef.current = true;
-                }}
-                onRemoveBlock={async (block) => {
-                  if (!editId || !block.requirementTemplateId) return;
-                  for (const assetId of block.assetIds) {
-                    const arRes = await api.get(
-                      "/commissioning/asset-requirements",
-                      { params: { asset_id: assetId } },
-                    );
-                    const ar = (arRes.data as any[]).find(
-                      (r: any) =>
-                        r.requirement_template_id ===
-                        block.requirementTemplateId,
-                    );
-                    if (ar)
-                      await api
-                        .delete("/commissioning/document-links", {
-                          params: {
-                            document_id: editId,
-                            asset_requirement_id: ar.id,
-                          },
-                        })
-                        .catch((err: any) => { console.error("Failed to save commissioning linkage:", err); });
-                  }
                 }}
                 onUnlinkAssets={async (tmplId, assetIds) => {
                   if (!editId) return;
