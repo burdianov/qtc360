@@ -54,6 +54,7 @@ from app.services.commissioning import recalculate_requirement_status
 
 
 _FK_CHAIN_TO_DOCUMENTS: tuple[str, ...] = (
+    "document_checklists",
     "document_attachments",
     "document_approval_rounds",
     "document_assets",

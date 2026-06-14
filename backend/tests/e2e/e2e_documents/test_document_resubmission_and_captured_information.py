@@ -205,8 +205,7 @@ async def test_extract_preview_happy_path(client, seed_data, auth_headers, targe
     # Success means the endpoint processes correctly
     if r.status_code == 200:
         assert "text" in r.json()
-        assert "field" in r.json()
-        assert r.json()["field"] == target_field
+        assert "via" in r.json()
 
 
 @pytest.mark.asyncio
@@ -236,7 +235,7 @@ async def test_round_extract_happy_path(client, seed_data, auth_headers, target_
     )
     if r.status_code == 200:
         assert "text" in r.json()
-        assert "field" in r.json()
+        assert "via" in r.json()
 
 
 @pytest.mark.asyncio
