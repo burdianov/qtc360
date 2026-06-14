@@ -15,6 +15,14 @@ import { RequirementSelector } from "@/components/requirement-selector";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
 import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { DocumentAttachments } from "@/components/document-attachments";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import api from "@/lib/api";
 import { useCirForm } from "./_lib/use-cir-form";
 import { CirGeneralInfoCard } from "./_components/cir-general-info-card";
@@ -109,6 +117,13 @@ function NewCIRPageContent() {
     handleBack,
     refetchAttachments,
     handlePreviewAttachment,
+    unsavedDialogOpen,
+    confirmUnsavedLeave,
+    confirmUnsavedSave,
+    dismissUnsavedDialog,
+    disciplineDialog,
+    confirmDisciplineChange,
+    cancelDisciplineChange,
   } = cir;
 
   return (
@@ -334,6 +349,58 @@ function NewCIRPageContent() {
         pdfUrl={pdfPreviewUrl}
         title="CIR Preview"
       />
+
+      <Dialog
+        open={unsavedDialogOpen}
+        onOpenChange={(open) => { if (!open) dismissUnsavedDialog(); }}
+      >
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Unsaved changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. Save as draft before leaving this page?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={dismissUnsavedDialog}>
+              Stay on page
+            </Button>
+            <Button type="button" variant="secondary" onClick={confirmUnsavedLeave}>
+              Discard and leave
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmUnsavedSave}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending && <Spinner size="sm" className="mr-1 text-current" />}
+              {mutation.isPending ? "Saving…" : "Save as Draft"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={disciplineDialog.open}
+        onOpenChange={(open) => { if (!open) cancelDisciplineChange(); }}
+      >
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>Change discipline?</DialogTitle>
+            <DialogDescription>
+              Changing discipline will remove incompatible requirements and checklists. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={cancelDisciplineChange}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={confirmDisciplineChange}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

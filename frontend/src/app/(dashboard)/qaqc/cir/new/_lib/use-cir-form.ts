@@ -70,12 +70,20 @@ export function useCirForm() {
   const [referenceNo, setReferenceNo] = useState<string>("");
   const [revisionNo, setRevisionNo] = useState<number>(0);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const programmaticDirtyRef = useRef(!editId);
+  // Tracks real user/programmatic edits. A fresh /new form starts clean —
+  // we only flip to true when the user actually changes something or a
+  // programmatic pre-fill (e.g. revision load) populates fields.
+  const programmaticDirtyRef = useRef(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [submissionMode, setSubmissionMode] = useState<"new" | "revision">(
     "new",
   );
   const [revisionOfId, setRevisionOfId] = useState<string | null>(null);
+  const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
+  const [disciplineDialog, setDisciplineDialog] = useState<{
+    open: boolean;
+    prevDiscipline: string;
+  }>({ open: false, prevDiscipline: "" });
 
   // ── Reference data queries ────────────────────────────────────────────
 
@@ -540,22 +548,33 @@ export function useCirForm() {
           (r) => !prevIds.has(r.requirementTemplateId),
         )
       ) {
-        const confirmed = window.confirm(
-          "Changing discipline will remove incompatible requirements and checklists. Continue?",
-        );
-        if (confirmed) {
-          setSelectedRequirements([]);
-          setPendingChecklists(new Map());
-          setCommissioningLinkage(null);
-          programmaticDirtyRef.current = true;
-        } else {
-          form.setValue("discipline_id", prevDisciplineRef.current);
-        }
+        // Defer to the in-app confirm dialog rather than window.confirm.
+        setDisciplineDialog({
+          open: true,
+          prevDiscipline: prevDisciplineRef.current,
+        });
+        return;
       }
     }
     prevDisciplineRef.current = disciplineId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disciplineId]);
+
+  const confirmDisciplineChange = () => {
+    setSelectedRequirements([]);
+    setPendingChecklists(new Map());
+    setCommissioningLinkage(null);
+    programmaticDirtyRef.current = true;
+    prevDisciplineRef.current = form.getValues("discipline_id");
+    setDisciplineDialog({ open: false, prevDiscipline: "" });
+  };
+
+  const cancelDisciplineChange = () => {
+    const prev = disciplineDialog.prevDiscipline;
+    form.setValue("discipline_id", prev);
+    prevDisciplineRef.current = prev;
+    setDisciplineDialog({ open: false, prevDiscipline: "" });
+  };
 
   // ── Sync requirements ↔ commissioning linkage ─────────────────────────
 
@@ -778,14 +797,24 @@ export function useCirForm() {
       pendingChecklists.size > 0 ||
       attachments.some((a) => !a.isExisting)
     ) {
-      const confirmed = window.confirm(
-        "You have unsaved changes. Save as draft before leaving?",
-      );
-      if (confirmed) {
-        form.handleSubmit((v) => mutation.mutate(v))();
-      }
+      setUnsavedDialogOpen(true);
+      return;
     }
     router.push("/qaqc/cir");
+  };
+
+  const confirmUnsavedLeave = () => {
+    setUnsavedDialogOpen(false);
+    router.push("/qaqc/cir");
+  };
+
+  const confirmUnsavedSave = () => {
+    setUnsavedDialogOpen(false);
+    form.handleSubmit((v) => mutation.mutate(v))();
+  };
+
+  const dismissUnsavedDialog = () => {
+    setUnsavedDialogOpen(false);
   };
 
   return {
@@ -855,5 +884,12 @@ export function useCirForm() {
     refetchAttachments,
     handlePreviewAttachment,
     buildPayload,
+    unsavedDialogOpen,
+    confirmUnsavedLeave,
+    confirmUnsavedSave,
+    dismissUnsavedDialog,
+    disciplineDialog,
+    confirmDisciplineChange,
+    cancelDisciplineChange,
   };
 }
