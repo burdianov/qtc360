@@ -11,6 +11,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { navigation } from "@/config/navigation";
 
 interface CommandPaletteProps {
@@ -20,6 +21,18 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter();
+  const { data: user } = useCurrentUser();
+
+  const isAdmin = user?.is_superuser || user?.roles?.some(
+    (r) => r.name === "admin" || r.name === "super_admin"
+  );
+  const visibleNavigation = navigation
+    .filter((g) => g.label !== "Administration" || isAdmin)
+    .map((g) =>
+      isAdmin
+        ? g
+        : { ...g, items: g.items.filter((item) => !item.adminOnly) }
+    );
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -43,7 +56,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         <CommandInput placeholder="Type a command or search..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
-          {navigation.map((group) => (
+          {visibleNavigation.map((group) => (
             <CommandGroup key={group.label} heading={group.label}>
               {group.items.map((item) => (
                 <CommandItem

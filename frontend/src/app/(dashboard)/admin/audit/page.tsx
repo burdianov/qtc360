@@ -49,8 +49,8 @@ export default function AuditPage() {
       </div>
 
       <div className="flex gap-3">
-        <Select value={actionFilter || "__all__"} onValueChange={(v) => setActionFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Action" /></SelectTrigger>
+        <Select value={actionFilter || undefined} onValueChange={(v) => setActionFilter(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="All Actions" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Actions</SelectItem>
             <SelectItem value="create">Create</SelectItem>
@@ -62,8 +62,8 @@ export default function AuditPage() {
           </SelectContent>
         </Select>
 
-        <Select value={entityFilter || "__all__"} onValueChange={(v) => setEntityFilter(v === "__all__" ? "" : v)}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Entity" /></SelectTrigger>
+        <Select value={entityFilter || undefined} onValueChange={(v) => setEntityFilter(v === "__all__" ? "" : v)}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="All Entities" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">All Entities</SelectItem>
             <SelectItem value="document">Document</SelectItem>

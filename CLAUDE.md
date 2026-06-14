@@ -42,3 +42,4 @@ Frontend:
 - cd frontend && npx tsc --noEmit
 
 Do not run npm install, uv sync, docker compose, migrations, or seed scripts unless explicitly requested.
+

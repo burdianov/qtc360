@@ -207,6 +207,7 @@ class AssetCreate(BaseModel):
     asset_type_id: uuid.UUID
     location: str | None = None
     status: str = "pending"
+    is_critical: bool = False
     custom_fields: dict = {}
 
 
@@ -217,6 +218,7 @@ class AssetUpdate(BaseModel):
     asset_type_id: uuid.UUID | None = None
     location: str | None = None
     status: str | None = None
+    is_critical: bool | None = None
     custom_fields: dict | None = None
 
 
@@ -228,6 +230,7 @@ class AssetResponse(BaseModel):
     asset_type_id: uuid.UUID
     location: str | None
     status: str
+    is_critical: bool = False
     custom_fields: dict = {}
     created_at: datetime
     model_config = {"from_attributes": True}

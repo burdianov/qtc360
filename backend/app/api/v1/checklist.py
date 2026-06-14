@@ -57,6 +57,7 @@ class ReorderRequest(PydanticBase):
 class ChecklistResponseIn(PydanticBase):
     checklist_item_id: uuid.UUID
     response: str  # yes, no, na
+    notes: str | None = None
     display_order: int
     item_text: str
 
@@ -72,6 +73,7 @@ class ChecklistResponseOut(PydanticBase):
     id: uuid.UUID
     checklist_item_id: uuid.UUID
     response: str
+    notes: str | None = None
     display_order: int
     item_text: str
 
@@ -262,6 +264,7 @@ async def save_document_checklist(
             checklist_id=checklist.id,
             checklist_item_id=r.checklist_item_id,
             response=r.response,
+            notes=r.notes,
             display_order=r.display_order,
             item_text=r.item_text,
         )
@@ -269,9 +272,19 @@ async def save_document_checklist(
 
     await db.commit()
 
-    # Generate PDF in the background so the save response returns immediately.
-    # The PDF generation (XLSX filling + conversion) can take several seconds.
-    background_tasks.add_task(_generate_checklist_pdf_background, checklist.id)
+    # Only generate PDF if there are actual filled responses.
+    # Empty checklists (just added, no data) should not produce attachments.
+    has_filled = any(r.response or (r.notes or "").strip() for r in body.responses)
+    if has_filled:
+        background_tasks.add_task(_generate_checklist_pdf_background, checklist.id)
+    elif checklist.attachment_id:
+        # All responses were cleared — remove the old attachment
+        att = await db.get(DocumentAttachment, checklist.attachment_id)
+        if att:
+            storage.delete(att.storage_path)
+            att.is_deleted = True
+        checklist.attachment_id = None
+        await db.commit()
 
     # Reload with responses
     await db.refresh(checklist)
@@ -361,6 +374,126 @@ async def _generate_checklist_pdf_background(checklist_id: uuid.UUID):
             logger.exception("Background checklist PDF generation failed for %s: %s", checklist_id, exc)
 
 
+async def _overlay_checklist_signature(pdf_bytes: bytes, inspector) -> bytes:
+    """Find the __SIG1__ marker in the checklist PDF and stamp the inspector's
+    signature (uploaded PNG or font-rendered text) at that position."""
+    import io
+
+    import fitz
+
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas as pdf_canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from app.services.signature import FONTS_DIR, SIGNATURE_FONTS
+    from app.core.types import DEFAULT_SIGNATURE_FONT
+    from app.services.storage import storage
+
+    sig_key = f"signatures/{inspector.id}.png"
+    has_png = storage.exists(sig_key)
+
+    sig_name = inspector.signature_text or inspector.full_name
+    sig_font_id = inspector.signature_font or DEFAULT_SIGNATURE_FONT
+
+    # ── Step 1: find & redact the marker ──────────────────────────────────
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    sig_info = None
+
+    for page_idx in range(len(pdf_doc)):
+        page = pdf_doc[page_idx]
+        instances = page.search_for("__SIG1__")
+        if instances:
+            rect = instances[0]
+            sig_info = {
+                "page": page_idx,
+                "x": rect.x0,
+                "y": rect.y0,
+                "width": rect.width,
+                "height": rect.height,
+                "page_height": page.rect.height,
+            }
+            for inst in instances:
+                page.add_redact_annot(inst, fill=(1, 1, 1))
+            page.apply_redactions()
+            break
+
+    redacted_bytes = pdf_doc.tobytes()
+    pdf_doc.close()
+
+    if not sig_info:
+        return pdf_bytes  # marker not found — shouldn't happen, but be safe
+
+    # ── Step 2: stamp the signature on every page that had the marker ─────
+    if has_png:
+        png_bytes = storage.read(sig_key)
+    else:
+        # Register the signature font for ReportLab
+        font_file = SIGNATURE_FONTS.get(sig_font_id, SIGNATURE_FONTS["dancing_script"])
+        font_path = FONTS_DIR / font_file
+        try:
+            pdfmetrics.registerFont(TTFont(sig_font_id, str(font_path)))
+        except Exception:
+            sig_font_id = "Helvetica"
+
+    reader = PdfReader(io.BytesIO(redacted_bytes))
+    writer = PdfWriter()
+
+    for page_idx in range(len(reader.pages)):
+        page = reader.pages[page_idx]
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+
+        if page_idx == sig_info["page"]:
+            overlay_buf = io.BytesIO()
+            c = pdf_canvas.Canvas(overlay_buf, pagesize=(page_width, page_height))
+
+            x = sig_info["x"]
+            y = page_height - sig_info["y"] - sig_info["height"]
+            cell_w = sig_info["width"]
+            cell_h = sig_info["height"]
+
+            if has_png:
+                img = ImageReader(io.BytesIO(png_bytes))
+                iw, ih = img.getSize()
+                scale = min(cell_w / iw, cell_h / ih) if iw > 0 and ih > 0 else 1
+                scale *= 2  # signature twice larger than the cell
+                draw_w = iw * scale
+                draw_h = ih * scale
+                y_adj = y + (cell_h - draw_h) / 2
+                c.drawImage(
+                    img, x, y_adj, width=draw_w, height=draw_h, mask="auto"
+                )
+            else:
+                font_size = 72
+                try:
+                    c.setFont(sig_font_id, font_size)
+                except Exception:
+                    c.setFont("Helvetica", font_size)
+                from reportlab.pdfbase.pdfmetrics import stringWidth
+
+                text_width = stringWidth(sig_name, sig_font_id, font_size)
+                if text_width > cell_w and text_width > 0:
+                    font_size = font_size * (cell_w / text_width)
+                    try:
+                        c.setFont(sig_font_id, font_size)
+                    except Exception:
+                        c.setFont("Helvetica", font_size)
+                c.setFillColorRGB(0.1, 0.14, 0.49)
+                c.drawString(x, y, sig_name)
+
+            c.save()
+            overlay_buf.seek(0)
+            overlay_reader = PdfReader(overlay_buf)
+            page.merge_page(overlay_reader.pages[0])
+
+        writer.add_page(page)
+
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uuid.UUID):
     """Generate checklist PDF and create/update DocumentAttachment."""
     from app.models.doc_template import DocTemplate
@@ -385,7 +518,10 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
         await db.execute(
             select(Document)
             .where(Document.id == checklist.document_id)
-            .options(selectinload(Document.project))
+            .options(
+                selectinload(Document.project),
+                selectinload(Document.site_engineer),
+            )
         )
     ).scalar_one()
 
@@ -402,17 +538,36 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
     xlsx_template = tmpl_result.scalar_one_or_none()
 
     if xlsx_template:
-        # Use XLSX template approach
+        # Use XLSX template approach — load date format from project settings
+        from app.api.v1.reports import _load_date_format, _format_date
+
+        await _load_date_format(db)
+
         tmpl = checklist.requirement_template
         display_name = tmpl.display_name or tmpl.name if tmpl else ""
         responses = sorted(checklist.responses, key=lambda r: r.display_order)
         response_data = [
-            {"item_text": r.item_text, "response": r.response} for r in responses
+            {"item_text": r.item_text, "response": r.response, "notes": r.notes}
+            for r in responses
         ]
         ctx = build_checklist_context(display_name, response_data)
         ctx["wir_no"] = doc.reference_no or ""
+        ctx["wir_rev"] = f"{doc.revision_no or 0:02d}"
+        ctx["wir_date"] = _format_date(doc.inspection_date)
+        # First inspector (site_engineer) data
+        ctx["signer_name"] = doc.site_engineer.full_name if doc.site_engineer else ""
+        if doc.site_engineer and doc.site_engineer_signed:
+            ctx["signer_sign"] = "__SIG1__"  # marker for PDF post-processing
+        else:
+            ctx["signer_sign"] = ""
+        ctx["signer_date"] = _format_date(doc.inspector_date_1)
         filled_xlsx = fill_xlsx_template(xlsx_template.file, ctx)
         pdf_bytes = await convert_xlsx_to_pdf(filled_xlsx)
+        # Overlay the actual signature (PNG or font-rendered) onto the PDF
+        if ctx["signer_sign"]:
+            pdf_bytes = await _overlay_checklist_signature(
+                pdf_bytes, doc.site_engineer
+            )
     else:
         # Fallback to reportlab
         from app.services.checklist_pdf import generate_checklist_pdf

@@ -181,6 +181,42 @@ async def delete_attachment(
             pass
 
 
+# ── Download single attachment ────────────────────────────────────────────────
+
+@router.get("/{doc_id}/attachments/{att_id}")
+async def download_attachment(
+    doc_id: UUID,
+    att_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a single attachment file."""
+    from fastapi.responses import Response
+
+    await load_doc_for_attachment(db, doc_id, user)
+    result = await db.execute(
+        select(DocumentAttachment).where(
+            DocumentAttachment.id == att_id,
+            DocumentAttachment.document_id == doc_id,
+            DocumentAttachment.is_deleted == False,  # noqa: E712
+        )
+    )
+    att = result.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    try:
+        data = storage.read(att.storage_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Attachment file not found on storage")
+
+    return Response(
+        content=data,
+        media_type=att.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{att.filename}"'},
+    )
+
+
 # ── Reorder attachments ──────────────────────────────────────────────────────
 
 @router.patch("/{doc_id}/attachments/reorder")
@@ -346,6 +382,8 @@ async def download_document_bundle(
 
     import json as _json
     from app.models.app_setting import AppSetting
+    from app.models.user_preference import UserPreference
+    from app.core.types import DEFAULT_SIG_CONFIG
 
     _sig_default = {
         "font_size": 36,
@@ -364,7 +402,35 @@ async def download_document_bundle(
             )
         except Exception:
             pass
-    main_pdf_bytes = _stamp_vector_signatures(main_pdf_bytes, doc, _sig_cfg)
+
+    # Load per-user signature display preferences (position/size adjustments)
+    # so the download respects the same tweaks the preview uses.
+    _user_sig_cfgs: dict[str, dict] = {}
+    for inspector in [doc.site_engineer, doc.qaqc_engineer]:
+        if inspector:
+            _pref = (
+                await db.execute(
+                    select(UserPreference).where(
+                        UserPreference.user_id == inspector.id,
+                        UserPreference.key == "signature_display",
+                        UserPreference.is_deleted == False,  # noqa: E712
+                    )
+                )
+            ).scalar_one_or_none()
+            if _pref and _pref.value:
+                try:
+                    v = _pref.value
+                    if isinstance(v, str):
+                        v = _json.loads(v)
+                    _user_sig_cfgs[str(inspector.id)] = {**DEFAULT_SIG_CONFIG, **v}
+                except Exception:
+                    _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
+            else:
+                _user_sig_cfgs[str(inspector.id)] = DEFAULT_SIG_CONFIG
+
+    main_pdf_bytes = _stamp_vector_signatures(
+        main_pdf_bytes, doc, _sig_cfg, _user_sig_cfgs
+    )
 
     attachments_result = await db.execute(
         select(DocumentAttachment)

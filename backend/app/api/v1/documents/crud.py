@@ -398,6 +398,21 @@ async def update_document(
     from app.api.v1.documents.attachments import pre_warm_main_pdf_cache
 
     background_tasks.add_task(pre_warm_main_pdf_cache, doc.id)
+
+    # Regenerate checklist PDFs so document-level placeholders (wir_no, wir_rev,
+    # wir_date, signer_name, signer_sign, signer_date) are up to date.
+    from app.api.v1.checklist import _generate_checklist_pdf_background
+    from app.models.checklist import DocumentChecklist
+
+    checklists_result = await db.execute(
+        select(DocumentChecklist).where(
+            DocumentChecklist.document_id == doc_id,
+            DocumentChecklist.is_deleted == False,  # noqa: E712
+        )
+    )
+    for cl in checklists_result.scalars().all():
+        background_tasks.add_task(_generate_checklist_pdf_background, cl.id)
+
     return doc
 
 
@@ -519,7 +534,7 @@ async def delete_document(
             DocumentApprovalRound.is_deleted == False,  # noqa: E712
         )
     )
-    has_been_submitted = rounds_result.scalar_one_or_none() is not None
+    has_been_submitted = rounds_result.first() is not None
     submitted_statuses = {
         "with_approver_1",
         "with_approver_2",

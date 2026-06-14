@@ -20,7 +20,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Check, X, Minus } from "lucide-react";
+import { GripVertical, Check, X } from "lucide-react";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +36,8 @@ interface ChecklistItem {
 interface ResponseState {
   checklist_item_id: string;
   item_text: string;
-  response: "" | "yes" | "no" | "na";
+  response: "" | "yes" | "no";
+  notes: string;
 }
 
 export interface PendingChecklistData {
@@ -44,7 +45,8 @@ export interface PendingChecklistData {
   comments: string;
   responses: {
     checklist_item_id: string;
-    response: "yes" | "no" | "na";
+    response: "yes" | "no";
+    notes: string | null;
     display_order: number;
     item_text: string;
   }[];
@@ -67,12 +69,16 @@ function SortableChecklistRow({
   item,
   index,
   response,
+  notes,
   onResponseChange,
+  onNotesChange,
 }: {
   item: ResponseState;
   index: number;
-  response: "" | "yes" | "no" | "na";
-  onResponseChange: (value: "yes" | "no" | "na") => void;
+  response: "" | "yes" | "no";
+  notes: string;
+  onResponseChange: (value: "yes" | "no") => void;
+  onNotesChange: (value: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: item.checklist_item_id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -91,7 +97,7 @@ function SortableChecklistRow({
       </td>
       <td className="w-10 px-2 py-2 text-center text-sm text-muted-foreground">{index + 1}</td>
       <td className="px-2 py-2 text-sm">{item.item_text}</td>
-      <td className="w-14 text-center py-2">
+      <td className="w-12 text-center py-2">
         <button
           type="button"
           onPointerDown={handlePointerDown}
@@ -101,7 +107,7 @@ function SortableChecklistRow({
           <Check className={`h-3.5 w-3.5 transition-opacity ${response === "yes" ? "opacity-100" : "opacity-0"}`} />
         </button>
       </td>
-      <td className="w-14 text-center py-2">
+      <td className="w-12 text-center py-2">
         <button
           type="button"
           onPointerDown={handlePointerDown}
@@ -111,15 +117,14 @@ function SortableChecklistRow({
           <X className={`h-3.5 w-3.5 transition-opacity ${response === "no" ? "opacity-100" : "opacity-0"}`} />
         </button>
       </td>
-      <td className="w-14 text-center py-2">
-        <button
-          type="button"
+      <td className="py-1.5 pr-2">
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => onNotesChange(e.target.value)}
           onPointerDown={handlePointerDown}
-          onClick={() => onResponseChange("na")}
-          className={`h-7 w-7 rounded-full border-2 inline-flex items-center justify-center transition-colors ${response === "na" ? "border-muted-foreground bg-muted-foreground/15 text-muted-foreground" : "border-muted-foreground/30 hover:border-muted-foreground/50 text-muted-foreground"}`}
-        >
-          <Minus className={`h-3.5 w-3.5 transition-opacity ${response === "na" ? "opacity-100" : "opacity-0"}`} />
-        </button>
+          className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        />
       </td>
     </tr>
   );
@@ -168,6 +173,7 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
         checklist_item_id: r.checklist_item_id,
         item_text: r.item_text,
         response: r.response,
+        notes: r.notes || "",
       }));
     } else if (documentId) {
       // Check existing saved data
@@ -180,6 +186,7 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
             checklist_item_id: r.checklist_item_id,
             item_text: r.item_text,
             response: r.response,
+            notes: r.notes || "",
           }));
       }
     }
@@ -189,7 +196,8 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
       initialResponses = masterItems.map((item) => ({
         checklist_item_id: item.id,
         item_text: item.text,
-        response: "",
+        response: "" as const,
+        notes: "",
       }));
       initialComments = "";
     }
@@ -225,7 +233,8 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
           comments: comments || "",
           responses: responses.map((r, idx) => ({
             checklist_item_id: r.checklist_item_id,
-            response: r.response as "yes" | "no" | "na",
+            response: r.response as "yes" | "no",
+            notes: r.notes || null,
             display_order: idx,
             item_text: r.item_text,
           })),
@@ -238,7 +247,8 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
         comments: comments || null,
         responses: responses.map((r, idx) => ({
           checklist_item_id: r.checklist_item_id,
-          response: r.response as "yes" | "no" | "na",
+          response: r.response as "yes" | "no",
+          notes: r.notes || null,
           display_order: idx,
           item_text: r.item_text,
         })),
@@ -256,7 +266,7 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
     onError: () => toast.error("Failed to save checklist"),
   });
 
-  const allAnswered = responses.length > 0 && responses.every((r) => r.response !== "");
+  const allAnswered = responses.length > 0 && responses.every((r) => r.response !== "" || r.notes.trim() !== "");
 
   // Disable Save when nothing has changed since the modal opened
   const isDirty =
@@ -266,7 +276,8 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
       initialSnapshot.responses.some(
         (r, i) =>
           r.checklist_item_id !== responses[i]?.checklist_item_id ||
-          r.response !== responses[i]?.response,
+          r.response !== responses[i]?.response ||
+          r.notes !== responses[i]?.notes,
       ));
 
   return (
@@ -292,9 +303,9 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
                       <th className="w-8"></th>
                       <th className="w-10 px-2 py-2 text-center font-medium text-muted-foreground text-xs">SN</th>
                       <th className="px-2 py-2 text-left font-medium text-muted-foreground text-xs">Activities / Items to be Inspected</th>
-                      <th className="w-14 text-center py-2 font-medium text-muted-foreground text-xs">YES</th>
-                      <th className="w-14 text-center py-2 font-medium text-muted-foreground text-xs">NO</th>
-                      <th className="w-14 text-center py-2 font-medium text-muted-foreground text-xs">NA</th>
+                      <th className="w-12 text-center py-2 font-medium text-muted-foreground text-xs">YES</th>
+                      <th className="w-12 text-center py-2 font-medium text-muted-foreground text-xs">NO</th>
+                      <th className="py-2 pr-2 text-left font-medium text-muted-foreground text-xs">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -304,10 +315,22 @@ export function FillChecklistModal({ open, onOpenChange, documentId, requirement
                         item={item}
                         index={idx}
                         response={item.response}
+                        notes={item.notes}
                         onResponseChange={(value) => {
                           setResponses((prev) =>
                             prev.map((r) =>
-                              r.checklist_item_id === item.checklist_item_id ? { ...r, response: value } : r
+                              r.checklist_item_id === item.checklist_item_id
+                                ? { ...r, response: value }
+                                : r
+                            )
+                          );
+                        }}
+                        onNotesChange={(value) => {
+                          setResponses((prev) =>
+                            prev.map((r) =>
+                              r.checklist_item_id === item.checklist_item_id
+                                ? { ...r, notes: value }
+                                : r
                             )
                           );
                         }}

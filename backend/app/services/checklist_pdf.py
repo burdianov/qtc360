@@ -162,33 +162,34 @@ async def generate_checklist_pdf(db: AsyncSession, document, checklist) -> bytes
         "hdr", fontSize=8, leading=10, fontName="Helvetica-Bold", alignment=1
     )
 
-    # Header: SN | Activities/Items to be Inspected | YES | NO | NA
+    # Header: SN | Activities/Items to be Inspected | YES | NO | Notes
     table_data = [
         [
             Paragraph("Sl. No.", header_style),
             Paragraph("Activities / Items to be Inspected", header_style),
             Paragraph("YES", header_style),
             Paragraph("NO", header_style),
-            Paragraph("NA", header_style),
+            Paragraph("Notes", header_style),
         ]
     ]
 
     for idx, resp in enumerate(responses, 1):
         check_yes = "\u2713" if resp.response == "yes" else ""
         check_no = "\u2713" if resp.response == "no" else ""
-        check_na = "\u2713" if resp.response == "na" else ""
+        notes_text = resp.notes or ""
         table_data.append(
             [
                 Paragraph(str(idx), ParagraphStyle("sn", fontSize=8, alignment=1)),
                 Paragraph(resp.item_text, cell_style),
-                Paragraph(check_yes, ParagraphStyle("chk", fontSize=10, alignment=1)),
-                Paragraph(check_no, ParagraphStyle("chk", fontSize=10, alignment=1)),
-                Paragraph(check_na, ParagraphStyle("chk", fontSize=10, alignment=1)),
+                Paragraph(check_yes, ParagraphStyle("chk", fontSize=8, alignment=1)),
+                Paragraph(check_no, ParagraphStyle("chk", fontSize=8, alignment=1)),
+                Paragraph(notes_text, cell_style),
             ]
         )
 
     available_w = width - 24 * mm
-    col_widths = [12 * mm, available_w - 12 * mm - 45 * mm, 15 * mm, 15 * mm, 15 * mm]
+    notes_col_w = 40 * mm
+    col_widths = [12 * mm, available_w - 12 * mm - 30 * mm - notes_col_w, 15 * mm, 15 * mm, notes_col_w]
     t = Table(table_data, colWidths=col_widths, repeatRows=1)
     t.setStyle(
         TableStyle(

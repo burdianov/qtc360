@@ -206,7 +206,7 @@ export function AppSidebar() {
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push("/profile")}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/admin/settings")}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
+                {isAdmin ? <DropdownMenuItem onClick={() => router.push("/admin/settings")}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem> : null}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}><LogOut className="mr-2 h-4 w-4" />Log out</DropdownMenuItem>
               </DropdownMenuContent>

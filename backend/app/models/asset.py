@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,7 @@ class Asset(BaseModel):
     status: Mapped[str] = mapped_column(
         String(30), default="pending"
     )  # pending, installed, commissioned
+    is_critical: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     custom_fields: Mapped[dict] = mapped_column(
         JSONB, server_default="{}", default=dict
     )

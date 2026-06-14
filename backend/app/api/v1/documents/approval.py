@@ -241,6 +241,7 @@ async def record_response_endpoint(
     response_time: str | None = Query(None, max_length=10),
     comments: str | None = Query(None, max_length=4000),
     aconex_received_date: str = Query("", description="ISO date yyyy-MM-dd"),
+    aconex_reference_number: str | None = Query(None, max_length=255),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
@@ -316,6 +317,9 @@ async def record_response_endpoint(
             raise HTTPException(
                 status_code=400, detail="aconex_received_date must be ISO yyyy-MM-dd"
             )
+
+    if aconex_reference_number:
+        round_.aconex_reference_number = aconex_reference_number
 
     db.add(
         DocumentAttachment(
@@ -417,6 +421,7 @@ async def replace_round_file(
     response_date: str | None = Form(None),
     response_time: str | None = Form(None),
     comments: str | None = Form(None),
+    aconex_reference_number: str | None = Form(None, max_length=255),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.edit")),
 ):
@@ -467,6 +472,8 @@ async def replace_round_file(
     round_.signatory_name = signatory_name or None
     round_.comments = comments or None
     round_.response_time = response_time or None
+    if aconex_reference_number:
+        round_.aconex_reference_number = aconex_reference_number
     if response_date:
         try:
             round_.response_date = date_cls.fromisoformat(response_date)

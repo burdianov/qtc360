@@ -53,9 +53,9 @@ export const cirSchema = z.object({
   inspector_2_id: z.string().optional(),
   remarks_1: z.string().optional(),
   remarks_2: z.string().optional(),
-  inspector_date_1: z.string().optional(),
+  inspector_date_1: z.string().min(1, "Inspection date is required"),
   inspector_time_1: z.string().optional(),
-  date: z.string().optional(),
+  date: z.string().min(1, "Inspection date is required"),
 });
 
 export type CirFormValues = z.infer<typeof cirSchema>;
@@ -74,7 +74,7 @@ export const cirDefaultValues: CirFormValues = {
   inspector_2_id: "",
   remarks_1: "",
   remarks_2: "",
-  inspector_date_1: "",
+  inspector_date_1: new Date().toISOString().split("T")[0],
   inspector_time_1: "",
   date: new Date().toISOString().split("T")[0],
 };

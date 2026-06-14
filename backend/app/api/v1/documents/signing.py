@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     HTTPException,
     Path,
@@ -170,6 +171,7 @@ async def sign_document(
     doc_id: UUID,
     role: str = Query(..., pattern="^(site_engineer|qaqc_engineer)$"),
     on_behalf_of: str | None = Query(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission("documents.sign")),
 ):
@@ -214,6 +216,9 @@ async def sign_document(
             raise HTTPException(status_code=400, detail="Already signed by inspector 1")
         doc.site_engineer_id = signatory_id
         doc.site_engineer_signed = True
+        # Auto-populate inspector date if not already set (used for {{ signer_date }} in checklists)
+        if not doc.inspector_date_1:
+            doc.inspector_date_1 = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     else:
         if doc.qaqc_engineer_signed:
             raise HTTPException(status_code=400, detail="Already signed by inspector 2")
@@ -258,6 +263,21 @@ async def sign_document(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(doc)
+
+    # Regenerate checklist PDFs so signer placeholders (signer_name, signer_sign,
+    # signer_date) are filled in now that the document has been signed.
+    from app.api.v1.checklist import _generate_checklist_pdf_background
+    from app.models.checklist import DocumentChecklist
+
+    checklists_result = await db.execute(
+        select(DocumentChecklist).where(
+            DocumentChecklist.document_id == doc_id,
+            DocumentChecklist.is_deleted == False,  # noqa: E712
+        )
+    )
+    for cl in checklists_result.scalars().all():
+        background_tasks.add_task(_generate_checklist_pdf_background, cl.id)
+
     return doc
 
 

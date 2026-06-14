@@ -10,6 +10,7 @@ import { Plus } from "lucide-react";
 import api from "@/lib/api";
 import { exportToCsv, parseCsv, downloadTemplate } from "@/lib/csv";
 import { useSelectedProject } from "@/hooks/use-project";
+import { useCurrentUser } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,11 +22,13 @@ import { TableSkeleton } from "@/components/loaders/table-skeleton";
 
 interface AssetType { id: string; name: string; code: string; }
 interface CustomFieldDef { id: string; label: string; }
-interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; custom_fields: Record<string, string>; created_at: string; }
+interface Asset { id: string; name: string; tag_number: string; asset_type_id: string; is_critical: boolean; custom_fields: Record<string, string>; created_at: string; }
 
 export default function AssetsPage() {
   const queryClient = useQueryClient();
   const project = useSelectedProject();
+  const { data: currentUser } = useCurrentUser();
+  const canManage = currentUser?.permissions?.includes("master_data.manage") ?? currentUser?.is_superuser ?? false;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Asset | null>(null);
   const [filterTypeId, setFilterTypeId] = useState<string>("");
@@ -54,13 +57,14 @@ export default function AssetsPage() {
     name: z.string().min(1, "Name is required"),
     tag_number: z.string().min(1, "Tag number is required"),
     asset_type_id: z.string().min(1, "Asset type is required"),
+    is_critical: z.boolean(),
   });
 
   type FormValues = z.infer<typeof schema>;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", tag_number: "", asset_type_id: "" },
+    defaultValues: { name: "", tag_number: "", asset_type_id: "", is_critical: false },
   });
 
   const mutation = useMutation({
@@ -86,17 +90,18 @@ export default function AssetsPage() {
     name: { type: "text" },
     tag_number: { type: "text" },
     asset_type_id: { type: "select", options: assetTypes.map((t) => ({ label: t.name, value: t.id })) },
+    is_critical: { type: "boolean" },
   };
 
   const openCreate = () => {
     setEditing(null);
-    form.reset({ name: "", tag_number: "", asset_type_id: "" });
+    form.reset({ name: "", tag_number: "", asset_type_id: "", is_critical: false });
     setCustomFieldValues({});
     setDialogOpen(true);
   };
   const openEdit = (item: Asset) => {
     setEditing(item);
-    form.reset({ name: item.name, tag_number: item.tag_number, asset_type_id: item.asset_type_id });
+    form.reset({ name: item.name, tag_number: item.tag_number, asset_type_id: item.asset_type_id, is_critical: item.is_critical });
     setCustomFieldValues(item.custom_fields || {});
     setDialogOpen(true);
   };
@@ -111,6 +116,7 @@ export default function AssetsPage() {
     { accessorKey: "tag_number", header: ({ column }) => <DataTableColumnHeader column={column} title="Tag" />, meta: { title: "Tag" } },
     { accessorKey: "name", header: ({ column }) => <DataTableColumnHeader column={column} title="Name" /> },
     { accessorKey: "asset_type_id", header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />, meta: { title: "Type" }, cell: ({ row }) => assetTypes.find((t) => t.id === row.original.asset_type_id)?.name ?? "-" },
+    { id: "is_critical", accessorKey: "is_critical", header: ({ column }) => <DataTableColumnHeader column={column} title="Critical" />, meta: { title: "Critical" }, cell: ({ row }) => row.original.is_critical ? <span className="text-destructive font-semibold">Yes</span> : "No" },
     ...fieldDefs.map((fd) => ({
       id: `cf_${fd.id}`,
       accessorFn: (row: Asset) => row.custom_fields?.[fd.id] || "-",
@@ -121,6 +127,8 @@ export default function AssetsPage() {
     { id: "actions", header: "Actions", cell: ({ row }) => <DataTableRowActions row={row.original} actions={rowActions} /> },
   ];
 
+  const visibleColumns = canManage ? columns : columns.filter((c: any) => c.id !== "actions");
+
   if (isLoading) return <TableSkeleton />;
 
   return (
@@ -130,7 +138,7 @@ export default function AssetsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Assets</h1>
           <p className="text-sm text-muted-foreground">Manage assets</p>
         </div>
-        <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Asset</Button>
+        {canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Add Asset</Button>}
       </div>
       <div className="flex gap-3 items-center">
         <Select value={filterTypeId} onValueChange={(v: any) => setFilterTypeId(v === "__all__" ? "" : v)}>
@@ -143,23 +151,23 @@ export default function AssetsPage() {
         {filterTypeId && <span className="text-xs text-muted-foreground">{assets.filter((a) => a.asset_type_id === filterTypeId).length} assets</span>}
       </div>
       <DataTable
-        columns={columns}
+        columns={visibleColumns}
         data={filterTypeId ? assets.filter((a) => a.asset_type_id === filterTypeId) : assets}
         searchKey="name"
         searchPlaceholder="Search by name..."
-        editableColumns={editableCols}
-        onRowUpdate={inlineUpdate}
+        editableColumns={canManage ? editableCols : undefined}
+        onRowUpdate={canManage ? inlineUpdate : undefined}
         onExport={(rows) => exportToCsv(rows, "assets")}
-        onImport={async (file) => {
+        onImport={canManage ? async (file) => {
           const rows = await parseCsv(file);
           await Promise.allSettled(rows.map((row) => api.post("/assets", row)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
-        }}
-        onDownloadTemplate={() => downloadTemplate(["name", "tag_number", "asset_type_id", ...fieldDefs.map(f => f.label)], "assets")}
-        onBulkDelete={async (rows) => {
+        } : undefined}
+        onDownloadTemplate={() => downloadTemplate(["name", "tag_number", "asset_type_id", "is_critical", ...fieldDefs.map(f => f.label)], "assets")}
+        onBulkDelete={canManage ? async (rows) => {
           await Promise.allSettled(rows.map((row) => api.delete(`/assets/${row.id}`)));
           queryClient.invalidateQueries({ queryKey: ["assets"] });
-        }}
+        } : undefined}
       />
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -176,6 +184,14 @@ export default function AssetsPage() {
               )} />
               <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="tag_number" render={({ field }) => (<FormItem><FormLabel>Tag Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="is_critical" render={({ field }) => (
+                <FormItem className="flex flex-row items-center gap-2 space-y-0 py-1">
+                  <FormControl>
+                    <input type="checkbox" checked={field.value} onChange={field.onChange} className="h-4 w-4 accent-primary" />
+                  </FormControl>
+                  <FormLabel className="text-sm font-medium !m-0 cursor-pointer">Is Critical</FormLabel>
+                </FormItem>
+              )} />
               {fieldDefs.map((fd) => (
                 <div key={fd.id}>
                   <label className="text-sm font-medium">{fd.label}</label>

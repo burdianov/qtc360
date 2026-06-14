@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X, ClipboardCheck, Eye, Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
@@ -49,6 +49,7 @@ interface Props {
   onRequirementsChange: (reqs: SelectedRequirement[]) => void;
   pendingChecklists: Map<string, PendingChecklistData>;
   onPendingChecklistsChange: (map: Map<string, PendingChecklistData>) => void;
+  onChecklistSaved?: () => void;
 }
 
 function reqId() {
@@ -64,7 +65,9 @@ export function RequirementSelector({
   onRequirementsChange,
   pendingChecklists,
   onPendingChecklistsChange,
+  onChecklistSaved,
 }: Props) {
+  const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [fillModalOpen, setFillModalOpen] = useState<string | null>(null); // requirementTemplateId
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -93,6 +96,17 @@ export function RequirementSelector({
     },
     enabled: !!projectId,
   });
+
+  // Fetch existing checklists so we know whether to show "Edit Checklist"
+  const { data: existingChecklists = [] } = useQuery<any[]>({
+    queryKey: ["document-checklists", documentId],
+    queryFn: async () => (await api.get(`/checklists/documents/${documentId}`)).data,
+    enabled: !!documentId,
+  });
+
+  const existingChecklistTemplateIds = new Set(
+    existingChecklists.map((c: any) => c.requirement_template_id),
+  );
 
   const filteredTemplates = applicableTemplateIds
     ? templates.filter((t) => applicableTemplateIds.has(t.id))
@@ -133,6 +147,11 @@ export function RequirementSelector({
         .delete(
           `/checklists/documents/${documentId}/${req.requirementTemplateId}`,
         )
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["document-checklists", documentId] });
+          queryClient.invalidateQueries({ queryKey: ["document-attachments", documentId] });
+          onChecklistSaved?.();
+        })
         .catch((err: any) =>
           console.error("Failed to delete checklist:", err),
         );
@@ -148,6 +167,12 @@ export function RequirementSelector({
       next.delete(requirementTemplateId);
       onPendingChecklistsChange(next);
     }
+    // Notify parent so attachments list (which includes checklist records) is refetched
+    onChecklistSaved?.();
+    // PDF generation runs in a background task after the API call returns,
+    // so the attachment may not exist yet. Poll with increasing delays.
+    const delays = [1500, 3000, 5000];
+    delays.forEach((delay) => setTimeout(() => onChecklistSaved?.(), delay));
   };
 
   const handlePreviewChecklist = async (requirementTemplateId: string) => {
@@ -203,6 +228,9 @@ export function RequirementSelector({
       await api.delete(
         `/checklists/documents/${documentId}/${requirementTemplateId}`,
       );
+      queryClient.invalidateQueries({ queryKey: ["document-checklists", documentId] });
+      queryClient.invalidateQueries({ queryKey: ["document-attachments", documentId] });
+      onChecklistSaved?.();
       toast.success("Checklist removed");
     } catch {
       toast.error("Failed to remove checklist");
@@ -287,7 +315,7 @@ export function RequirementSelector({
               ? `[${template.level_code}] ${template.name}`
               : req.requirementTemplateId.slice(0, 8);
             const hasChecklist = documentId
-              ? undefined // will be checked via query in child
+              ? existingChecklistTemplateIds.has(req.requirementTemplateId)
               : pendingChecklists.has(req.requirementTemplateId);
             const pendingData = pendingChecklists.get(
               req.requirementTemplateId,
@@ -332,7 +360,7 @@ export function RequirementSelector({
                   </Button>
 
                   {/* Action buttons — show when checklist exists (backend or pending) */}
-                  {(documentId || pendingChecklists.has(req.requirementTemplateId)) && (
+                  {hasChecklist && (
                     <ChecklistActionButtons
                       documentId={documentId || ""}
                       requirementTemplateId={req.requirementTemplateId}

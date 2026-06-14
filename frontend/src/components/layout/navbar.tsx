@@ -139,10 +139,12 @@ export function Navbar({ onSearchClick }: NavbarProps) {
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push("/admin/settings")}>
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
+              {currentUser?.is_superuser || currentUser?.roles?.some((r) => r.name === "admin" || r.name === "super_admin") ? (
+                <DropdownMenuItem onClick={() => router.push("/admin/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

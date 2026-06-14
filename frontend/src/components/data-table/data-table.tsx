@@ -38,7 +38,7 @@ import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
 
 export interface EditableColumn {
-  type: "text" | "number" | "select";
+  type: "text" | "number" | "select" | "boolean";
   options?: { label: string; value: string }[];
 }
 
@@ -330,6 +330,41 @@ export function DataTable<TData, TValue>({
               ))}
             </SelectContent>
           </Select>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              saveCell(row.original);
+            }}
+            disabled={saving}
+            className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-green-100 text-green-600 dark:hover:bg-green-900/30"
+            title="Save"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              cancelEditing();
+            }}
+            className="inline-flex items-center justify-center h-7 w-7 rounded hover:bg-red-100 text-red-600 dark:hover:bg-red-900/30"
+            title="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      );
+    }
+
+    if (config.type === "boolean") {
+      return (
+        <div className="flex items-center gap-2 pl-1">
+          <input
+            type="checkbox"
+            checked={!!editValue}
+            onChange={(e) => setEditValue(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          <span className="text-xs text-muted-foreground">{editValue ? "Yes" : "No"}</span>
           <button
             onClick={(e) => {
               e.stopPropagation();

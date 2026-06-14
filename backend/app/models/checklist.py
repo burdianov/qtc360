@@ -56,6 +56,7 @@ class DocumentChecklistResponse(BaseModel):
         UUID(as_uuid=True), ForeignKey("checklist_items.id")
     )
     response: Mapped[str] = mapped_column(String(3))  # yes, no, na
+    notes: Mapped[str | None] = mapped_column(Text, default=None)  # free-text notes
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     item_text: Mapped[str] = mapped_column(Text)  # snapshot of text at fill time
 

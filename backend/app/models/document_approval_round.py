@@ -49,6 +49,7 @@ class DocumentApprovalRound(BaseModel):
     response_time: Mapped[str | None] = mapped_column(String(10))
     aconex_submitted_date: Mapped[date | None] = mapped_column(Date)
     aconex_received_date: Mapped[date | None] = mapped_column(Date)
+    aconex_reference_number: Mapped[str | None] = mapped_column(String(255))
     submitted_file_path: Mapped[str | None] = mapped_column(String(1000))
     submitted_file_size: Mapped[int | None] = mapped_column(BigInteger)
     returned_file_path: Mapped[str | None] = mapped_column(String(1000))

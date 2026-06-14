@@ -3,19 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Crosshair,
-  FileText,
-  Paperclip,
-  Sparkles,
-  Upload,
-  X,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Crosshair, FileText, Paperclip, Sparkles, Upload, X } from "lucide-react";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -69,6 +61,7 @@ const REQUIRED_FIELDS: { key: Field | "decision_status_id" | "aconex_received_da
   { key: "signatory_name", label: "Signatory name" },
   { key: "response_date", label: "Response date" },
   { key: "aconex_received_date", label: "Aconex received date" },
+  { key: "comments", label: "Comments" },
 ];
 
 export function RecordResponseDialog({
@@ -90,7 +83,9 @@ export function RecordResponseDialog({
   );
   const [responseTime, setResponseTime] = useState("");
   const [comments, setComments] = useState("");
+  const [noComments, setNoComments] = useState(false);
   const [aconexReceivedDate, setAconexReceivedDate] = useState("");
+  const [aconexReferenceNumber, setAconexReferenceNumber] = useState("");
   const [armedField, setArmedField] = useState<Field | null>(null);
   const [lastRegion, setLastRegion] = useState<
     Partial<Record<Field, CapturedRegion>>
@@ -111,7 +106,9 @@ export function RecordResponseDialog({
       setResponseDate(new Date().toISOString().slice(0, 10));
       setResponseTime("");
       setComments("");
+      setNoComments(false);
       setAconexReceivedDate("");
+      setAconexReferenceNumber("");
       setArmedField(null);
       setLastRegion({});
       setSubmitAttempted(false);
@@ -236,6 +233,7 @@ export function RecordResponseDialog({
     signatory_name: !!signatoryName.trim(),
     response_date: !!responseDate,
     aconex_received_date: !!aconexReceivedDate,
+    comments: noComments || !!comments.trim(),
   } as const;
 
   const missingRequired = REQUIRED_FIELDS
@@ -278,6 +276,8 @@ export function RecordResponseDialog({
       if (comments) params.set("comments", comments);
       if (aconexReceivedDate)
         params.set("aconex_received_date", aconexReceivedDate);
+      if (aconexReferenceNumber)
+        params.set("aconex_reference_number", aconexReferenceNumber);
       return api.post(
         `/documents/${documentId}/approval-rounds?${params.toString()}`,
         fd,
@@ -397,8 +397,12 @@ export function RecordResponseDialog({
                 setResponseTime={setResponseTime}
                 aconexReceivedDate={aconexReceivedDate}
                 setAconexReceivedDate={setAconexReceivedDate}
+                aconexReferenceNumber={aconexReferenceNumber}
+                setAconexReferenceNumber={setAconexReferenceNumber}
                 comments={comments}
                 setComments={setComments}
+                noComments={noComments}
+                setNoComments={setNoComments}
                 armedField={armedField}
                 armField={(f) =>
                   setArmedField((prev) => (prev === f ? null : f))
@@ -614,8 +618,12 @@ interface FormSideProps {
   setResponseTime: (v: string) => void;
   aconexReceivedDate: string;
   setAconexReceivedDate: (v: string) => void;
+  aconexReferenceNumber: string;
+  setAconexReferenceNumber: (v: string) => void;
   comments: string;
   setComments: (v: string) => void;
+  noComments: boolean;
+  setNoComments: (v: boolean) => void;
   armedField: Field | null;
   armField: (f: Field) => void;
   disableArm: boolean;
@@ -637,8 +645,12 @@ function FormSide(props: FormSideProps) {
     setResponseTime,
     aconexReceivedDate,
     setAconexReceivedDate,
+    aconexReferenceNumber,
+    setAconexReferenceNumber,
     comments,
     setComments,
+    noComments,
+    setNoComments,
     armedField,
     armField,
     disableArm,
@@ -795,8 +807,36 @@ function FormSide(props: FormSideProps) {
         </div>
       </Section>
 
-      <Section title="Comments" subtitle="Optional">
-        <div data-field="comments" className="space-y-1.5">
+      <Section title="Aconex Reference Number" subtitle="Optional">
+        <div data-field="aconex_reference_number" className="space-y-1.5">
+          <Input
+            type="text"
+            value={aconexReferenceNumber}
+            onChange={(e) => setAconexReferenceNumber(e.target.value)}
+            placeholder="Enter reference number"
+          />
+        </div>
+      </Section>
+
+      <Section title="Comments" subtitle="Required">
+        <div data-field="comments" className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={noComments}
+              onCheckedChange={(checked) => {
+                const isChecked = checked === true;
+                setNoComments(isChecked);
+                if (isChecked) {
+                  setComments("No comments");
+                } else {
+                  setComments("");
+                }
+              }}
+            />
+            <span className="text-xs font-medium text-muted-foreground">
+              No comments
+            </span>
+          </label>
           <CaptureRow
             label="Comments"
             field="comments"
@@ -804,10 +844,18 @@ function FormSide(props: FormSideProps) {
             onChange={setComments}
             armed={armedField === "comments"}
             armField={armField}
-            disableArm={disableArm}
+            disableArm={disableArm || noComments}
             retryAsOcr={retryAsOcr}
             captured={captured.comments}
             kind="textarea"
+            textareaDisabled={noComments}
+            required
+            invalid={submitAttempted && !noComments && !comments.trim()}
+            error={
+              submitAttempted && !noComments && !comments.trim()
+                ? "Comments are required or check 'No comments'."
+                : undefined
+            }
           />
         </div>
       </Section>
@@ -884,6 +932,7 @@ function CaptureRow({
   required,
   invalid,
   error,
+  textareaDisabled,
 }: {
   label: string;
   field: Field;
@@ -898,6 +947,7 @@ function CaptureRow({
   required?: boolean;
   invalid?: boolean;
   error?: string;
+  textareaDisabled?: boolean;
 }) {
   return (
     <div>
@@ -936,6 +986,7 @@ function CaptureRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
+          disabled={textareaDisabled}
           aria-invalid={invalid || undefined}
         />
       ) : kind === "date" ? (

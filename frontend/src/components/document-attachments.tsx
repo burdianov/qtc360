@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { GripVertical, Trash2, Download, Edit2 } from "lucide-react";
+import { GripVertical, Trash2, Download, Edit2, Eye } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -53,6 +53,7 @@ interface Props {
   onDirtyChange?: () => void;
   showPagePosition?: boolean;
   showDownloadBundle?: boolean;
+  onPreviewAttachment?: (att: Attachment, index: number) => void;
 }
 
 function SortableAttachmentRow({
@@ -61,16 +62,20 @@ function SortableAttachmentRow({
   showPagePosition,
   onEditPagePosition,
   onDelete,
+  onPreview,
 }: {
   att: Attachment;
   index: number;
   showPagePosition: boolean;
   onEditPagePosition: (i: number) => void;
   onDelete: (i: number) => void;
+  onPreview?: (att: Attachment, index: number) => void;
 }) {
   const sortId = att.id || `new-${index}`;
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: sortId });
   const style = { transform: CSS.Transform.toString(transform), transition };
+
+  const isPdf = att.name.toLowerCase().endsWith(".pdf");
 
   return (
     <div
@@ -82,7 +87,20 @@ function SortableAttachmentRow({
         <GripVertical className="h-4 w-4" />
       </button>
       <div className="flex-1 min-w-0">
-        <div className="text-sm truncate">{att.name}</div>
+        <div className="text-sm truncate">
+          {isPdf && onPreview ? (
+            <button
+              type="button"
+              className="text-primary hover:underline cursor-pointer truncate max-w-full text-left"
+              onClick={() => onPreview(att, index)}
+              title={`Preview ${att.name}`}
+            >
+              {att.name}
+            </button>
+          ) : (
+            <span>{att.name}</span>
+          )}
+        </div>
         <div className="text-xs text-muted-foreground">
           {(att.size / 1024).toFixed(1)} KB
           {att.kind === "checklist" && <span className="ml-2 text-primary">• Checklist</span>}
@@ -93,6 +111,11 @@ function SortableAttachmentRow({
             )}
         </div>
       </div>
+      {isPdf && onPreview && (
+        <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => onPreview(att, index)} title={`Preview ${att.name}`}>
+          <Eye className="h-3.5 w-3.5" />
+        </Button>
+      )}
       {showPagePosition && (
         <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => onEditPagePosition(index)}>
           <Edit2 className="h-3.5 w-3.5" />
@@ -118,6 +141,7 @@ export function DocumentAttachments({
   onDirtyChange,
   showPagePosition = false,
   showDownloadBundle = false,
+  onPreviewAttachment,
 }: Props) {
   const [editingPagePosition, setEditingPagePosition] = useState<number | null>(null);
   const [pagePositionValue, setPagePositionValue] = useState("");
@@ -249,6 +273,7 @@ export function DocumentAttachments({
                   showPagePosition={showPagePosition}
                   onEditPagePosition={handleEditPagePosition}
                   onDelete={(idx) => setConfirmDeleteIndex(idx)}
+                  onPreview={onPreviewAttachment}
                 />
               ))}
             </div>

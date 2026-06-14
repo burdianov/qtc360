@@ -195,6 +195,7 @@ class DocumentApprovalRoundResponse(BaseModel):
     remarks_file_name: str | None = None
     aconex_submitted_date: date | None = None
     aconex_received_date: date | None = None
+    aconex_reference_number: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

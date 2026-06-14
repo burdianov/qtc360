@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.types import GOTENBERG_TIMEOUT
 
 PLACEHOLDER_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
-TICK = "\u2714"  # ✔ (heavy check mark — renders bolder in PDF)
+TICK = "\u2713"  # ✓ (check mark)
 
 
 def fill_xlsx_template(template_bytes: bytes, context: dict[str, str]) -> bytes:
@@ -23,21 +23,28 @@ def fill_xlsx_template(template_bytes: bytes, context: dict[str, str]) -> bytes:
 
     wb = load_workbook(io.BytesIO(template_bytes))
     for ws in wb.worksheets:
+        # Capture the font from a tick placeholder cell ({{ yes_N }}) —
+        # the tick mark will use this so it matches the placeholder text
+        # that the Excel template author designed.
+        placeholder_font: Font | None = None
         for row in ws.iter_rows():
             for cell in row:
-                # Replace placeholders
                 if cell.value and isinstance(cell.value, str) and "{{" in cell.value:
+                    # Capture from the first yes/no placeholder cell
+                    if placeholder_font is None and ("{{ yes_" in cell.value or "{{ no_" in cell.value):
+                        placeholder_font = Font(
+                            name=cell.font.name or "Arial",
+                            size=cell.font.size or 10,
+                            bold=cell.font.bold or False,
+                            color=cell.font.color,
+                        )
                     new_value = PLACEHOLDER_RE.sub(
                         lambda m: context.get(m.group(1), ""), cell.value
                     )
                     cell.value = new_value
-                    # Force bold + 18pt on tick mark cells
-                    if new_value == TICK:
-                        cell.font = Font(
-                            name=cell.font.name or "Arial",
-                            size=14,
-                            bold=True,
-                        )
+                    # Apply the placeholder font to the tick mark
+                    if new_value == TICK and placeholder_font is not None:
+                        cell.font = placeholder_font
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -70,8 +77,9 @@ def build_checklist_context(
 ) -> dict[str, str]:
     """Build the placeholder context dict for a checklist.
 
-    responses: list of {item_text, response} dicts ordered by display_order.
-    response values: 'yes', 'no', 'na', or '' (unfilled).
+    responses: list of {item_text, response, notes} dicts ordered by display_order.
+    response values: 'yes', 'no', or '' (unfilled).
+    notes: free-text notes (shown in the Notes column).
     """
     ctx: dict[str, str] = {"display_name": display_name}
     for i in range(1, 21):
@@ -81,7 +89,7 @@ def build_checklist_context(
             ctx[f"item_{i}"] = r["item_text"]
             ctx[f"yes_{i}"] = TICK if r["response"] == "yes" else ""
             ctx[f"no_{i}"] = TICK if r["response"] == "no" else ""
-            ctx[f"na_{i}"] = TICK if r["response"] == "na" else ""
+            ctx[f"na_{i}"] = r.get("notes", "") or ""
         else:
             ctx[f"sn_{i}"] = ""
             ctx[f"item_{i}"] = ""
