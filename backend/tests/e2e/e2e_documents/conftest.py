@@ -122,6 +122,11 @@ def _postgres_env(db_name: str, upload_dir: Path) -> dict[str, str]:
             "ENVIRONMENT": "development",
             "UPLOAD_DIR": str(upload_dir),
             "PYTHONUNBUFFERED": "1",
+            # If the parent process (CI) has GOTENBERG_URL set, forward it to
+            # the uvicorn sub-process so the S1/S2 assembly can convert
+            # DOCX → PDF. Local devs who haven't set it will fall through to
+            # the LibreOffice path.
+            "GOTENBERG_URL": env.get("GOTENBERG_URL", "http://localhost:3100"),
         }
     )
     return env

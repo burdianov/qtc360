@@ -17,6 +17,13 @@ jobs:
       POSTGRES_USER: qtc360
       POSTGRES_PASSWORD: qtc360_test
       ENVIRONMENT: development
+      # The e2e suite assembles the S1/S2 submission bundle by converting
+      # the active DOCX template to PDF. The backend prefers Gotenberg and
+      # falls back to a local soffice — neither exists on the bare runner
+      # image, so we bring Gotenberg up as a service on its default port
+      # (3100). config.py's default GOTENBERG_URL=http://localhost:3100
+      # then lines up automatically.
+      GOTENBERG_URL: http://localhost:3100
     services:
       postgres:
         image: postgres:16-alpine
@@ -31,6 +38,12 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      gotenberg:
+        # 7.x is the line the production compose uses. Chromium + LibreOffice
+        # modules handle the .docx -> .pdf conversion the S1 assembly calls.
+        image: gotenberg/gotenberg:7
+        ports:
+          - 3100:3000
 
     steps:
       - uses: actions/checkout@v4
