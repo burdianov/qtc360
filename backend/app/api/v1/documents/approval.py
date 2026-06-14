@@ -862,6 +862,53 @@ async def delete_round_attachment(
     await db.commit()
 
 
+# ── Download single round attachment ─────────────────────────────────────────
+
+@router.get("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}")
+async def download_round_attachment(
+    doc_id: UUID,
+    round_id: UUID,
+    att_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download a single round attachment file for preview."""
+    from fastapi.responses import Response
+
+    doc = (
+        await db.execute(
+            select(Document).where(Document.id == doc_id, Document.is_deleted == False)  # noqa: E712
+        )
+    ).scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    await assert_user_in_project(user, doc.project_id)
+
+    att = (
+        await db.execute(
+            select(DocumentAttachment).where(
+                DocumentAttachment.id == att_id,
+                DocumentAttachment.document_approval_round_id == round_id,
+                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.is_deleted == False,  # noqa: E712
+            )
+        )
+    ).scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    try:
+        data = storage.read(att.storage_path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Attachment file not found on storage")
+
+    return Response(
+        content=data,
+        media_type=att.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{att.filename}"'},
+    )
+
+
 # ── Round bundle download ────────────────────────────────────────────────────
 
 @router.get("/{doc_id}/approval-rounds/{round_id}/bundle")

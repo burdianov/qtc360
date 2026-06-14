@@ -61,6 +61,8 @@ interface Props {
   documentType: string;
   documentStatus: string;
   projectId: string | undefined;
+  documentTitle?: string;
+  disciplineId?: string;
   onChanged?: () => void;
 }
 
@@ -85,6 +87,8 @@ export function ApprovalActionPanel({
   documentType,
   documentStatus,
   projectId,
+  documentTitle,
+  disciplineId,
   onChanged,
 }: Props) {
   const qc = useQueryClient();
@@ -125,6 +129,58 @@ export function ApprovalActionPanel({
       ).data,
     enabled: !!projectId,
   });
+
+  // ── Existing CRS links ────────────────────────────────────────────────
+
+  const { data: crsBySourceData } = useQuery<{
+    exists: boolean;
+    crs_list: Array<{
+      id: string;
+      full_reference_no: string;
+      title: string;
+      approver_order: number | null;
+    }>;
+  }>({
+    queryKey: ["crs-by-source", documentId],
+    queryFn: async () =>
+      (
+        await api.get("/documents/crs-by-source", {
+          params: { source_document_id: documentId },
+        })
+      ).data,
+    enabled: !!documentId,
+  });
+
+  const existingCrsMap = useMemo<Record<number, { id: string; full_reference_no: string; title: string }>>(() => {
+    const map: Record<number, { id: string; full_reference_no: string; title: string }> = {};
+    const list = crsBySourceData?.crs_list || [];
+
+    for (const crs of list) {
+      const order = crs.approver_order;
+      if (order != null && !map[order]) {
+        map[order] = {
+          id: crs.id,
+          full_reference_no: crs.full_reference_no,
+          title: crs.title,
+        };
+      }
+    }
+
+    // Fallback: CRS records exist but none with a matching approver_order
+    // (e.g. saved during a previous bug where selectedApproverOrder was null).
+    // If there is exactly one round with comments, map the first CRS to it.
+    if (Object.keys(map).length === 0 && list.length > 0) {
+      const commentRounds = rounds.filter((r) => r.comments);
+      if (commentRounds.length === 1) {
+        map[commentRounds[0].approver_order] = {
+          id: list[0].id,
+          full_reference_no: list[0].full_reference_no,
+          title: list[0].title,
+        };
+      }
+    }
+    return map;
+  }, [crsBySourceData, rounds]);
 
   const chain = useMemo(() => {
     return projectApprovers
@@ -308,9 +364,13 @@ export function ApprovalActionPanel({
 
       <ApprovalRoundsList
         documentId={documentId}
+        documentType={documentType}
+        documentTitle={documentTitle}
+        disciplineId={disciplineId}
         rounds={rounds}
         projectApprovers={chain}
         approvalStatuses={approvalStatuses}
+        existingCrsMap={existingCrsMap}
         locked={[
           "approved",
           "approved_with_comments",

@@ -200,7 +200,9 @@ function NewWIRPageContent() {
       {editId && existingDoc && existingDoc.status !== "draft" && (
         <Card><CardContent className="pt-6">
           <ApprovalActionPanel
-            documentId={editId} projectId={projectId} documentType="WIR" documentStatus={existingDoc.status}
+            documentId={editId} projectId={projectId} documentType="WIR"
+            documentStatus={existingDoc.status} documentTitle={existingDoc.title}
+            disciplineId={existingDoc.discipline_id}
             onChanged={() => { queryClient.invalidateQueries({ queryKey: ["document", editId] }); }}
           />
         </CardContent></Card>

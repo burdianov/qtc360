@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Eye, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -190,14 +195,52 @@ function NewCRSPageContent() {
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={handlePreview}>
-              <Eye className="h-4 w-4 mr-1" />
-              Preview PDF
-            </Button>
-            <Button type="button" variant="outline" onClick={handleDownload}>
-              <Download className="h-4 w-4 mr-1" />
-              Download PDF
-            </Button>
+            {editId && selectedSourceDocId && sourceDocType && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  router.push(
+                    `/qaqc/${sourceDocType.toLowerCase()}/new?id=${selectedSourceDocId}`,
+                  )
+                }
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Go to Source Document
+              </Button>
+            )}
+            {!(editId || existingDoc?.id) ? (
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button type="button" variant="outline" disabled>
+                    <Eye className="h-4 w-4 mr-1" />
+                    Preview PDF
+                  </Button>
+                } />
+                <TooltipContent>Save the document first</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button type="button" variant="outline" onClick={handlePreview}>
+                <Eye className="h-4 w-4 mr-1" />
+                Preview PDF
+              </Button>
+            )}
+            {!(editId || existingDoc?.id) ? (
+              <Tooltip>
+                <TooltipTrigger render={
+                  <Button type="button" variant="outline" disabled>
+                    <Download className="h-4 w-4 mr-1" />
+                    Download PDF
+                  </Button>
+                } />
+                <TooltipContent>Save the document first</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button type="button" variant="outline" onClick={handleDownload}>
+                <Download className="h-4 w-4 mr-1" />
+                Download PDF
+              </Button>
+            )}
             <Button
               type="submit"
               disabled={mutation.isPending}

@@ -311,6 +311,8 @@ function NewMIRPageContent() {
               projectId={projectId}
               documentType="MIR"
               documentStatus={existingDoc.status}
+              documentTitle={existingDoc.title}
+              disciplineId={existingDoc.discipline_id}
               onChanged={() => {
                 queryClient.invalidateQueries({
                   queryKey: ["document", editId],

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -36,20 +38,34 @@ import type {
   ProjectApprover,
 } from "./approval-action-panel";
 
+interface ExistingCrsEntry {
+  id: string;
+  full_reference_no: string;
+  title: string;
+}
+
 interface Props {
   documentId: string;
+  documentType: string;
+  documentTitle?: string;
+  disciplineId?: string;
   rounds: ApprovalRound[];
   projectApprovers: ProjectApprover[];
   approvalStatuses: ApprovalStatus[];
+  existingCrsMap?: Record<number, ExistingCrsEntry>;
   locked?: boolean;
   onReplace?: (approverOrder: number) => void;
 }
 
 export function ApprovalRoundsList({
   documentId,
+  documentType,
+  documentTitle,
+  disciplineId,
   rounds,
   projectApprovers,
   approvalStatuses,
+  existingCrsMap,
   locked,
   onReplace,
 }: Props) {
@@ -65,13 +81,15 @@ export function ApprovalRoundsList({
           <RoundCard
             key={round.id}
             documentId={documentId}
+            documentType={documentType}
+            documentTitle={documentTitle}
+            disciplineId={disciplineId}
             round={round}
             locked={locked}
-            party={
-              projectApprovers.find(
-                (pa) => pa.approver_order === round.approver_order,
-              )?.approver.name || "-"
-            }
+            existingCrsId={existingCrsMap?.[round.approver_order]?.id}
+            party={projectApprovers.find(
+              (pa) => pa.approver_order === round.approver_order,
+            )?.approver.name || "-"}
             decision={
               round.decision_status_id
                 ? approvalStatuses.find(
@@ -89,19 +107,28 @@ export function ApprovalRoundsList({
 
 function RoundCard({
   documentId,
+  documentType,
+  documentTitle,
+  disciplineId,
   round,
   locked,
   party,
   decision,
+  existingCrsId,
   onReplace,
 }: {
   documentId: string;
+  documentType: string;
+  documentTitle?: string;
+  disciplineId?: string;
   round: ApprovalRound;
   locked?: boolean;
   party: string;
   decision: ApprovalStatus | null;
+  existingCrsId?: string;
   onReplace?: (approverOrder: number) => void;
 }) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
@@ -201,8 +228,11 @@ function RoundCard({
               </div>
             )}
             {round.comments && (
-              <div className="rounded-md bg-muted/50 px-2.5 py-2 text-xs whitespace-pre-wrap">
-                {round.comments}
+              <div>
+                <span className="text-xs text-muted-foreground">Comments: </span>
+                <div className="rounded-md bg-muted/50 px-2.5 py-2 text-xs whitespace-pre-wrap mt-0.5">
+                  {round.comments}
+                </div>
               </div>
             )}
             {round.returned_file_name && (
@@ -283,6 +313,32 @@ function RoundCard({
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   Upload Attachment
+                </Button>
+              </div>
+            )}
+            {round.comments && documentTitle && disciplineId && (
+              <div className="flex gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant={existingCrsId ? "secondary" : "default"}
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    if (existingCrsId) {
+                      router.push(`/qaqc/crs/new?id=${existingCrsId}`);
+                    } else {
+                      const params = new URLSearchParams({
+                        prefill_sourceDocType: documentType,
+                        prefill_sourceDocId: documentId,
+                        prefill_approverOrder: String(round.approver_order),
+                        prefill_disciplineId: disciplineId,
+                        prefill_subject: documentTitle,
+                      });
+                      router.push(`/qaqc/crs/new?${params.toString()}`);
+                    }
+                  }}
+                >
+                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                  {existingCrsId ? "Edit CRS" : "Add CRS"}
                 </Button>
               </div>
             )}
@@ -417,6 +473,7 @@ function RoundAttachmentsList({
   const [deleteTarget, setDeleteTarget] = useState<RoundAttachment | null>(
     null,
   );
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
 
   const { data: attachments = [] } = useQuery<RoundAttachment[]>({
     queryKey: ["round-attachments", roundId],
@@ -466,6 +523,19 @@ function RoundAttachmentsList({
     },
   });
 
+  const handlePreview = async (att: RoundAttachment) => {
+    try {
+      const res = await api.get(
+        `/documents/${documentId}/approval-rounds/${roundId}/attachments/${att.id}`,
+        { responseType: "blob" },
+      );
+      const url = URL.createObjectURL(res.data);
+      setPreviewBlobUrl(url);
+    } catch {
+      toast.error("Failed to load attachment preview");
+    }
+  };
+
   if (attachments.length === 0) return null;
 
   return (
@@ -481,6 +551,15 @@ function RoundAttachmentsList({
             >
               <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="flex-1 truncate">{att.filename}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px] shrink-0"
+                onClick={() => handlePreview(att)}
+                title="Preview"
+              >
+                <Eye className="h-3 w-3" />
+              </Button>
               {inBundle && (
                 <span className="text-muted-foreground shrink-0">
                   after p.{att.insert_after_page! + 1}
@@ -541,6 +620,18 @@ function RoundAttachmentsList({
           queryClient.invalidateQueries({ queryKey: ["round-attachments", roundId] });
           setPageModalAtt(null);
         }}
+      />
+
+      <PdfPreviewModal
+        open={!!previewBlobUrl}
+        onOpenChange={(o) => {
+          if (!o) {
+            if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+            setPreviewBlobUrl(null);
+          }
+        }}
+        pdfUrl={previewBlobUrl}
+        title="Attachment Preview"
       />
 
       <Dialog

@@ -2,6 +2,11 @@
 
 import { Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import api from "@/lib/api";
 
 interface CirPdfSectionProps {
@@ -21,7 +26,7 @@ export function CirPdfSection({
   projectId,
   setPdfPreviewUrl,
 }: CirPdfSectionProps) {
-  if (!editId) return null;
+  const needsSave = !editId;
 
   const handlePreview = async () => {
     setPdfLoading(true);
@@ -45,8 +50,11 @@ export function CirPdfSection({
         responseType: "blob",
       });
       const disposition = res.headers?.["content-disposition"] || "";
-      const match = disposition.match(/filename\*?=UTF-8''([^;]+)|filename="?([^";]+)"?/);
-      const fname = match?.[1] || match?.[2] || `CIR_${editId}.pdf`;
+      const match = disposition.match(
+        /filename\*?=UTF-8''([^;]+)|filename="?([^";]+)"?/,
+      );
+      const fname =
+        match?.[1] || match?.[2] || `CIR_${editId}.pdf`;
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
@@ -58,28 +66,50 @@ export function CirPdfSection({
     }
   };
 
+  const previewBtn = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={pdfLoading || needsSave}
+      onClick={handlePreview}
+    >
+      {pdfLoading ? (
+        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+      ) : null}
+      Preview PDF
+    </Button>
+  );
+
+  const downloadBtn = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={needsSave || !(signed.inspector1 && signed.inspector2)}
+      onClick={handleDownload}
+    >
+      <Download className="h-4 w-4 mr-1" />
+      Download Document
+    </Button>
+  );
+
   return (
     <div className="flex gap-3 justify-end">
-      <Button
-        type="button"
-        variant="outline"
-        disabled={pdfLoading}
-        onClick={handlePreview}
-      >
-        {pdfLoading ? (
-          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-        ) : null}
-        Preview PDF
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={!(signed.inspector1 && signed.inspector2)}
-        onClick={handleDownload}
-      >
-        <Download className="h-4 w-4 mr-1" />
-        Download Document
-      </Button>
+      {needsSave ? (
+        <Tooltip>
+          <TooltipTrigger render={previewBtn} />
+          <TooltipContent>Save the document first</TooltipContent>
+        </Tooltip>
+      ) : (
+        previewBtn
+      )}
+      {needsSave ? (
+        <Tooltip>
+          <TooltipTrigger render={downloadBtn} />
+          <TooltipContent>Save the document first</TooltipContent>
+        </Tooltip>
+      ) : (
+        downloadBtn
+      )}
     </div>
   );
 }

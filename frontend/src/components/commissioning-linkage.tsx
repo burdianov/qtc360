@@ -339,7 +339,7 @@ function AssetPicker({ allAssetIds, allAssetLabels, allAssetNames, selectedIds, 
   onToggle: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState(selectedIds.length === 0);
+  const [expanded, setExpanded] = useState(false);
   const q = search.toLowerCase();
   const filtered = q
     ? allAssetIds.filter((id) => {
@@ -408,7 +408,7 @@ interface AssetWorkItemSectionProps {
 
 function AssetWorkItemSection({ assetId, assetLabel, assetName, requirementTemplateId, state, onStateChange }: AssetWorkItemSectionProps) {
   const [newItemName, setNewItemName] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
   const { data: assetRequirements = [] } = useQuery<{ id: string; asset_id: string; requirement_template_id: string; status: string }[]>({

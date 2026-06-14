@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -20,6 +20,14 @@ import {
   type ApprovalStatus,
   type CrsRow,
 } from "./crs-form";
+
+/** Split text into sentences on . ! ? followed by space, or newlines. */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export function useCrsForm() {
   const router = useRouter();
@@ -155,6 +163,67 @@ export function useCrsForm() {
     }
   }, [existingDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Prefill from URL params (Add CRS from source doc) ─────────────────
+
+  const prefillSourceDocType = searchParams.get("prefill_sourceDocType");
+  const prefillSourceDocId = searchParams.get("prefill_sourceDocId");
+  const prefillApproverOrder = searchParams.get("prefill_approverOrder");
+  const prefillDisciplineId = searchParams.get("prefill_disciplineId");
+  const prefillSubject = searchParams.get("prefill_subject");
+  const hasPrefill = Boolean(
+    !editId && prefillSourceDocType && prefillSourceDocId && prefillApproverOrder,
+  );
+  const hasAppliedPrefillRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasPrefill || hasAppliedPrefillRef.current) return;
+    hasAppliedPrefillRef.current = true;
+
+    if (prefillDisciplineId) {
+      form.setValue("discipline_id", prefillDisciplineId);
+    }
+    if (prefillSubject) {
+      form.setValue("subject", prefillSubject);
+    }
+    if (prefillSourceDocType) {
+      setSourceDocType(prefillSourceDocType);
+    }
+    if (prefillSourceDocId) {
+      setSelectedSourceDocId(prefillSourceDocId);
+    }
+    const order = prefillApproverOrder ? parseInt(prefillApproverOrder, 10) : null;
+    if (order) {
+      setSelectedApproverOrder(order);
+    }
+  }, [hasPrefill]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Populate CRS rows from the approver's comments ────────────────────
+
+  const prefilledRowsFromCommentsRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !hasPrefill ||
+      prefilledRowsFromCommentsRef.current ||
+      !selectedApproverOrder ||
+      approvalRounds.length === 0
+    )
+      return;
+
+    const round = approvalRounds.find(
+      (r) => r.approver_order === selectedApproverOrder,
+    );
+    if (!round?.comments) return;
+
+    prefilledRowsFromCommentsRef.current = true;
+    const sentences = splitSentences(round.comments);
+    if (sentences.length > 0) {
+      setRows(
+        sentences.map((s, i) => ({ sn: i + 1, comment: s, response: "" })),
+      );
+    }
+  }, [hasPrefill, selectedApproverOrder, approvalRounds]);
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   const copyToClipboard = (text: string) => {
@@ -212,8 +281,108 @@ export function useCrsForm() {
       toast.success(editId ? "CRS updated" : "CRS saved");
       if (res?.data?.reference_no) setRefNumber(res.data.reference_no);
       queryClient.invalidateQueries({ queryKey: ["documents", "CRS"] });
+      // Let the source document's approval panel know a CRS now exists
+      queryClient.invalidateQueries({
+        queryKey: ["crs-by-source", selectedSourceDocId],
+      });
       if (!editId && res?.data?.id)
         router.replace(`/qaqc/crs/new?id=${res.data.id}`);
+
+      // Upload CRS PDF as an attachment to the specific approver round
+      const sourceId = selectedSourceDocId;
+      const crsId = editId || res?.data?.id;
+      console.log("CRS onSuccess: conditions", { sourceId, crsId, projectId: project?.id, selectedApproverOrder, editId });
+      if (sourceId && crsId && project?.id && selectedApproverOrder != null) {
+        (async () => {
+          console.log("CRS upload: IIFE starting", { sourceId, crsId, selectedApproverOrder, refNo: res?.data?.reference_no });
+          try {
+            // Fetch fresh approval rounds so we're not relying on a potentially
+            // stale closure value from the hook's useQuery.
+            const roundsRes = await api.get(
+              `/documents/${sourceId}/approval-rounds`,
+            );
+            const rounds: ApprovalRound[] = roundsRes.data;
+            console.log("CRS upload: rounds fetched", {
+              count: rounds.length,
+              orders: rounds.map((r) => r.approver_order),
+              lookingFor: selectedApproverOrder,
+            });
+
+            const matchedRound = rounds.find(
+              (r) => r.approver_order === selectedApproverOrder,
+            );
+            if (!matchedRound?.id) {
+              console.warn("CRS upload: no matching round, fallback to doc-level", {
+                selectedApproverOrder,
+                availableOrders: rounds.map((r) => r.approver_order),
+              });
+              // Fallback: upload as doc-level attachment if round not found
+              const pdfRes = await api.post(
+                "/reports/generate-crs",
+                { document_id: crsId, project_id: project.id },
+                { responseType: "blob" },
+              );
+              const fd = new FormData();
+              fd.append("file", pdfRes.data, `CRS_${res?.data?.reference_no || "CRS"}.pdf`);
+              await api.post(`/documents/${sourceId}/attachments`, fd);
+              return;
+            }
+
+            // Generate CRS PDF
+            const pdfRes = await api.post(
+              "/reports/generate-crs",
+              { document_id: crsId, project_id: project.id },
+              { responseType: "blob" },
+            );
+            const blob = pdfRes.data;
+            const refNo = res?.data?.reference_no || "CRS";
+            const roundId = matchedRound.id;
+
+            // Check for existing CRS attachment to replace
+            const existingAttsRes = await api.get(
+              `/documents/${sourceId}/approval-rounds/${roundId}/attachments`,
+            );
+            const existingAtts: any[] = existingAttsRes.data;
+
+            const existingCrsAtt = existingAtts.find(
+              (a: any) => a.filename?.startsWith("CRS_"),
+            );
+            if (existingCrsAtt?.id) {
+              // Remove from bundle first (backend rejects delete if in bundle)
+              if (existingCrsAtt.insert_after_page != null) {
+                await api.patch(
+                  `/documents/${sourceId}/approval-rounds/${roundId}/attachments/${existingCrsAtt.id}`,
+                  { insert_after_page: null },
+                );
+              }
+              await api.delete(
+                `/documents/${sourceId}/approval-rounds/${roundId}/attachments/${existingCrsAtt.id}`,
+              );
+            }
+
+            // Upload new CRS PDF as round attachment (insert_after_page=0
+            // ensures it's included in the round bundle — attachments without
+            // this value are filtered out of the merged PDF download).
+            const fd = new FormData();
+            fd.append("file", blob, `CRS_${refNo}.pdf`);
+            await api.post(
+              `/documents/${sourceId}/approval-rounds/${roundId}/attachments?insert_after_page=0`,
+              fd,
+            );
+            console.log("CRS upload: successfully uploaded to round", { roundId, refNo });
+          } catch (err: unknown) {
+            const detail =
+              (err as { response?: { data?: { detail?: string } } })?.response
+                ?.data?.detail;
+            console.error("CRS PDF attachment error:", detail || err);
+            toast.warning(`CRS saved, but failed to attach PDF: ${detail || "Unknown error — check console"}`);
+          }
+        })();
+      } else {
+        console.warn("CRS upload: IIFE skipped — conditions not met", {
+          sourceId, crsId, projectId: project?.id, selectedApproverOrder,
+        });
+      }
     },
     onError: (err: unknown) => {
       const raw = (err as { response?: { data?: { detail?: any } } })?.response

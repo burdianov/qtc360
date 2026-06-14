@@ -85,14 +85,14 @@ export function CrsSourceDocCard({
               <SelectTrigger>
                 <SelectValue placeholder="Select document">
                   {selectedSourceDoc
-                    ? `${selectedSourceDoc.full_reference_no || selectedSourceDoc.reference_no} - ${selectedSourceDoc.title}`
+                    ? selectedSourceDoc.full_reference_no || selectedSourceDoc.reference_no
                     : ""}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {sourceDocs.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    {d.full_reference_no || d.reference_no} - {d.title}
+                    {d.full_reference_no || d.reference_no}
                   </SelectItem>
                 ))}
               </SelectContent>

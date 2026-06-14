@@ -311,6 +311,8 @@ function NewCIRPageContent() {
               projectId={projectId}
               documentType="CIR"
               documentStatus={existingDoc.status}
+              documentTitle={existingDoc.title}
+              disciplineId={existingDoc.discipline_id}
               onChanged={() => {
                 queryClient.invalidateQueries({
                   queryKey: ["document", editId],

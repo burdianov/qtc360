@@ -49,6 +49,56 @@ from app.api.v1.documents.helpers import (
 router = APIRouter()
 
 
+# ── CRS-by-source (return all CRS docs for the given source document) ──
+
+@router.get("/crs-by-source")
+async def get_crs_by_source(
+    source_document_id: UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("documents.view")),
+):
+    """Return all CRS documents linked to the given source document, along with
+    each one's stored source_approver_order so the frontend can map them to rounds."""
+    # First resolve the source document to get its project_id for access control.
+    src = (
+        await db.execute(
+            select(Document).where(
+                Document.id == source_document_id,
+                Document.is_deleted == False,  # noqa: E712
+            )
+        )
+    ).scalar_one_or_none()
+    if not src:
+        raise HTTPException(status_code=404, detail="Source document not found")
+    await assert_user_in_project(user, src.project_id)
+
+    # Find ALL CRS docs for this source (regardless of stored approver_order)
+    stmt = (
+        select(Document)
+        .where(
+            Document.document_type == "CRS",
+            Document.is_deleted == False,  # noqa: E712
+            Document.crs_data["source_document_id"].as_string()
+            == str(source_document_id),
+        )
+        .order_by(Document.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    crs_docs = result.scalars().all()
+
+    crs_list = []
+    for doc in crs_docs:
+        data = doc.crs_data or {}
+        crs_list.append({
+            "id": str(doc.id),
+            "full_reference_no": doc.reference_no,
+            "title": doc.title,
+            "approver_order": data.get("source_approver_order"),
+        })
+
+    return {"exists": len(crs_list) > 0, "crs_list": crs_list}
+
+
 # ── Rejected-for-revision ────────────────────────────────────────────────────
 
 @router.get("/rejected-for-revision")

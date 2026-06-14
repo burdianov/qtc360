@@ -62,6 +62,27 @@ export function PdfPreviewModal({ open, onOpenChange, pdfUrl, title }: Props) {
     container.addEventListener("wheel", handler, { passive: false });
   }, []);
 
+  // Scroll-based page tracking — detect which page is closest to viewport center
+  const scrollRafRef = useRef<number | null>(null);
+  const handleScroll = useCallback(() => {
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container || !numPages) return;
+      const cr = container.getBoundingClientRect();
+      const centerY = cr.top + cr.height / 2;
+      let best = 1, bestDist = Infinity;
+      for (let i = 1; i <= numPages; i++) {
+        const el = document.getElementById(`pdf-page-${i}`);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const dist = Math.abs(r.top + r.height / 2 - centerY);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      }
+      setCurrentPage((p) => (p !== best ? best : p));
+    });
+  }, [numPages]);
+
   // Pan with mouse drag (grab cursor)
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -127,6 +148,7 @@ export function PdfPreviewModal({ open, onOpenChange, pdfUrl, title }: Props) {
         <div
           ref={handleWheelRef}
           className={`flex-1 overflow-auto bg-muted/30 ${panning ? "cursor-grabbing" : "cursor-grab"}`}
+          onScroll={handleScroll}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}

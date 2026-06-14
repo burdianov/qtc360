@@ -71,7 +71,6 @@ export function buildCrsPayload(
     project_id: projectId,
     document_type: "CRS",
     title: values.subject,
-    status: "approved",
     discipline_id: values.discipline_id,
     crs_data: {
       source_document_id: opts.sourceDocumentId || null,
