@@ -613,7 +613,7 @@ export function useWirForm() {
     await saveCommissioningLinkage(
       commissioningLinkage,
       docId,
-      { api, setCommissioningLinkage },
+      { setCommissioningLinkage },
     );
   };
 

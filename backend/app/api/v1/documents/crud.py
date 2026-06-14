@@ -126,24 +126,27 @@ async def list_rejected_for_revision(
     result = await db.execute(query)
     docs = result.scalars().all()
 
-    # Exclude docs that already have a newer revision
-    out = []
-    for doc in docs:
-        newer = (
-            await db.execute(
-                select(func.count())
-                .select_from(Document)
-                .where(
-                    Document.reference_no == doc.reference_no,
-                    Document.revision_no > doc.revision_no,
-                    Document.project_id == project_id,
-                    Document.is_deleted == False,  # noqa: E712
-                    Document.status != "superseded",
-                )
-            )
-        ).scalar()
-        if not newer:
-            out.append(doc)
+    # Exclude docs that already have a newer revision.
+    # Single aggregate query: find every (reference_no, revision_no) pair that
+    # is superseded by a higher-revision document in this project.
+    superseded_subq = (
+        select(Document.reference_no, func.max(Document.revision_no).label("max_rev"))
+        .where(
+            Document.project_id == project_id,
+            Document.is_deleted == False,  # noqa: E712
+            Document.status != "superseded",
+        )
+        .group_by(Document.reference_no)
+        .subquery()
+    )
+    superseded_result = await db.execute(
+        select(Document.reference_no, Document.revision_no)
+        .join(superseded_subq, Document.reference_no == superseded_subq.c.reference_no)
+        .where(Document.revision_no < superseded_subq.c.max_rev)
+    )
+    superseded_keys = {(r[0], r[1]) for r in superseded_result.all()}
+
+    out = [doc for doc in docs if (doc.reference_no, doc.revision_no) not in superseded_keys]
 
     # Group by discipline
     grouped: dict[str, list[dict]] = {}
@@ -321,15 +324,12 @@ async def create_document(
     if doc.document_type in ("FAT", "CRS"):
         doc.status = "approved"
     db.add(doc)
-    try:
-        await db.flush()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Reference number collision — please retry. If this keeps happening, contact an admin.",
-        )
 
+    # Single commit. We flush before adding the asset links so doc.id is
+    # populated (SQLAlchemy only assigns the PK on flush, not on add). A
+    # failure on either the document insert or the link inserts rolls back
+    # both — no half-created document.
+    await db.flush()
     if body.asset_ids:
         for aid in body.asset_ids:
             await db.execute(
@@ -349,7 +349,8 @@ async def create_document(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
-            status_code=409, detail="Reference number collision — please retry."
+            status_code=409,
+            detail="Reference number collision — please retry. If this keeps happening, contact an admin.",
         )
     await db.refresh(doc)
     # Re-fetch with assets loaded so asset_ids is populated in the response.

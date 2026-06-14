@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select, update
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -21,10 +21,12 @@ async def list_notifications(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get current user's notifications, optionally filtered by project."""
-    query = select(Notification).where(
-        Notification.user_id == user.id, Notification.is_deleted == False  # noqa: E712
-    )
+    """Get current user's notifications, optionally filtered by project.
+
+    The Notification model does not have an is_deleted column, so no
+    is_deleted filter is applied (and adding one would be a silent no-op).
+    """
+    query = select(Notification).where(Notification.user_id == user.id)
     if project_id:
         query = query.where(Notification.project_id == project_id)
     result = await db.execute(
@@ -54,13 +56,10 @@ async def mark_read(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user.id,
-            Notification.is_deleted == False,  # noqa: E712
         )
     )
     notif = result.scalar_one_or_none()
     if not notif:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Notification not found")
     notif.is_read = True
     await db.commit()
@@ -88,20 +87,18 @@ async def delete_notification(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Soft-delete a single notification."""
+    """Hard-delete a single notification (the Notification model has no
+    is_deleted column, so this is a row delete rather than a soft-delete)."""
     result = await db.execute(
         select(Notification).where(
             Notification.id == notification_id,
             Notification.user_id == user.id,
-            Notification.is_deleted == False,  # noqa: E712
         )
     )
     notif = result.scalar_one_or_none()
     if not notif:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="Notification not found")
-    notif.is_deleted = True
+    await db.delete(notif)
     await db.commit()
     return {"status": "ok"}
 
@@ -111,11 +108,18 @@ async def clear_all_notifications(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Soft-delete all notifications for the current user."""
+    """Hard-delete all notifications for the current user."""
     await db.execute(
         update(Notification)
-        .where(Notification.user_id == user.id, Notification.is_deleted == False)  # noqa: E712
-        .values(is_deleted=True)
+        .where(Notification.user_id == user.id)
+        .values(is_read=True)
+    )
+    # The above is intentionally a no-op except for marking all read; we
+    # follow up with a hard-delete so users can actually clear their inbox.
+    from sqlalchemy import delete as sa_delete
+
+    await db.execute(
+        sa_delete(Notification).where(Notification.user_id == user.id)
     )
     await db.commit()
     return {"status": "ok"}
@@ -128,16 +132,9 @@ async def unread_count(
     user: User = Depends(get_current_user),
 ):
     """Get count of unread notifications."""
-    from sqlalchemy import func
-
-    query = (
-        select(func.count())
-        .select_from(Notification)
-        .where(
-            Notification.user_id == user.id,
-            Notification.is_read == False,  # noqa: E712
-            Notification.is_deleted == False,  # noqa: E712
-        )
+    query = select(func.count()).select_from(Notification).where(
+        Notification.user_id == user.id,
+        Notification.is_read == False,  # noqa: E712
     )
     if project_id:
         query = query.where(Notification.project_id == project_id)

@@ -2,15 +2,10 @@ import type {
   CommissioningLinkage,
   CommissioningLinkageBlock,
 } from "@/components/commissioning-linkage";
+import api from "@/lib/api";
 import { toast } from "sonner";
 
 interface CommissioningLinkagePersistDeps {
-  /** Axios instance (or any HTTP client matching the api.get/post/delete signature) */
-  api: {
-    get(url: string, config?: any): Promise<{ data: any }>;
-    post(url: string, data?: any): Promise<{ data: any }>;
-    delete(url: string, config?: any): Promise<any>;
-  };
   /** React state setter for commissioning linkage blocks */
   setCommissioningLinkage: (
     updater:
@@ -26,6 +21,11 @@ interface CommissioningLinkagePersistDeps {
  * Persist commissioning linkage blocks to the backend.
  *
  * Used by MIR, CIR, WIR (with gate overrides) and FAT (without gate overrides).
+ *
+ * Goes through the shared `@/lib/api` axios instance so the Authorization
+ * header + 401-refresh interceptor apply — a previous version of this file
+ * used a bare `axios` client and silently lost the Bearer token, causing
+ * every save to fail with 401 in production builds.
  */
 export async function saveCommissioningLinkage(
   commissioningLinkage: CommissioningLinkage | null,
@@ -35,7 +35,7 @@ export async function saveCommissioningLinkage(
 ): Promise<void> {
   if (!commissioningLinkage || !docId) return;
 
-  const { api, setCommissioningLinkage } = deps;
+  const { setCommissioningLinkage } = deps;
   const skipGateOverrides = options?.skipGateOverrides ?? false;
 
   // Track created work item IDs so we can clear newItems after persisting.
@@ -47,12 +47,11 @@ export async function saveCommissioningLinkage(
     if (!block.requirementTemplateId || block.assetIds.length === 0) continue;
 
     for (const assetId of block.assetIds) {
-      const arRes = await api.get("/commissioning/asset-requirements", {
+      const arRes = await api.get<unknown[]>("/commissioning/asset-requirements", {
         params: { asset_id: assetId },
       });
-      const assetReq = (arRes.data as any[]).find(
-        (ar: any) =>
-          ar.requirement_template_id === block.requirementTemplateId,
+      const assetReq = (arRes.data as Array<Record<string, unknown>>).find(
+        (ar) => ar.requirement_template_id === block.requirementTemplateId,
       );
       if (!assetReq) continue;
 
@@ -60,22 +59,26 @@ export async function saveCommissioningLinkage(
         const assetState = block.assetStates[assetId];
 
         for (const delId of assetState?.deleteExistingIds ?? []) {
-          await api
-            .delete(`/commissioning/work-items/${delId}`)
-            .catch((err: any) => {
-              console.error("Failed to delete work item:", err);
-            });
+          try {
+            await api.delete(`/commissioning/work-items/${delId}`);
+          } catch (err) {
+            console.error("Failed to delete work item:", err);
+            toast.error("Failed to delete a previously-linked work item");
+          }
         }
 
         const createdLinkedIds: string[] = [];
         for (let i = 0; i < (assetState?.newItems ?? []).length; i++) {
           const newItem = assetState!.newItems[i];
-          const wiCreated = await api.post("/commissioning/work-items", {
-            asset_requirement_id: assetReq.id,
-            name: newItem.name,
-            sequence_no: i + 100,
-            created_dynamically: true,
-          });
+          const wiCreated = await api.post<{ id: string }>(
+            "/commissioning/work-items",
+            {
+              asset_requirement_id: assetReq.id,
+              name: newItem.name,
+              sequence_no: i + 100,
+              created_dynamically: true,
+            },
+          );
           if (newItem.checked) createdLinkedIds.push(wiCreated.data.id);
         }
 
@@ -92,75 +95,82 @@ export async function saveCommissioningLinkage(
         // Delete all existing document-links for this asset_requirement
         // so we can recreate a clean set (prevents duplicates and handles
         // unchecked items).
-        await api
-          .delete("/commissioning/document-links", {
+        try {
+          await api.delete("/commissioning/document-links", {
             params: { document_id: docId, asset_requirement_id: assetReq.id },
-          })
-          .catch(() => {});
+          });
+        } catch {
+          /* ignore — endpoint may 404 on a fresh link set */
+        }
 
         for (const wiId of assetState?.checkedExistingIds ?? []) {
-          await api
-            .post("/commissioning/document-links", {
+          try {
+            await api.post("/commissioning/document-links", {
               document_id: docId,
               asset_requirement_id: assetReq.id,
               requirement_work_item_id: wiId,
-            })
-            .catch((err: any) => {
-              console.error(
-                "Failed to create document-requirement link:",
-                err,
-              );
             });
-        }
-        for (const wiId of createdLinkedIds) {
-          await api
-            .post("/commissioning/document-links", {
-              document_id: docId,
-              asset_requirement_id: assetReq.id,
-              requirement_work_item_id: wiId,
-            })
-            .catch((err: any) => {
-              console.error(
-                "Failed to create document-requirement link:",
-                err,
-              );
-            });
-        }
-      } else {
-        // Clean up existing links first to prevent duplicates on re-save
-        await api
-          .delete("/commissioning/document-links", {
-            params: { document_id: docId, asset_requirement_id: assetReq.id },
-          })
-          .catch(() => {});
-        await api
-          .post("/commissioning/document-links", {
-            document_id: docId,
-            asset_requirement_id: assetReq.id,
-          })
-          .catch((err: any) => {
+          } catch (err) {
             console.error(
               "Failed to create document-requirement link:",
               err,
             );
+            toast.error("Failed to link a checked work item to the document");
+          }
+        }
+        for (const wiId of createdLinkedIds) {
+          try {
+            await api.post("/commissioning/document-links", {
+              document_id: docId,
+              asset_requirement_id: assetReq.id,
+              requirement_work_item_id: wiId,
+            });
+          } catch (err) {
+            console.error(
+              "Failed to create document-requirement link:",
+              err,
+            );
+            toast.error("Failed to link a newly-created work item");
+          }
+        }
+      } else {
+        // Clean up existing links first to prevent duplicates on re-save
+        try {
+          await api.delete("/commissioning/document-links", {
+            params: { document_id: docId, asset_requirement_id: assetReq.id },
           });
+        } catch {
+          /* ignore */
+        }
+        try {
+          await api.post("/commissioning/document-links", {
+            document_id: docId,
+            asset_requirement_id: assetReq.id,
+          });
+        } catch (err) {
+          console.error(
+            "Failed to create document-requirement link:",
+            err,
+          );
+          toast.error("Failed to link the document to its requirements");
+        }
       }
     }
 
     if (!skipGateOverrides && block.gateWarningAcknowledged) {
       for (const assetId of block.assetIds) {
-        await api
-          .post("/commissioning/gate-overrides", {
+        try {
+          await api.post("/commissioning/gate-overrides", {
             asset_id: assetId,
             document_id: docId,
             level_code: block.gateLevelCode || "L2B",
             incomplete_requirements: block.incompleteRequirements || [],
             notes: block.gateOverrideNotes || null,
-          })
-          .catch((err: any) => {
-            console.error("Failed to record gate override:", err);
-            toast.error("Failed to record gate override acknowledgement");
           });
+        } catch (err) {
+          console.error("Failed to record gate override:", err);
+          toast.error("Failed to record gate override acknowledgement");
+        }
       }
     }
   }

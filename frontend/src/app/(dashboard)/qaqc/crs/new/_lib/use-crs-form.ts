@@ -291,10 +291,8 @@ export function useCrsForm() {
       // Upload CRS PDF as an attachment to the specific approver round
       const sourceId = selectedSourceDocId;
       const crsId = editId || res?.data?.id;
-      console.log("CRS onSuccess: conditions", { sourceId, crsId, projectId: project?.id, selectedApproverOrder, editId });
       if (sourceId && crsId && project?.id && selectedApproverOrder != null) {
         (async () => {
-          console.log("CRS upload: IIFE starting", { sourceId, crsId, selectedApproverOrder, refNo: res?.data?.reference_no });
           try {
             // Fetch fresh approval rounds so we're not relying on a potentially
             // stale closure value from the hook's useQuery.
@@ -302,20 +300,11 @@ export function useCrsForm() {
               `/documents/${sourceId}/approval-rounds`,
             );
             const rounds: ApprovalRound[] = roundsRes.data;
-            console.log("CRS upload: rounds fetched", {
-              count: rounds.length,
-              orders: rounds.map((r) => r.approver_order),
-              lookingFor: selectedApproverOrder,
-            });
 
             const matchedRound = rounds.find(
               (r) => r.approver_order === selectedApproverOrder,
             );
             if (!matchedRound?.id) {
-              console.warn("CRS upload: no matching round, fallback to doc-level", {
-                selectedApproverOrder,
-                availableOrders: rounds.map((r) => r.approver_order),
-              });
               // Fallback: upload as doc-level attachment if round not found
               const pdfRes = await api.post(
                 "/reports/generate-crs",
@@ -369,19 +358,13 @@ export function useCrsForm() {
               `/documents/${sourceId}/approval-rounds/${roundId}/attachments?insert_after_page=0`,
               fd,
             );
-            console.log("CRS upload: successfully uploaded to round", { roundId, refNo });
           } catch (err: unknown) {
             const detail =
               (err as { response?: { data?: { detail?: string } } })?.response
                 ?.data?.detail;
-            console.error("CRS PDF attachment error:", detail || err);
             toast.warning(`CRS saved, but failed to attach PDF: ${detail || "Unknown error — check console"}`);
           }
         })();
-      } else {
-        console.warn("CRS upload: IIFE skipped — conditions not met", {
-          sourceId, crsId, projectId: project?.id, selectedApproverOrder,
-        });
       }
     },
     onError: (err: unknown) => {

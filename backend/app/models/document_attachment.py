@@ -36,6 +36,7 @@ class DocumentAttachment(BaseModel):
         ForeignKey("document_approval_rounds.id", ondelete="CASCADE"),
         index=True,
     )
+    # Use AttachmentKind.* from app.core.types — never a raw literal.
     kind: Mapped[str] = mapped_column(String(20), default="user")
     filename: Mapped[str] = mapped_column(String(255))
     storage_path: Mapped[str] = mapped_column(String(1000))

@@ -16,7 +16,7 @@ from app.core.deps import (
     get_current_user,
     require_permission,
 )
-from app.core.types import DEFAULT_SIG_CONFIG
+from app.core.types import BUNDLE_KINDS, DEFAULT_SIG_CONFIG
 from app.models.doc_template import DocTemplate
 from app.models.document import Document
 from app.models.user import User
@@ -136,7 +136,7 @@ async def generate_report(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == body.document_id,
-            DocumentAttachment.kind.in_(["user", "checklist"]),
+            DocumentAttachment.kind.in_(BUNDLE_KINDS),
             DocumentAttachment.is_deleted == False, )  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )

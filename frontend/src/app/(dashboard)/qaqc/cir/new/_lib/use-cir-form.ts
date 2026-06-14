@@ -640,7 +640,7 @@ export function useCirForm() {
     await saveCommissioningLinkage(
       commissioningLinkage,
       docId,
-      { api, setCommissioningLinkage },
+      { setCommissioningLinkage },
     );
   };
 

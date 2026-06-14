@@ -631,7 +631,7 @@ export function useMirForm() {
     await saveCommissioningLinkage(
       commissioningLinkage,
       docId,
-      { api, setCommissioningLinkage },
+      { setCommissioningLinkage },
     );
   };
 

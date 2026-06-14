@@ -64,7 +64,6 @@ async def test_signature_rules_per_document_type(
 
 
 @pytest.mark.asyncio
-@pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["FAT", "CRS"])
 async def test_auto_approved_docs_cannot_be_signed(client, seed_data, auth_headers, doc_type: str):
     """FAT and CRS are auto-approved on create — signing is not applicable."""

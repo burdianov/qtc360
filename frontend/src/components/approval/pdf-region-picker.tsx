@@ -93,11 +93,15 @@ export const PdfRegionPicker = forwardRef<PdfPickerHandle, Props>(function PdfRe
   // Track which page is currently most visible
   useEffect(() => {
     if (!containerRef.current || numPages === 0) return;
-    // Delay slightly to ensure page refs are populated after render
-    const timeout = setTimeout(() => {
+    // Capture the observer in the outer scope so the effect's cleanup can
+    // disconnect it. The previous implementation returned the cleanup from
+    // inside the setTimeout callback — setTimeout ignores that return value,
+    // so the IntersectionObserver leaked on every file change.
+    let observer: IntersectionObserver | null = null;
+    const timeoutId = setTimeout(() => {
       const c = containerRef.current;
       if (!c) return;
-      const observer = new IntersectionObserver(
+      observer = new IntersectionObserver(
         (entries) => {
           let maxRatio = 0;
           let maxPage = 1;
@@ -113,9 +117,11 @@ export const PdfRegionPicker = forwardRef<PdfPickerHandle, Props>(function PdfRe
         { root: c, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
       );
       for (const [, el] of pageRefsMap.current) observer.observe(el);
-      return () => observer.disconnect();
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeoutId);
+      observer?.disconnect();
+    };
   }, [numPages, fileUrl]);
 
   // Also update visible page on scroll (fallback for observer)

@@ -26,7 +26,7 @@ from app.core.deps import (
     get_current_user,
     require_permission,
 )
-from app.core.types import MAX_ATTACHMENT_BYTES, MAX_APPROVERS, _mb
+from app.core.types import MAX_ATTACHMENT_BYTES, MAX_APPROVERS, AttachmentKind, _mb
 from app.models.document import Document
 from app.models.document_approval_round import DocumentApprovalRound
 from app.models.document_attachment import DocumentAttachment
@@ -216,11 +216,23 @@ async def submit_to_approver_endpoint(
             f"to approver {approver_order} ({size} bytes)"
         ),
     )
+    # Flush (not commit) so the unique constraint on (document_id, approver_order,
+    # round_no) is checked in this transaction. Two concurrent submissions against
+    # the same document will both pass the pre-check (both see existing=None), but
+    # the second flush() trips the unique constraint, which we translate to 409.
     try:
-        await db.commit()
+        await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Conflict — please retry")
+        raise HTTPException(
+            status_code=409,
+            detail="A submission for this approver is already in progress — retry",
+        )
+    # Commit so the doc.status flip and the new round row are visible to the
+    # next request inside the same test. record_response runs in its own
+    # session and reads doc.status; without a commit the second request sees
+    # the stale "internally_signed" status and 400s.
+    await db.commit()
     await db.refresh(round_)
     return round_
 
@@ -325,7 +337,7 @@ async def record_response_endpoint(
         DocumentAttachment(
             document_id=doc.id,
             document_approval_round_id=round_.id,
-            kind="returned_pdf",
+            kind=AttachmentKind.RETURNED,
             filename=f"Approver {approver_order} — Returned.pdf",
             storage_path=storage_key,
             content_type="application/pdf",
@@ -486,7 +498,7 @@ async def replace_round_file(
         await db.execute(
             select(DocumentAttachment).where(
                 DocumentAttachment.document_approval_round_id == round_id,
-                DocumentAttachment.kind == "returned_pdf",
+                DocumentAttachment.kind == AttachmentKind.RETURNED,
                 DocumentAttachment.is_deleted == False,  # noqa: E712
             )
         )
@@ -501,7 +513,7 @@ async def replace_round_file(
             await db.execute(
                 select(DocumentAttachment).where(
                     DocumentAttachment.document_approval_round_id == round_id,
-                    DocumentAttachment.kind == "user_attachment",
+                    DocumentAttachment.kind == AttachmentKind.ROUND_USER,
                     DocumentAttachment.is_deleted == False,  # noqa: E712
                 )
             )
@@ -718,7 +730,7 @@ async def upload_round_attachment(
         .select_from(DocumentAttachment)
         .where(
             DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.kind == AttachmentKind.ROUND_USER,
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
     )
@@ -731,7 +743,7 @@ async def upload_round_attachment(
     att = DocumentAttachment(
         document_id=doc.id,
         document_approval_round_id=round_.id,
-        kind="user_attachment",
+        kind=AttachmentKind.ROUND_USER,
         filename=file.filename or "attachment.pdf",
         storage_path=storage_key,
         content_type="application/pdf",
@@ -775,7 +787,7 @@ async def list_round_attachments(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.kind == AttachmentKind.ROUND_USER,
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(DocumentAttachment.sort_order)
@@ -807,7 +819,7 @@ async def update_round_attachment(
             select(DocumentAttachment).where(
                 DocumentAttachment.id == att_id,
                 DocumentAttachment.document_approval_round_id == round_id,
-                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.kind == AttachmentKind.ROUND_USER,
                 DocumentAttachment.is_deleted == False,  # noqa: E712
             )
         )
@@ -841,7 +853,7 @@ async def delete_round_attachment(
             select(DocumentAttachment).where(
                 DocumentAttachment.id == att_id,
                 DocumentAttachment.document_approval_round_id == round_id,
-                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.kind == AttachmentKind.ROUND_USER,
                 DocumentAttachment.is_deleted == False,  # noqa: E712
             )
         )
@@ -889,7 +901,7 @@ async def download_round_attachment(
             select(DocumentAttachment).where(
                 DocumentAttachment.id == att_id,
                 DocumentAttachment.document_approval_round_id == round_id,
-                DocumentAttachment.kind == "user_attachment",
+                DocumentAttachment.kind == AttachmentKind.ROUND_USER,
                 DocumentAttachment.is_deleted == False,  # noqa: E712
             )
         )
@@ -951,7 +963,7 @@ async def download_round_bundle(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_approval_round_id == round_id,
-            DocumentAttachment.kind == "user_attachment",
+            DocumentAttachment.kind == AttachmentKind.ROUND_USER,
             DocumentAttachment.insert_after_page.isnot(None),
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )

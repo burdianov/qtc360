@@ -43,7 +43,7 @@ role_permissions = Table(
 class Role(BaseModel):
     __tablename__ = "roles"
 
-    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str | None] = mapped_column(String(255))
 
     users: Mapped[list["User"]] = relationship(  # noqa: F821

@@ -9,6 +9,14 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      SECRET_KEY: ci-test-key-minimum-32-characters-long-for-validation
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: qtc360_test
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: qtc360_test
+      ENVIRONMENT: development
     services:
       postgres:
         image: postgres:16-alpine
@@ -26,53 +34,48 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-      - uses: astral-sh/setup-uv@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          # pyproject.toml requires Python 3.12; pin explicitly so a future
+          # runner image change doesn't surprise us.
+          python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install dependencies (with dev extras for pytest/httpx)
         working-directory: backend
-        run: uv sync
+        run: uv sync --all-extras --group dev
+
+      - name: Compile-check
+        working-directory: backend
+        # compileall parses the whole `app/` tree, catching syntax errors
+        # that the test step would otherwise mask behind import-time deps.
+        run: uv run python -m compileall app -q
 
       - name: Run migrations
         working-directory: backend
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_DB: qtc360_test
-          POSTGRES_USER: qtc360
-          POSTGRES_PASSWORD: qtc360_test
-          SECRET_KEY: ci-test-key-minimum-32-characters-long-for-validation
         run: uv run alembic upgrade head
 
-      - name: Run tests
+      # The `e2e_documents` suite spins up its own per-session database and a
+      # uvicorn instance, so it doesn't need any pre-existing fixture data.
+      # It is the only suite that exercises the HTTP layer end-to-end.
+      - name: Run e2e tests
         working-directory: backend
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_DB: qtc360_test
-          POSTGRES_USER: qtc360
-          POSTGRES_PASSWORD: qtc360_test
-          SECRET_KEY: ci-test-key-minimum-32-characters-long-for-validation
-        run: uv run pytest -v --tb=short || echo "No tests yet"
+        # No `|| echo "No tests yet"` — a missing test file is a real failure
+        # and should turn the build red rather than silently passing.
+        run: uv run pytest tests/e2e/e2e_documents -v --tb=short --durations=10
 
   frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Install dependencies
         working-directory: frontend
@@ -83,6 +86,8 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Lint
+        # Cap warnings explicitly so a regression in unused-variable hygiene
+        # fails the build rather than accumulating forever.
         working-directory: frontend
         run: npm run lint -- --max-warnings 50
 

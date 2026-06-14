@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import assert_user_in_project, get_current_user, require_permission
+from app.core.types import AttachmentKind
 from app.models.checklist import (
     ChecklistItem,
     DocumentChecklist,
@@ -20,6 +21,15 @@ from app.models.document import Document
 from app.models.document_attachment import DocumentAttachment
 from app.models.user import User
 from app.services.storage import storage
+
+# Checklist signature marker. Must match the string written into the
+# fillable XLSX template (see ``signer_sign`` below). The main report
+# generator uses ``SIGMARK1``/``SIGMARK2``; checklist templates use
+# ``__SIG1__`` because they are XLSX (not DOCX) and the two rendering
+# pipelines redact the marker independently. If you change this string,
+# also update the corresponding placeholder in the XLSX checklist
+# template stored under ``uploads/templates/`` (search for __SIG1__).
+CHECKLIST_SIG_MARKER = "__SIG1__"
 
 router = APIRouter(prefix="/checklists", tags=["checklists"])
 
@@ -604,7 +614,7 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
             content_type="application/pdf",
             size=len(pdf_bytes),
             sort_order=0,
-            kind="checklist",
+            kind=AttachmentKind.CHECKLIST,
         )
         db.add(att)
         await db.flush()

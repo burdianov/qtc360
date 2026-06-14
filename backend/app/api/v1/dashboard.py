@@ -145,29 +145,44 @@ async def get_dashboard_analytics(
     ).scalar() or 0
 
     # --- Document submissions by month (bar chart) ---
+    # Pivot directly in SQL so we don't have to O(n²) bucket in Python.
     monthly_docs = (
         await db.execute(
             text("""
-        SELECT TO_CHAR(created_at, 'YYYY-MM') as month,
-               document_type, COUNT(*) as count
-        FROM documents
-        WHERE project_id = :pid AND is_deleted = false
-        GROUP BY month, document_type
+        SELECT month,
+               COALESCE(SUM(CASE WHEN document_type = 'WIR' THEN count END), 0) AS wir,
+               COALESCE(SUM(CASE WHEN document_type = 'MIR' THEN count END), 0) AS mir,
+               COALESCE(SUM(CASE WHEN document_type = 'CIR' THEN count END), 0) AS cir,
+               COALESCE(SUM(CASE WHEN document_type = 'FAT' THEN count END), 0) AS fat,
+               COALESCE(SUM(CASE WHEN document_type = 'CRS' THEN count END), 0) AS crs,
+               COALESCE(SUM(CASE WHEN document_type = 'CHECKLIST' THEN count END), 0) AS checklist,
+               SUM(count) AS total
+        FROM (
+            SELECT TO_CHAR(created_at, 'YYYY-MM') AS month, document_type, COUNT(*) AS count
+            FROM documents
+            WHERE project_id = :pid AND is_deleted = false
+            GROUP BY month, document_type
+        ) t
+        GROUP BY month
         ORDER BY month
     """),
             {"pid": project_id},
         )
     ).fetchall()
 
-    months_set = sorted(set(r[0] for r in monthly_docs))
-    submission_timeline = []
-    for m in months_set:
-        entry = {"month": m, "WIR": 0, "MIR": 0, "CIR": 0, "FAT": 0}
-        for r in monthly_docs:
-            if r[0] == m:
-                entry[r[1]] = r[2]
-        entry["total"] = entry["WIR"] + entry["MIR"] + entry["CIR"] + entry["FAT"]
-        submission_timeline.append(entry)
+    submission_timeline = [
+        {
+            "month": r[0],
+            "WIR": int(r[1]),
+            "MIR": int(r[2]),
+            "CIR": int(r[3]),
+            "FAT": int(r[4]),
+            "CRS": int(r[5]),
+            "CHECKLIST": int(r[6]),
+            "total": int(r[7]),
+        }
+        for r in monthly_docs
+    ]
 
     # --- Approvals by month (line on same chart) ---
     monthly_approvals = (

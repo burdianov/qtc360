@@ -25,6 +25,30 @@ LEVEL_TAG_MAP: dict[str, str] = {
 }
 
 
+# ─── Attachment Kinds ────────────────────────────────────────────────────────
+class AttachmentKind:
+    """Single source of truth for DocumentAttachment.kind values.
+
+    Stored as a String(20) in the DB (so we don't need a migration), but every
+    write/read site must go through these constants. ``BUNDLE_KINDS`` is the
+    set of kinds that ship inside a downloaded document bundle.
+    """
+
+    USER = "user"  # doc-level user upload
+    CHECKLIST = "checklist"  # generated checklist PDF
+    RETURNED = "returned_pdf"  # the approver's returned/annotated PDF
+    ROUND_USER = "user_attachment"  # user-uploaded attachment to a round
+    CACHE = "generated_main"  # cached main-PDF (rebuilt when doc.updated_at moves)
+
+
+BUNDLE_KINDS = (
+    AttachmentKind.USER,
+    AttachmentKind.CHECKLIST,
+    AttachmentKind.ROUND_USER,
+    AttachmentKind.RETURNED,
+)
+
+
 # ─── Document Statuses ───────────────────────────────────────────────────────
 class DocStatus:
     DRAFT = "draft"

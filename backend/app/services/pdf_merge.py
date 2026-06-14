@@ -21,13 +21,13 @@ def _bytes_to_pdf_reader(data: bytes) -> PdfReader:
     # Assume it's an image — convert to PDF via Pillow
     from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
-    if img.mode == "RGBA":
-        img = img.convert("RGB")
-    pdf_buf = io.BytesIO()
-    img.save(pdf_buf, format="PDF")
-    pdf_buf.seek(0)
-    return PdfReader(pdf_buf)
+    with Image.open(io.BytesIO(data)) as img:
+        if img.mode == "RGBA":
+            img = img.convert("RGB")
+        pdf_buf = io.BytesIO()
+        img.save(pdf_buf, format="PDF")
+        pdf_buf.seek(0)
+        return PdfReader(pdf_buf)
 
 
 def merge_pdf_bundle(

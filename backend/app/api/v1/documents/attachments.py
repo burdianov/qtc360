@@ -26,6 +26,8 @@ from app.core.deps import (
 from app.core.types import (
     ALLOWED_ATTACHMENT_SUFFIXES,
     ALLOWED_ATTACHMENT_MIMES,
+    AttachmentKind,
+    BUNDLE_KINDS,
     MAX_ATTACHMENT_BYTES,
     MAX_ATTACHMENTS_PER_DOC,
     _mb,
@@ -52,7 +54,7 @@ async def list_attachments(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == doc_id,
-            DocumentAttachment.kind.in_(["user", "checklist"]),
+            DocumentAttachment.kind.in_(BUNDLE_KINDS),
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(
@@ -131,6 +133,7 @@ async def upload_attachment(
 
     att = DocumentAttachment(
         document_id=doc_id,
+        kind=AttachmentKind.USER,
         filename=file.filename or "unnamed",
         storage_path=storage_key,
         content_type=declared_mime or "application/octet-stream",
@@ -246,7 +249,7 @@ async def reorder_attachments(
 
 # ── Download document bundle ─────────────────────────────────────────────────
 
-CACHE_KIND = "generated_main"  # attachment kind for cached main-PDF bytes
+CACHE_KIND = AttachmentKind.CACHE  # attachment kind for cached main-PDF bytes
 
 
 async def _get_or_generate_cached_main_pdf(
@@ -436,7 +439,7 @@ async def download_document_bundle(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == doc_id,
-            DocumentAttachment.kind.in_(["user", "checklist"]),
+            DocumentAttachment.kind.in_(BUNDLE_KINDS),
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(DocumentAttachment.sort_order)
@@ -474,6 +477,7 @@ async def pre_warm_main_pdf_cache(doc_id: uuid.UUID):
     """
     import logging
     from app.models.doc_template import DocTemplate
+    from sqlalchemy.orm import selectinload
 
     logger = logging.getLogger(__name__)
     async with async_session_factory() as db:

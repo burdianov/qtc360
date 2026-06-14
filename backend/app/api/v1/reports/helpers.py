@@ -144,9 +144,11 @@ def _build_context(document: Document) -> dict:
     )
     ctx["others_cb"] = cb(disc_code == "OT" or "other" in doc_discipline) + " Others"
 
-    for i, inspector in enumerate(
-        [document.site_engineer, document.qaqc_engineer], start=1
-    ):
+    # Per-inspector fields. Doc has at most two inspectors
+    # (site_engineer + qaqc_engineer). The two sets of placeholders must
+    # come from their respective fields, not be aliased to inspector #1.
+    inspectors = [document.site_engineer, document.qaqc_engineer]
+    for i, inspector in enumerate(inspectors, start=1):
         if inspector:
             name = inspector.full_name
             desig = inspector.designation.name if inspector.designation else ""
@@ -155,8 +157,25 @@ def _build_context(document: Document) -> dict:
         else:
             ctx[f"inspected_by_{i}"] = ""
             ctx[f"designation_{i}"] = ""
-        ctx[f"date_{i}"] = _format_date(document.inspector_date_1)
-        ctx[f"time_{i}"] = document.inspector_time_1 or ""
+        # inspector_date_1 / inspector_date_2 are stored as ISO strings in the
+        # DB (see Document model). Format them to the project date format.
+        date_attr = getattr(document, f"inspector_date_{i}", None)
+        time_attr = getattr(document, f"inspector_time_{i}", None)
+        ctx[f"date_{i}"] = _format_date(date_attr) if date_attr else ""
+        ctx[f"time_{i}"] = time_attr or ""
+
+    # Single-inspector aliases for legacy templates that reference a generic
+    # signatory (the most common case: a single WIR inspector).
+    ctx["inspected_by"] = ctx.get("inspected_by_1", "")
+    ctx["ins_date"] = ctx.get("date_1", "")
+    ctx["ins_time"] = ctx.get("time_1", "")
+    ctx["signatory_date"] = ctx.get("date_1", "")
+    # Two-inspector templates should also have unambiguous per-inspector
+    # signatory-date fields. Until we migrate inspector_date_2 to a proper
+    # Date column, fall back to inspector_date_1 so existing templates work.
+    ctx["signatory_date_1"] = ctx.get("date_1", "")
+    ctx["signatory_date_2"] = ctx.get("date_2", "") or ctx.get("date_1", "")
+    ctx["inspected_by_2"] = ctx.get("inspected_by_2", "")
 
     if document.project:
         ctx["prj_no"] = document.project.code or ""
@@ -171,10 +190,6 @@ def _build_context(document: Document) -> dict:
     ctx["materials_description"] = document.description or ""
     ctx["qty"] = document.qty or ""
     ctx["location"] = document.location or ""
-    ctx["inspected_by"] = ctx.get("inspected_by_1", "")
-    ctx["ins_date"] = ctx.get("date_1", "")
-    ctx["ins_time"] = ctx.get("time_1", "")
-    ctx["signatory_date"] = ctx.get("date_1", "")
 
     return ctx
 
@@ -494,20 +509,24 @@ def _merge_attachments_with_status(
                 from reportlab.pdfgen import canvas as rl_canvas
                 from reportlab.lib.utils import ImageReader
 
-                img = PILImage.open(io.BytesIO(att_bytes))
-                img_buf = io.BytesIO()
-                c = rl_canvas.Canvas(img_buf, pagesize=A4)
-                max_w, max_h = A4[0] - 72, A4[1] - 72
-                ratio = min(max_w / img.width, max_h / img.height)
-                w, h = img.width * ratio, img.height * ratio
-                c.drawImage(
-                    ImageReader(io.BytesIO(att_bytes)), 36, A4[1] - h - 36, w, h
-                )
-                c.save()
-                img_buf.seek(0)
-                img_reader = PdfReader(img_buf)
-                for page in img_reader.pages:
-                    writer.add_page(page)
+                with PILImage.open(io.BytesIO(att_bytes)) as img:
+                    img_buf = io.BytesIO()
+                    c = rl_canvas.Canvas(img_buf, pagesize=A4)
+                    max_w, max_h = A4[0] - 72, A4[1] - 72
+                    ratio = min(max_w / img.width, max_h / img.height)
+                    w, h = img.width * ratio, img.height * ratio
+                    c.drawImage(
+                        ImageReader(io.BytesIO(att_bytes)),
+                        36,
+                        A4[1] - h - 36,
+                        w,
+                        h,
+                    )
+                    c.save()
+                    img_buf.seek(0)
+                    img_reader = PdfReader(img_buf)
+                    for page in img_reader.pages:
+                        writer.add_page(page)
             except Exception:
                 logger.exception(
                     "Failed to render attachment image %s", att.storage_path

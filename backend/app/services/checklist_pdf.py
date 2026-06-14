@@ -80,15 +80,19 @@ async def generate_checklist_pdf(db: AsyncSession, document, checklist) -> bytes
             from PIL import Image as PILImage
 
             img_data = base64.b64decode(header_setting.value)
-            img = PILImage.open(io.BytesIO(img_data))
-            img_w, img_h = img.size
-            max_w = width - 20 * mm
-            ratio = min(max_w / img_w, 35 * mm / img_h)
-            draw_w, draw_h = img_w * ratio, img_h * ratio
-            c.drawImage(
-                ImageReader(io.BytesIO(img_data)), 10 * mm, y - draw_h, draw_w, draw_h
-            )
-            y -= draw_h + 4 * mm
+            with PILImage.open(io.BytesIO(img_data)) as img:
+                img_w, img_h = img.size
+                max_w = width - 20 * mm
+                ratio = min(max_w / img_w, 35 * mm / img_h)
+                draw_w, draw_h = img_w * ratio, img_h * ratio
+                c.drawImage(
+                    ImageReader(io.BytesIO(img_data)),
+                    10 * mm,
+                    y - draw_h,
+                    draw_w,
+                    draw_h,
+                )
+                y -= draw_h + 4 * mm
         except Exception:
             pass
 

@@ -28,7 +28,7 @@ class Asset(BaseModel):
     )  # pending, installed, commissioned
     is_critical: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     custom_fields: Mapped[dict] = mapped_column(
-        JSONB, server_default="{}", default=dict
+        JSONB, server_default="{}"
     )
 
     asset_type: Mapped["AssetType"] = relationship(back_populates="assets")  # noqa: F821

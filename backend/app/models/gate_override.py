@@ -37,15 +37,14 @@ class GateOverrideAcknowledgement(BaseModel):
 
 
 # Immutability enforcement: prevent updates to data fields, but allow soft-delete
-# (is_deleted flag is itself an UPDATE, so we whitelist it explicitly).
-_IMMUTABLE_BLOCKED = {
-    "user_id",
-    "asset_id",
-    "document_id",
-    "level_code",
-    "incomplete_requirements",
-    "acknowledged_at",
-    "notes",
+# and audit columns to change. We use a denylist so adding a new field to the
+# model defaults to immutable (the safe direction).
+#
+# Allowed-to-change: ``updated_at`` (set by SQLAlchemy on every flush),
+# ``is_deleted`` (soft-delete).
+_GATE_OVERRIDE_MUTABLE = {
+    "updated_at",
+    "is_deleted",
 }
 
 
@@ -55,7 +54,7 @@ def _block_gate_override_update(
 ) -> None:
     state = inspect(target)
     for attr in state.attrs:
-        if attr.key not in _IMMUTABLE_BLOCKED:
+        if attr.key in _GATE_OVERRIDE_MUTABLE:
             continue
         hist = attr.history
         if hist.has_changes():

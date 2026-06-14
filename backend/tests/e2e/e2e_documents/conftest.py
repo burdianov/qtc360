@@ -201,6 +201,10 @@ async def e2e_context(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator
 
         port = _free_port()
         base_url = f"http://127.0.0.1:{port}"
+        # Capture uvicorn output to a file so a 500 inside a sub-process is
+        # visible to the developer running the suite.
+        log_path = BACKEND_DIR / "e2e_uvicorn.log"
+        log_fh = open(log_path, "w", encoding="utf-8")
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -214,15 +218,20 @@ async def e2e_context(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator
             ],
             cwd=BACKEND_DIR,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
         )
         try:
             deadline = time.monotonic() + 45
             last_error: Exception | None = None
             while time.monotonic() < deadline:
                 if proc.poll() is not None:
-                    raise RuntimeError("uvicorn exited early (check uvicorn stderr for details)")
+                    log_fh.flush()
+                    log_text = log_path.read_text(encoding="utf-8", errors="replace")
+                    raise RuntimeError(
+                        f"uvicorn exited early (code {proc.returncode}).\n"
+                        f"--- uvicorn log ({log_path}) ---\n{log_text}\n--- end ---"
+                    )
                 try:
                     async with httpx.AsyncClient(timeout=2.0, verify=False) as c:
                         r = await c.get(f"{base_url}{API_PREFIX}/auth/me")
@@ -232,7 +241,13 @@ async def e2e_context(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator
                     last_error = exc
                 await asyncio.sleep(0.25)
             else:
-                raise RuntimeError(f"Timed out waiting for app startup: {last_error!r}")
+                proc.terminate()
+                log_fh.flush()
+                log_text = log_path.read_text(encoding="utf-8", errors="replace")
+                raise RuntimeError(
+                    f"Timed out waiting for app startup: {last_error!r}\n"
+                    f"--- uvicorn log ({log_path}) ---\n{log_text}\n--- end ---"
+                )
 
             yield E2EContext(
                 base_url=base_url,
@@ -247,6 +262,7 @@ async def e2e_context(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait(timeout=10)
+            log_fh.close()
     finally:
         if os.environ.get("QTC360_E2E_KEEP_DB", "0") != "1":
             await _drop_database(db_name)

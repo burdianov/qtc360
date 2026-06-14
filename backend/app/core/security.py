@@ -37,7 +37,7 @@ def create_access_token(subject: str, token_version: int = 0) -> str:
     )
     return jwt.encode(
         {"sub": subject, "exp": expire, "type": "access", "ver": token_version},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=ALGORITHM,
     )
 
@@ -48,13 +48,15 @@ def create_refresh_token(subject: str, token_version: int = 0) -> str:
     )
     return jwt.encode(
         {"sub": subject, "exp": expire, "type": "refresh", "ver": token_version},
-        settings.secret_key,
+        settings.secret_key.get_secret_value(),
         algorithm=ALGORITHM,
     )
 
 
 def decode_token(token: str) -> dict | None:
     try:
-        return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        return jwt.decode(
+            token, settings.secret_key.get_secret_value(), algorithms=[ALGORITHM]
+        )
     except JWTError:
         return None

@@ -41,7 +41,7 @@ from fastapi import HTTPException
 from pypdf import PdfReader, PdfWriter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.types import MAX_BUNDLE_BYTES, DEFAULT_SIG_CONFIG, _mb
+from app.core.types import MAX_BUNDLE_BYTES, DEFAULT_SIG_CONFIG, AttachmentKind, _mb
 from app.services.storage import storage
 
 
@@ -244,12 +244,12 @@ async def _assemble_s1(db: AsyncSession, doc) -> bytes:
         main_pdf_bytes, doc_loaded, DEFAULT_SIG_CONFIG, _user_sig_cfgs
     )
 
-    # Doc-level user attachments (kind="user").
+    # Doc-level user attachments (AttachmentKind.USER).
     attachments_result = await db.execute(
         select(DocumentAttachment)
         .where(
             DocumentAttachment.document_id == doc_loaded.id,
-            DocumentAttachment.kind == "user",
+            DocumentAttachment.kind == AttachmentKind.USER,
             DocumentAttachment.is_deleted == False,  # noqa: E712
         )
         .order_by(DocumentAttachment.sort_order)
@@ -295,7 +295,19 @@ async def _assemble_sN(
     prev_bytes = storage.read(prev_path)
 
     # Decrypt if needed.
-    if _is_encrypted_bytes(prev_bytes):
+    opened, encrypted = _is_encrypted_bytes(prev_bytes)
+    if not opened:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "PDF_UNREADABLE",
+                "message": (
+                    f"R{round_order - 1} could not be parsed. The file appears to be "
+                    "corrupt — re-export the returned PDF from Aconex and re-upload."
+                ),
+            },
+        )
+    if encrypted:
         decrypted = _decrypt_with_password(prev_bytes, password)
         if decrypted is None:
             raise HTTPException(
@@ -337,11 +349,28 @@ async def _assemble_sN(
 # ─── pdf helpers ──────────────────────────────────────────────────────────
 
 
-def _is_encrypted_bytes(data: bytes) -> bool:
+def _is_encrypted_bytes(data: bytes) -> tuple[bool, bool]:
+    """Return ``(opened, encrypted)`` for a PDF blob.
+
+    * ``opened`` is True if pypdf could parse the file at all (corrupt files
+      return False here, so the caller can distinguish "needs a password" from
+      "needs a fix" — previously both were reported as encrypted).
+    * ``encrypted`` is True if the file declares an encryption dictionary AND
+      we couldn't open it with the empty password.
+    """
     try:
-        return bool(PdfReader(io.BytesIO(data)).is_encrypted)
+        reader = PdfReader(io.BytesIO(data))
     except Exception:
-        return True  # treat unreadable as encrypted
+        return False, False
+
+    if not reader.is_encrypted:
+        return True, False
+
+    try:
+        result = reader.decrypt("")
+    except Exception:
+        return False, True
+    return result != 0, result == 0
 
 
 def _decrypt_with_password(data: bytes, password: str | None) -> bytes | None:
@@ -372,43 +401,27 @@ def _bytes_to_pdf_pages(data: bytes) -> list:
     """Convert bytes (PDF or image) to a list of pypdf page objects."""
     if data[:4] == b"%PDF":
         return list(PdfReader(io.BytesIO(data)).pages)
-    # Image → single-page PDF.
+    # Image → single-page PDF. Use Image.open as a context manager so PIL
+    # closes the file pointer and avoids fd-table leaks under load.
     from PIL import Image
 
-    img = Image.open(io.BytesIO(data))
-    if img.mode == "RGBA":
-        img = img.convert("RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="PDF")
-    buf.seek(0)
-    return list(PdfReader(buf).pages)
+    with Image.open(io.BytesIO(data)) as img:
+        if img.mode == "RGBA":
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PDF")
+        buf.seek(0)
+        return list(PdfReader(buf).pages)
 
 
 # ─── purge ────────────────────────────────────────────────────────────────
 
 
 def purge_doc_responses(doc_id: str) -> int:
-    """Delete every S*.pdf / R*.pdf file under ``responses/{doc_id}/``.
+    """Delete every S*.pdf / R*.pdf file under ``responses/{doc_id}/`` and the
+    directory itself if empty. Returns the number of files removed.
 
-    Returns the number of files we attempted to unlink. Best-effort —
-    missing files are silently ignored."""
-    import os
-
-    root = storage._root / "responses" / str(doc_id)  # noqa: SLF001
-    if not root.exists():
-        return 0
-    count = 0
-    for entry in os.listdir(root):
-        if entry.lower().endswith(".pdf"):
-            try:
-                (root / entry).unlink()
-                count += 1
-            except Exception:
-                pass
-    # Best-effort: remove the now-empty folder too.
-    try:
-        if not any(root.iterdir()):
-            root.rmdir()
-    except Exception:
-        pass
-    return count
+    Best-effort: missing directories are silently ignored. Uses the public
+    storage.purge_prefix method so we don't reach into a private attribute.
+    """
+    return storage.purge_prefix(f"responses/{doc_id}")

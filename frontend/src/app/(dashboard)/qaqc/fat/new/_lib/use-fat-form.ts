@@ -171,7 +171,7 @@ export function useFatForm() {
     await saveCommissioningLinkage(
       commissioningLinkage,
       docId,
-      { api, setCommissioningLinkage },
+      { setCommissioningLinkage },
       { skipGateOverrides: true },
     );
   };
