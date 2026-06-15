@@ -6,14 +6,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/form";
 import { Spinner } from "@/components/ui/spinner";
-import { CenteredSpinner } from "@/components/loaders/centered-spinner";
+import { FormSkeleton } from "@/components/loaders/form-skeleton";
 import { useFatForm } from "./_lib/use-fat-form";
 import { FatGeneralInfoCard } from "./_components/fat-general-info-card";
 import { FatLinkageCard } from "./_components/fat-linkage-card";
 
 export default function NewFATPage() {
   return (
-    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
+    <Suspense fallback={<FormSkeleton fields={4} />}>
       <NewFATPageContent />
     </Suspense>
   );
@@ -32,6 +32,8 @@ function NewFATPageContent() {
     setCommissioningLinkage,
     linkageDirtyRef,
   } = useFatForm();
+
+  if (!disciplines.length) return <FormSkeleton fields={4} />;
 
   return (
     <div className="space-y-6">

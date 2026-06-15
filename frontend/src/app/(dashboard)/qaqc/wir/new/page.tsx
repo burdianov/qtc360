@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Form } from "@/components/form";
 import { Spinner } from "@/components/ui/spinner";
-import { CenteredSpinner } from "@/components/loaders/centered-spinner";
+import { FormSkeleton } from "@/components/loaders/form-skeleton";
 import { CommissioningLinkagePanel } from "@/components/commissioning-linkage";
 import { RequirementSelector } from "@/components/requirement-selector";
 import { ApprovalActionPanel } from "@/components/approval/approval-action-panel";
@@ -32,7 +32,7 @@ import { WirPdfSection } from "./_components/wir-pdf-section";
 
 export default function NewWIRPage() {
   return (
-    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
+    <Suspense fallback={<FormSkeleton fields={6} />}>
       <NewWIRPageInner />
     </Suspense>
   );
@@ -81,6 +81,22 @@ function NewWIRPageContent() {
     unsavedDialogOpen, confirmUnsavedLeave, confirmUnsavedSave, dismissUnsavedDialog,
     disciplineDialog, confirmDisciplineChange, cancelDisciplineChange,
   } = wir;
+
+  const isFormLoading = !projectId || !disciplines.length || (!!editId && !existingDoc);
+  if (isFormLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <div className="h-9 w-20 bg-muted rounded animate-pulse" />
+          <div className="space-y-1">
+            <div className="h-7 w-64 bg-muted rounded animate-pulse" />
+            <div className="h-4 w-48 bg-muted rounded animate-pulse" />
+          </div>
+        </div>
+        <FormSkeleton fields={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

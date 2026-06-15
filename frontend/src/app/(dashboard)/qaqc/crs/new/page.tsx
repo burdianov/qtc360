@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { CenteredSpinner } from "@/components/loaders/centered-spinner";
+import { FormSkeleton } from "@/components/loaders/form-skeleton";
 import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { useCrsForm } from "./_lib/use-crs-form";
 import { CrsSourceDocCard } from "./_components/crs-source-doc-card";
@@ -36,7 +36,7 @@ import { CrsContentTable } from "./_components/crs-content-table";
 
 export default function NewCRSPage() {
   return (
-    <Suspense fallback={<CenteredSpinner label="Loading document…" />}>
+    <Suspense fallback={<FormSkeleton fields={4} />}>
       <NewCRSPageInner />
     </Suspense>
   );
@@ -95,6 +95,8 @@ function NewCRSPageContent() {
     handlePreview,
     handleDownload,
   } = useCrsForm();
+
+  if (!disciplines.length) return <FormSkeleton fields={4} />;
 
   return (
     <div className="space-y-6">
