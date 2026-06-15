@@ -33,6 +33,7 @@ from app.schemas.document import (
     DocumentCreate,
     DocumentUpdate,
     DocumentResponse,
+    PaginatedDocuments,
 )
 from app.services.commissioning import (
     recalculate_requirements_for_document,
@@ -50,6 +51,7 @@ router = APIRouter()
 
 
 # ── CRS-by-source (return all CRS docs for the given source document) ──
+
 
 @router.get("/crs-by-source")
 async def get_crs_by_source(
@@ -70,7 +72,7 @@ async def get_crs_by_source(
     ).scalar_one_or_none()
     if not src:
         raise HTTPException(status_code=404, detail="Source document not found")
-    await assert_user_in_project(user, src.project_id)
+    await assert_user_in_project(user, src.project_id, db=db)
 
     # Find ALL CRS docs for this source (regardless of stored approver_order)
     stmt = (
@@ -89,17 +91,20 @@ async def get_crs_by_source(
     crs_list = []
     for doc in crs_docs:
         data = doc.crs_data or {}
-        crs_list.append({
-            "id": str(doc.id),
-            "full_reference_no": doc.reference_no,
-            "title": doc.title,
-            "approver_order": data.get("source_approver_order"),
-        })
+        crs_list.append(
+            {
+                "id": str(doc.id),
+                "full_reference_no": doc.reference_no,
+                "title": doc.title,
+                "approver_order": data.get("source_approver_order"),
+            }
+        )
 
     return {"exists": len(crs_list) > 0, "crs_list": crs_list}
 
 
 # ── Rejected-for-revision ────────────────────────────────────────────────────
+
 
 @router.get("/rejected-for-revision")
 async def list_rejected_for_revision(
@@ -146,7 +151,11 @@ async def list_rejected_for_revision(
     )
     superseded_keys = {(r[0], r[1]) for r in superseded_result.all()}
 
-    out = [doc for doc in docs if (doc.reference_no, doc.revision_no) not in superseded_keys]
+    out = [
+        doc
+        for doc in docs
+        if (doc.reference_no, doc.revision_no) not in superseded_keys
+    ]
 
     # Group by discipline
     grouped: dict[str, list[dict]] = {}
@@ -167,7 +176,8 @@ async def list_rejected_for_revision(
 
 # ── List / Get ───────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[DocumentResponse])
+
+@router.get("", response_model=list[DocumentResponse] | PaginatedDocuments)
 async def list_documents(
     project_id: UUID = Query(...),
     document_type: str | None = Query(None),
@@ -208,7 +218,9 @@ async def list_documents(
         )
         total = count_result.scalar() or 0
         result = await db.execute(stmt.offset(skip).limit(limit))
-        return {"items": result.scalars().all(), "total": total}
+        return PaginatedDocuments(
+            items=result.scalars().all(), total=total
+        )
     stmt = stmt.offset(skip).limit(limit)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -230,13 +242,14 @@ async def get_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     resp = DocumentResponse.model_validate(doc)
     resp.asset_ids = [a.id for a in doc.assets] if doc.assets else []
     return resp
 
 
 # ── Create ───────────────────────────────────────────────────────────────────
+
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def create_document(
@@ -246,7 +259,7 @@ async def create_document(
     user: User = Depends(require_permission("documents.submit")),
 ):
     """Create a document. The reference number is allocated server-side."""
-    await assert_user_in_project(user, body.project_id)
+    await assert_user_in_project(user, body.project_id, db=db)
 
     data = body.model_dump(exclude={"asset_ids", "revision_of_id"})
 
@@ -373,6 +386,7 @@ async def create_document(
 
 # ── Update ───────────────────────────────────────────────────────────────────
 
+
 @router.patch("/{doc_id}", response_model=DocumentResponse)
 async def update_document(
     doc_id: UUID,
@@ -389,7 +403,7 @@ async def update_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     old_status = doc.status
     updates = body.model_dump(exclude_unset=True, exclude={"asset_ids"})
@@ -469,6 +483,7 @@ async def update_document(
 
 # ── Resubmit ─────────────────────────────────────────────────────────────────
 
+
 @router.post("/{doc_id}/resubmit", response_model=DocumentResponse)
 async def resubmit_document(
     doc_id: UUID,
@@ -493,7 +508,7 @@ async def resubmit_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     if doc.status != "rejected":
         raise HTTPException(
             status_code=400, detail="Only rejected documents can be resubmitted"
@@ -545,6 +560,7 @@ async def resubmit_document(
 
 # ── Delete ───────────────────────────────────────────────────────────────────
 
+
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     doc_id: UUID,
@@ -567,7 +583,7 @@ async def delete_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     is_admin = user.is_superuser or any(
         r.name in ("admin", "super_admin") for r in (user.roles or [])
@@ -662,6 +678,7 @@ async def delete_document(
 
 # ── Start New Revision ───────────────────────────────────────────────────────
 
+
 @router.post(
     "/{doc_id}/start-new-revision", response_model=DocumentResponse, status_code=201
 )
@@ -680,7 +697,7 @@ async def start_new_revision(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     if doc.status not in ("rejected", "approved", "approved_with_comments"):
         raise HTTPException(

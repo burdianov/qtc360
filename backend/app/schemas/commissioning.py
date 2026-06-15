@@ -108,7 +108,7 @@ class AssetRequirementOut(BaseModel):
     asset_id: uuid.UUID
     requirement_template_id: uuid.UUID
     status: str
-    progress_percent: float
+    progress_percent: float = 0.0
     required_for_tag: str
     target_date: date | None
     actual_completion_date: date | None

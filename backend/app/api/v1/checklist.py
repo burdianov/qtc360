@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel as PydanticBase
 from sqlalchemy import delete, select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -115,7 +116,8 @@ async def list_checklist_items(
         select(ChecklistItem)
         .where(
             ChecklistItem.requirement_template_id == template_id,
-            ChecklistItem.is_deleted == False, )  # noqa: E712
+            ChecklistItem.is_deleted == False,
+        )  # noqa: E712
         .order_by(ChecklistItem.sort_order)
     )
     return result.scalars().all()
@@ -209,7 +211,8 @@ async def list_document_checklists(
         select(DocumentChecklist)
         .where(
             DocumentChecklist.document_id == document_id,
-            DocumentChecklist.is_deleted == False, )  # noqa: E712
+            DocumentChecklist.is_deleted == False,
+        )  # noqa: E712
         .options(selectinload(DocumentChecklist.responses))
         .order_by(DocumentChecklist.sort_order)
     )
@@ -227,7 +230,7 @@ async def save_document_checklist(
     doc = await db.get(Document, body.document_id)
     if not doc or doc.is_deleted:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     # Check if checklist already exists for this doc+requirement
     existing = (
@@ -236,7 +239,8 @@ async def save_document_checklist(
                 DocumentChecklist.document_id == body.document_id,
                 DocumentChecklist.requirement_template_id
                 == body.requirement_template_id,
-                DocumentChecklist.is_deleted == False, )  # noqa: E712
+                DocumentChecklist.is_deleted == False,
+            )  # noqa: E712
         )
     ).scalar_one_or_none()
 
@@ -248,6 +252,7 @@ async def save_document_checklist(
             )
         )
         existing.comments = body.comments
+        existing.responses.clear()
         checklist = existing
     else:
         # Determine sort_order (next position)
@@ -256,7 +261,8 @@ async def save_document_checklist(
             .select_from(DocumentChecklist)
             .where(
                 DocumentChecklist.document_id == body.document_id,
-                DocumentChecklist.is_deleted == False, )  # noqa: E712
+                DocumentChecklist.is_deleted == False,
+            )  # noqa: E712
         )
         sort_order = count_res.scalar() or 0
         checklist = DocumentChecklist(
@@ -280,7 +286,14 @@ async def save_document_checklist(
         )
         db.add(resp)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail="One or more checklist_item_id values do not exist",
+        )
 
     # Only generate PDF if there are actual filled responses.
     # Empty checklists (just added, no data) should not produce attachments.
@@ -318,7 +331,8 @@ async def remove_document_checklist(
             select(DocumentChecklist).where(
                 DocumentChecklist.document_id == document_id,
                 DocumentChecklist.requirement_template_id == requirement_template_id,
-                DocumentChecklist.is_deleted == False, )  # noqa: E712
+                DocumentChecklist.is_deleted == False,
+            )  # noqa: E712
         )
     ).scalar_one_or_none()
     if not checklist:
@@ -349,7 +363,8 @@ async def download_checklist_pdf(
             select(DocumentChecklist).where(
                 DocumentChecklist.document_id == document_id,
                 DocumentChecklist.requirement_template_id == requirement_template_id,
-                DocumentChecklist.is_deleted == False, )  # noqa: E712
+                DocumentChecklist.is_deleted == False,
+            )  # noqa: E712
         )
     ).scalar_one_or_none()
     if not checklist or not checklist.attachment_id:
@@ -381,7 +396,11 @@ async def _generate_checklist_pdf_background(checklist_id: uuid.UUID):
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.exception("Background checklist PDF generation failed for %s: %s", checklist_id, exc)
+            logger.exception(
+                "Background checklist PDF generation failed for %s: %s",
+                checklist_id,
+                exc,
+            )
 
 
 async def _overlay_checklist_signature(pdf_bytes: bytes, inspector) -> bytes:
@@ -471,9 +490,7 @@ async def _overlay_checklist_signature(pdf_bytes: bytes, inspector) -> bytes:
                 draw_w = iw * scale
                 draw_h = ih * scale
                 y_adj = y + (cell_h - draw_h) / 2
-                c.drawImage(
-                    img, x, y_adj, width=draw_w, height=draw_h, mask="auto"
-                )
+                c.drawImage(img, x, y_adj, width=draw_w, height=draw_h, mask="auto")
             else:
                 font_size = 72
                 try:
@@ -575,9 +592,7 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
         pdf_bytes = await convert_xlsx_to_pdf(filled_xlsx)
         # Overlay the actual signature (PNG or font-rendered) onto the PDF
         if ctx["signer_sign"]:
-            pdf_bytes = await _overlay_checklist_signature(
-                pdf_bytes, doc.site_engineer
-            )
+            pdf_bytes = await _overlay_checklist_signature(pdf_bytes, doc.site_engineer)
     else:
         # Fallback to reportlab
         from app.services.checklist_pdf import generate_checklist_pdf
@@ -604,7 +619,8 @@ async def _generate_and_attach_checklist_pdf(db: AsyncSession, checklist_id: uui
             sa_update(DocumentAttachment)
             .where(
                 DocumentAttachment.document_id == doc.id,
-                DocumentAttachment.is_deleted == False, )  # noqa: E712
+                DocumentAttachment.is_deleted == False,
+            )  # noqa: E712
             .values(sort_order=DocumentAttachment.sort_order + 1)
         )
         att = DocumentAttachment(

@@ -110,17 +110,13 @@ async def clear_all_notifications(
 ):
     """Hard-delete all notifications for the current user."""
     await db.execute(
-        update(Notification)
-        .where(Notification.user_id == user.id)
-        .values(is_read=True)
+        update(Notification).where(Notification.user_id == user.id).values(is_read=True)
     )
     # The above is intentionally a no-op except for marking all read; we
     # follow up with a hard-delete so users can actually clear their inbox.
     from sqlalchemy import delete as sa_delete
 
-    await db.execute(
-        sa_delete(Notification).where(Notification.user_id == user.id)
-    )
+    await db.execute(sa_delete(Notification).where(Notification.user_id == user.id))
     await db.commit()
     return {"status": "ok"}
 
@@ -132,9 +128,13 @@ async def unread_count(
     user: User = Depends(get_current_user),
 ):
     """Get count of unread notifications."""
-    query = select(func.count()).select_from(Notification).where(
-        Notification.user_id == user.id,
-        Notification.is_read == False,  # noqa: E712
+    query = (
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.user_id == user.id,
+            Notification.is_read == False,  # noqa: E712
+        )
     )
     if project_id:
         query = query.where(Notification.project_id == project_id)

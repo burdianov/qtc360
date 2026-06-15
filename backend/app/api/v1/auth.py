@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -226,12 +226,20 @@ async def update_me(
         if k in allowed:
             setattr(user, k, v)
     await db.commit()
-    return {"status": "ok"}
+    await db.refresh(user)
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "signature_font": user.signature_font,
+        "signature_text": user.signature_text,
+        "has_signature": bool(user.signature_path),
+    }
 
 
 @router.post("/me/signature")
 async def upload_signature(
-    file: UploadFile,
+    file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -304,7 +312,8 @@ async def list_delegations(
         select(SignatureDelegation)
         .where(
             SignatureDelegation.grantor_id == user.id,
-            SignatureDelegation.is_deleted == False, )  # noqa: E712
+            SignatureDelegation.is_deleted == False,
+        )  # noqa: E712
         .options(selectinload(SignatureDelegation.delegate))
     )
     return [
@@ -388,7 +397,8 @@ async def list_delegated_by(
         select(SignatureDelegation)
         .where(
             SignatureDelegation.delegate_id == user.id,
-            SignatureDelegation.is_deleted == False, )  # noqa: E712
+            SignatureDelegation.is_deleted == False,
+        )  # noqa: E712
         .options(selectinload(SignatureDelegation.grantor))
     )
     return [
@@ -413,7 +423,8 @@ async def get_preferences(
 
     result = await db.execute(
         select(UserPreference).where(
-            UserPreference.user_id == user.id, UserPreference.is_deleted == False  # noqa: E712
+            UserPreference.user_id == user.id,
+            UserPreference.is_deleted == False,  # noqa: E712
         )
     )
     return {p.key: p.value for p in result.scalars().all()}

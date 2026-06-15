@@ -13,7 +13,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -34,6 +34,7 @@ _STAGE_PATTERN = r"^S[1-9]\d*$|^R[1-9]\d*$"
 
 # ── Per-stage file download ──────────────────────────────────────────────────
 
+
 @router.get("/{doc_id}/files/{stage}")
 async def download_stage_file(
     doc_id: UUID,
@@ -53,7 +54,7 @@ async def download_stage_file(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     if stage.startswith("S"):
         key = submitted_path(str(doc.id), int(stage[1:]))
@@ -78,6 +79,7 @@ async def download_stage_file(
 
 # ── Notify Signatories ───────────────────────────────────────────────────────
 
+
 @router.post("/{doc_id}/notify-signatories")
 async def notify_signatories(
     doc_id: UUID,
@@ -95,7 +97,7 @@ async def notify_signatories(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     if doc.created_by != user.id:
         raise HTTPException(
@@ -166,6 +168,7 @@ async def notify_signatories(
 
 # ── Sign ─────────────────────────────────────────────────────────────────────
 
+
 @router.post("/{doc_id}/sign", response_model=DocumentResponse)
 async def sign_document(
     doc_id: UUID,
@@ -183,7 +186,7 @@ async def sign_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     if doc.status != "draft":
         raise HTTPException(status_code=400, detail="Document is not in draft status")
 
@@ -259,7 +262,7 @@ async def sign_document(
 
     try:
         await db.commit()
-    except IntegrityError:
+    except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(doc)
@@ -283,6 +286,7 @@ async def sign_document(
 
 # ── Unsign ───────────────────────────────────────────────────────────────────
 
+
 @router.post("/{doc_id}/unsign", response_model=DocumentResponse)
 async def unsign_document(
     doc_id: UUID,
@@ -298,7 +302,7 @@ async def unsign_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     if doc.status not in ("draft", "internally_signed"):
         raise HTTPException(
             status_code=400, detail="Cannot remove signature after submission"

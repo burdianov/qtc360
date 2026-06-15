@@ -270,7 +270,8 @@ async def recalculate_tag_status(db: AsyncSession, asset_id: uuid.UUID) -> None:
     # Get all non-deleted requirements for this asset
     result = await db.execute(
         select(AssetRequirement).where(
-            AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False  # noqa: E712
+            AssetRequirement.asset_id == asset_id,
+            AssetRequirement.is_deleted == False,  # noqa: E712
         )
     )
     requirements = result.scalars().all()

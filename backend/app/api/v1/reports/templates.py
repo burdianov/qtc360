@@ -30,6 +30,7 @@ router = APIRouter()
 
 # ── Template upload ──────────────────────────────────────────────────────────
 
+
 @router.post("/templates/upload", status_code=201)
 async def upload_template(
     project_id: UUID,
@@ -40,7 +41,7 @@ async def upload_template(
     user: User = Depends(require_permission("reports.templates")),
 ):
     """Upload a DOCX or XLSX template."""
-    await assert_user_in_project(user, project_id)
+    await assert_user_in_project(user, project_id, db=db)
     fname = (file.filename or "").lower()
     if fname.endswith(".docx"):
         file_format = "docx"
@@ -126,6 +127,7 @@ async def upload_template(
 
 # ── Template list ────────────────────────────────────────────────────────────
 
+
 @router.get("/templates")
 async def list_templates(
     project_id: UUID,
@@ -159,6 +161,7 @@ async def list_templates(
 
 # ── Template download ────────────────────────────────────────────────────────
 
+
 @router.get("/templates/{template_id}/download")
 async def download_template(
     template_id: UUID,
@@ -170,13 +173,14 @@ async def download_template(
 
     result = await db.execute(
         select(DocTemplate).where(
-            DocTemplate.id == template_id, DocTemplate.is_deleted == False  # noqa: E712
+            DocTemplate.id == template_id,
+            DocTemplate.is_deleted == False,  # noqa: E712
         )
     )
     template = result.scalar_one_or_none()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    await assert_user_in_project(user, template.project_id)
+    await assert_user_in_project(user, template.project_id, db=db)
     return Response(
         content=template.file,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -188,6 +192,7 @@ async def download_template(
 
 # ── Template delete ──────────────────────────────────────────────────────────
 
+
 @router.delete("/templates/{template_id}", status_code=204)
 async def delete_template(
     template_id: UUID,
@@ -197,18 +202,20 @@ async def delete_template(
     """Delete a template (hard delete)."""
     result = await db.execute(
         select(DocTemplate).where(
-            DocTemplate.id == template_id, DocTemplate.is_deleted == False  # noqa: E712
+            DocTemplate.id == template_id,
+            DocTemplate.is_deleted == False,  # noqa: E712
         )
     )
     template = result.scalar_one_or_none()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    await assert_user_in_project(user, template.project_id)
+    await assert_user_in_project(user, template.project_id, db=db)
     await db.delete(template)
     await db.commit()
 
 
 # ── Signature fonts ──────────────────────────────────────────────────────────
+
 
 @router.get("/signature-fonts")
 async def list_signature_fonts(_: User = Depends(get_current_user)):
@@ -217,6 +224,7 @@ async def list_signature_fonts(_: User = Depends(get_current_user)):
 
 
 # ── Signature preview ────────────────────────────────────────────────────────
+
 
 @router.get("/signature-preview")
 async def preview_signature(

@@ -32,7 +32,7 @@ async def list_requirement_templates(
     user: User = Depends(get_current_user),
 ):
     if project_id:
-        await assert_user_in_project(user, project_id)
+        await assert_user_in_project(user, project_id, db=db)
     query = select(RequirementTemplate).where(RequirementTemplate.is_deleted == False)  # noqa: E712
     if project_id:
         query = query.where(
@@ -67,7 +67,7 @@ async def create_requirement_template(
 ):
     payload = data.model_dump()
     if payload.get("project_id"):
-        await assert_user_in_project(user, payload["project_id"])
+        await assert_user_in_project(user, payload["project_id"], db=db)
     elif not user.is_superuser:
         raise HTTPException(
             status_code=403, detail="Only super_admin can create global templates"
@@ -99,7 +99,7 @@ async def update_requirement_template(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     if template.project_id:
-        await assert_user_in_project(user, template.project_id)
+        await assert_user_in_project(user, template.project_id, db=db)
     elif not user.is_superuser:
         raise HTTPException(
             status_code=403, detail="Only super_admin can modify global templates"
@@ -113,3 +113,25 @@ async def update_requirement_template(
         raise HTTPException(status_code=409, detail="Conflict — please retry")
     await db.refresh(template)
     return template
+
+
+@router.delete("/requirement-templates/{template_id}", status_code=204)
+async def delete_requirement_template(
+    template_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("commissioning.manage")),
+):
+    result = await db.execute(
+        select(RequirementTemplate).where(RequirementTemplate.id == template_id)
+    )
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if template.project_id:
+        await assert_user_in_project(user, template.project_id, db=db)
+    elif not user.is_superuser:
+        raise HTTPException(
+            status_code=403, detail="Only super_admin can delete global templates"
+        )
+    template.is_deleted = True
+    await db.commit()

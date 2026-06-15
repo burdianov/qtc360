@@ -28,6 +28,7 @@ router = APIRouter()
 
 # ── Bundle pages (thumbnails) ────────────────────────────────────────────────
 
+
 @router.get("/bundle-pages/{document_id}")
 async def get_bundle_pages(
     document_id: UUID,
@@ -38,7 +39,7 @@ async def get_bundle_pages(
     doc = await db.get(Document, document_id)
     if not doc or doc.is_deleted:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_result = await db.execute(
         select(DocumentApprovalRound)
@@ -69,6 +70,7 @@ async def get_bundle_pages(
 
 # ── Compose bundle ───────────────────────────────────────────────────────────
 
+
 @router.post("/bundle-compose/{document_id}")
 async def compose_bundle(
     document_id: UUID,
@@ -80,7 +82,7 @@ async def compose_bundle(
     doc = await db.get(Document, document_id)
     if not doc or doc.is_deleted:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_result = await db.execute(
         select(DocumentApprovalRound)

@@ -43,6 +43,7 @@ router = APIRouter()
 
 # ── Commissioning progress ───────────────────────────────────────────────────
 
+
 @router.get("/progress", response_model=list[AssetCommissioningProgress])
 async def get_commissioning_progress(
     project_id: uuid.UUID = Query(...),
@@ -115,6 +116,7 @@ async def get_commissioning_progress(
                     required_for_tag=req.required_for_tag,
                     target_date=req.target_date,
                     actual_completion_date=req.actual_completion_date,
+                    approved_date=req.approved_date,
                     notes=req.notes,
                     created_at=req.created_at,
                     template_name=tmpl.name if tmpl else None,
@@ -152,6 +154,7 @@ async def get_commissioning_progress(
 
 # ── Gate override CRUD ───────────────────────────────────────────────────────
 
+
 @router.post(
     "/gate-overrides",
     response_model=GateOverrideOut,
@@ -165,7 +168,7 @@ async def create_gate_override(
     pid = await _project_id_for_asset(db, data.asset_id)
     if pid is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    await assert_user_in_project(user, pid)
+    await assert_user_in_project(user, pid, db=db)
     if data.document_id:
         pid_doc = await _project_id_for_document(db, data.document_id)
         if pid_doc != pid:
@@ -203,11 +206,12 @@ async def check_gate_requirements(
 ):
     """Check if all requirements for a level are complete. Returns incomplete ones."""
     pid = await _project_id_for_asset(db, asset_id)
-    await assert_user_in_project(user, pid)
+    await assert_user_in_project(user, pid, db=db)
 
     result = await db.execute(
         select(AssetRequirement).where(
-            AssetRequirement.asset_id == asset_id, AssetRequirement.is_deleted == False  # noqa: E712
+            AssetRequirement.asset_id == asset_id,
+            AssetRequirement.is_deleted == False,  # noqa: E712
         )
     )
     reqs = result.scalars().all()
@@ -250,7 +254,7 @@ async def list_gate_overrides(
     user: User = Depends(get_current_user),
 ):
     if asset_id:
-        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
+        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id), db=db)
     query = select(GateOverrideAcknowledgement).where(
         GateOverrideAcknowledgement.is_deleted == False  # noqa: E712
     )
@@ -271,6 +275,7 @@ async def list_gate_overrides(
 
 # ── Admin recalculate ────────────────────────────────────────────────────────
 
+
 @router.post("/recalculate-all", status_code=status.HTTP_200_OK)
 async def recalculate_all_requirements(
     project_id: uuid.UUID = Query(...),
@@ -288,7 +293,8 @@ async def recalculate_all_requirements(
             AssetRequirement.is_deleted == False,  # noqa: E712
             AssetRequirement.asset_id.in_(
                 select(Asset.id).where(
-                    Asset.project_id == project_id, Asset.is_deleted == False  # noqa: E712
+                    Asset.project_id == project_id,
+                    Asset.is_deleted == False,  # noqa: E712
                 )
             ),
         )
@@ -309,6 +315,7 @@ async def recalculate_all_requirements(
 
 
 # ── Inspection tracker ───────────────────────────────────────────────────────
+
 
 @router.get("/inspection-tracker")
 async def get_inspection_tracker(

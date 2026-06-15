@@ -1,0 +1,50 @@
+# Multi-stage build for the QTC360 e2e test image.
+#
+# The prod Dockerfile already installs:
+#   - python:3.12-slim base
+#   - tesseract-ocr + tesseract-ocr-eng (OCR)
+#   - uv
+# We add LibreOffice (the DOCX -> PDF fallback path) and the dev
+# dependency group, then re-sync `uv` so pytest/httpx are installed.
+#
+# Used by `docker-compose.e2e.yml`. Not deployed to production.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# System deps: keep the prod ones (gcc, libpq, libjpeg, libfreetype,
+# tesseract) and add libreoffice + the headless helper packages so the
+# fallback PDF engine works in-container. apt-get cleanup is mandatory
+# so the layer doesn't bloat.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev libffi-dev libjpeg-dev libfreetype6-dev \
+    tesseract-ocr tesseract-ocr-eng \
+    libreoffice-core libreoffice-writer libreoffice-impress \
+    libreoffice-common libreoffice-script-provider-python \
+    fonts-dejavu fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy project metadata first so the dependency layer is cacheable.
+COPY pyproject.toml uv.lock* ./
+
+# The e2e suite imports `app.*` and `tests.*` and uses pytest, so install
+# the full dep tree including the dev group. Using --frozen means CI
+# fails fast if uv.lock is out of sync with pyproject.toml.
+RUN uv sync --frozen --all-extras --group dev
+
+# Copy the rest of the backend (source + tests + scripts).
+COPY . .
+
+# Per-session uvicorn fixture writes to /tmp anyway; keep an empty
+# uploads dir for parity with the local fixture.
+RUN mkdir -p /app/uploads /tmp/qtc360_e2e_uploads
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1
+
+# Default command is overridden by docker-compose.e2e.yml.
+CMD ["uv", "run", "pytest", "tests/e2e", "-ra", "--durations=10", "--tb=short", "-v"]

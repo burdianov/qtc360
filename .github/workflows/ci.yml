@@ -69,14 +69,17 @@ jobs:
         working-directory: backend
         run: uv run alembic upgrade head
 
-      # The `e2e_documents` suite spins up its own per-session database and a
+      # The `e2e` suite spins up its own per-session database and a
       # uvicorn instance, so it doesn't need any pre-existing fixture data.
       # It is the only suite that exercises the HTTP layer end-to-end.
+      # `scripts/run_e2e.sh` is the single source of truth for both local
+      # and CI invocations: it brings up Postgres + Gotenberg in compose
+      # and runs the suite inside a backend container.
       - name: Run e2e tests
-        working-directory: backend
-        # No `|| echo "No tests yet"` — a missing test file is a real failure
-        # and should turn the build red rather than silently passing.
-        run: uv run pytest tests/e2e/e2e_documents -v --tb=short --durations=10
+        # Use the project's docker compose e2e runner so local and CI
+        # have the same test environment (Postgres 16, Gotenberg 8, the
+        # project's exact uv.lock).
+        run: ./scripts/run_e2e.sh --tb=short --durations=10
 
   frontend:
     runs-on: ubuntu-latest

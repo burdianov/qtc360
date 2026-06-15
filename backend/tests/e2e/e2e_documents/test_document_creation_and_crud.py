@@ -36,7 +36,9 @@ from .helpers import (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["WIR", "MIR", "CIR", "CRS", "FAT"])
-async def test_create_document_with_all_fields(client, seed_data, auth_headers, doc_type: str):
+async def test_create_document_with_all_fields(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, doc_type, "all fields")
 
@@ -69,7 +71,9 @@ async def test_create_document_with_all_fields(client, seed_data, auth_headers, 
 
 
 @pytest.mark.asyncio
-async def test_create_document_rejects_client_supplied_reference(client, seed_data, auth_headers):
+async def test_create_document_rejects_client_supplied_reference(
+    client, seed_data, auth_headers
+):
     """Client cannot send reference_no — Pydantic must 422 the extra field."""
     site = auth_headers("site")
     payload = document_payload(seed_data, "WIR", "rejected ref")
@@ -86,7 +90,9 @@ async def test_create_document_with_revision_of_id_inherits_parent_reference(
 ):
     """Creating a new revision inherits parent reference and increments revision_no."""
     site = auth_headers("site")
-    parent = await create_document(client, site, seed_data, "MIR", "parent for revision")
+    parent = await create_document(
+        client, site, seed_data, "MIR", "parent for revision"
+    )
 
     # Transition parent to rejected (required for revision_of behaviour)
     # draft → internally_signed (MIR: site only) → with_approver_1 → rejected
@@ -116,11 +122,16 @@ async def test_create_document_with_revision_of_id_inherits_parent_reference(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["WIR", "MIR", "CIR", "CRS"])
-async def test_update_draft_document_fields(client, seed_data, auth_headers, doc_type: str):
+async def test_update_draft_document_fields(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, doc_type, "update test")
 
-    payload: dict = {"title": f"Updated {doc_type} title", "description": "Updated description"}
+    payload: dict = {
+        "title": f"Updated {doc_type} title",
+        "description": "Updated description",
+    }
     if doc_type in {"WIR", "CIR"}:
         payload.update(
             {
@@ -210,19 +221,25 @@ async def test_list_documents_with_filters(client, seed_data, auth_headers):
     assert len(all_docs) >= 3
 
     # Filter by type
-    wir_docs = await get_document_list(client, site, seed_data.project_id, document_type="WIR")
+    wir_docs = await get_document_list(
+        client, site, seed_data.project_id, document_type="WIR"
+    )
     assert all(d["document_type"] == "WIR" for d in wir_docs)
     assert any(d["id"] == wir["id"] for d in wir_docs)
 
     # Filter by status
-    draft_docs = await get_document_list(client, site, seed_data.project_id, status="draft")
+    draft_docs = await get_document_list(
+        client, site, seed_data.project_id, status="draft"
+    )
     assert all(d["status"] == "draft" for d in draft_docs)
 
 
 @pytest.mark.asyncio
 async def test_get_nonexistent_document_returns_404(client, seed_data, auth_headers):
     site = auth_headers("site")
-    await get_document(client, site, "00000000-0000-0000-0000-000000000000", expected_status=404)
+    await get_document(
+        client, site, "00000000-0000-0000-0000-000000000000", expected_status=404
+    )
 
 
 # ── Delete ─────────────────────────────────────────────────────────────────────
@@ -240,7 +257,9 @@ async def test_delete_draft_document_hard_deletes(client, seed_data, auth_header
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", MULTI_APPROVAL_TYPES)
-async def test_delete_submitted_document_supersedes(client, seed_data, auth_headers, doc_type: str):
+async def test_delete_submitted_document_supersedes(
+    client, seed_data, auth_headers, doc_type: str
+):
     """Deleting a submitted document marks it superseded, not hard-deleted."""
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
@@ -316,7 +335,9 @@ async def test_rejected_doc_disappears_from_list_after_start_new_revision(
     assert r.status_code == 201, r.text
 
     # The rejected original should now be excluded from the list
-    rejected_after = await list_rejected_for_revision(client, site, seed_data.project_id)
+    rejected_after = await list_rejected_for_revision(
+        client, site, seed_data.project_id
+    )
     assert not any(d["id"] == doc["id"] for d in rejected_after), (
         "Superseded rejected doc should not appear in rejected-for-revision"
     )

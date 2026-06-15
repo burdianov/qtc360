@@ -67,7 +67,9 @@ async def test_preparation_attachments_add_list_reorder_delete_and_bundle(
         assert r.headers["content-type"].startswith("application/pdf")
         assert len(r.content) > 0
 
-    r = await client.delete(f"/documents/{doc_id}/attachments/{att1['id']}", headers=site)
+    r = await client.delete(
+        f"/documents/{doc_id}/attachments/{att1['id']}", headers=site
+    )
     assert r.status_code == 204, r.text
 
     r = await client.get(f"/documents/{doc_id}/attachments", headers=site)
@@ -84,7 +86,13 @@ async def test_preparation_attachments_add_list_reorder_delete_and_bundle(
     ],
 )
 async def test_preparation_attachment_validation(
-    client, seed_data, auth_headers, filename: str, content: bytes, mime: str, expected_detail: str
+    client,
+    seed_data,
+    auth_headers,
+    filename: str,
+    content: bytes,
+    mime: str,
+    expected_detail: str,
 ):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, "MIR", "attachment validation")
@@ -121,11 +129,15 @@ async def test_approval_round_attachments_add_remove_from_bundle_delete_and_down
     att = r.json()
     assert att["insert_after_page"] == 0
 
-    r = await client.get(f"/documents/{doc['id']}/approval-rounds/{round_id}/attachments", headers=site)
+    r = await client.get(
+        f"/documents/{doc['id']}/approval-rounds/{round_id}/attachments", headers=site
+    )
     assert r.status_code == 200
     assert [a["id"] for a in r.json()] == [att["id"]]
 
-    r = await client.get(f"/documents/{doc['id']}/approval-rounds/{round_id}/bundle", headers=site)
+    r = await client.get(
+        f"/documents/{doc['id']}/approval-rounds/{round_id}/bundle", headers=site
+    )
     assert r.status_code == 200, r.text
     assert r.headers["content-type"].startswith("application/pdf")
 
@@ -150,13 +162,17 @@ async def test_approval_round_attachments_add_remove_from_bundle_delete_and_down
     )
     assert r.status_code == 204, r.text
 
-    r = await client.get(f"/documents/{doc['id']}/approval-rounds/{round_id}/attachments", headers=site)
+    r = await client.get(
+        f"/documents/{doc['id']}/approval-rounds/{round_id}/attachments", headers=site
+    )
     assert r.status_code == 200
     assert r.json() == []
 
 
 @pytest.mark.asyncio
-async def test_upload_remarks_after_round_1_status_b_before_resubmission(client, seed_data, auth_headers):
+async def test_upload_remarks_after_round_1_status_b_before_resubmission(
+    client, seed_data, auth_headers
+):
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
@@ -239,7 +255,9 @@ async def test_round_attachment_full_lifecycle_across_types(
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
-    doc = await create_document(client, site, seed_data, doc_type, "round att lifecycle")
+    doc = await create_document(
+        client, site, seed_data, doc_type, "round att lifecycle"
+    )
     doc = await internally_sign_document(client, doc, site, qaqc)
     await submit_to_approver(client, site, doc["id"], 1)
     round_obj = await record_response(client, site, seed_data, doc["id"], 1, "A")

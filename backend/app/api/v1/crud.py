@@ -10,10 +10,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, InstrumentedAttribute
 
+from sqlalchemy import and_
+
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission, assert_user_in_project
 from app.models.base import BaseModel
-from app.models.user import User
+from app.models.user import User, user_projects
 
 
 def _has_project_id(model: Type[BaseModel]) -> bool:
@@ -48,13 +50,17 @@ def create_crud_router(
                     stmt = stmt.options(selectinload(rel))
         return stmt
 
-    def _scope_to_user(stmt, user: User):
+    async def _scope_to_user(stmt, user: User, db: AsyncSession):
         """If model has project_id, restrict to projects the user belongs to."""
         if has_project and not user.is_superuser:
-            user_project_ids = [p.id for p in user.projects]
+            result = await db.execute(
+                select(user_projects.c.project_id).where(
+                    user_projects.c.user_id == user.id
+                )
+            )
+            user_project_ids = [row[0] for row in result.all()]
             if not user_project_ids:
-                # User belongs to no projects: return nothing.
-                return stmt.where(model.project_id.is_(None) & False)  # always-false
+                return stmt.where(False)
             return stmt.where(model.project_id.in_(user_project_ids))
         return stmt
 
@@ -69,10 +75,10 @@ def create_crud_router(
     ):
         base = _base_query()
         if has_project and project_id:
-            await assert_user_in_project(user, project_id)
+            await assert_user_in_project(user, project_id, db=db)
             base = base.where(model.project_id == project_id)
         else:
-            base = _scope_to_user(base, user)
+            base = await _scope_to_user(base, user, db)
         # Tie-break by id for deterministic pagination.
         base = base.order_by(model.id)
         if paginated:
@@ -100,7 +106,7 @@ def create_crud_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
             )
         if has_project:
-            await assert_user_in_project(user, getattr(item, "project_id", None))
+            await assert_user_in_project(user, getattr(item, "project_id", None), db=db)
         return item
 
     @router.post(
@@ -115,7 +121,7 @@ def create_crud_router(
         if has_project:
             project_id = payload.get("project_id")
             await assert_user_in_project(
-                user, project_id, require_super_for_missing=False
+                user, project_id, require_super_for_missing=False, db=db
             )
         item = model(**payload)
         db.add(item)
@@ -145,15 +151,16 @@ def create_crud_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
             )
         if has_project:
-            await assert_user_in_project(user, getattr(item, "project_id", None))
+            await assert_user_in_project(
+                user, getattr(item, "project_id", None), db=db
+            )
         updates = body.model_dump(exclude_unset=True)
-        # Don't let an update silently move a row across projects unless the caller has access to BOTH.
         if (
             has_project
             and "project_id" in updates
             and updates["project_id"] != getattr(item, "project_id", None)
         ):
-            await assert_user_in_project(user, updates["project_id"])
+            await assert_user_in_project(user, updates["project_id"], db=db)
         for key, value in updates.items():
             setattr(item, key, value)
         try:
@@ -183,7 +190,9 @@ def create_crud_router(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
             )
         if has_project:
-            await assert_user_in_project(user, getattr(item, "project_id", None))
+            await assert_user_in_project(
+                user, getattr(item, "project_id", None), db=db
+            )
         if hard_delete:
             await db.delete(item)
         else:

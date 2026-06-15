@@ -103,7 +103,9 @@ async def test_document_type_approval_lifecycle_matrix(
 @pytest.mark.asyncio
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["FAT", "CRS"])
-async def test_auto_approved_docs_on_create_and_crs_data(client, seed_data, auth_headers, doc_type: str):
+async def test_auto_approved_docs_on_create_and_crs_data(
+    client, seed_data, auth_headers, doc_type: str
+):
     """FAT and CRS are auto-approved on create and can be linked to requirements."""
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, doc_type, "auto-approved")
@@ -120,7 +122,9 @@ async def test_auto_approved_docs_on_create_and_crs_data(client, seed_data, auth
         )
         assert r.status_code == 200, r.text
         matching = [
-            req for req in r.json() if req["id"] == seed_data.asset_requirement_ids["FAT"]
+            req
+            for req in r.json()
+            if req["id"] == seed_data.asset_requirement_ids["FAT"]
         ]
         assert matching, f"FAT requirement not found in: {r.json()}"
         linked_req = matching[0]
@@ -157,11 +161,15 @@ async def test_cancelled_document_is_terminal(client, seed_data, auth_headers):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, "MIR", "cancel terminal")
 
-    r = await client.patch(f"/documents/{doc['id']}", json={"status": "cancelled"}, headers=site)
+    r = await client.patch(
+        f"/documents/{doc['id']}", json={"status": "cancelled"}, headers=site
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "cancelled"
 
-    r = await client.post(f"/documents/{doc['id']}/sign?role=site_engineer", headers=site)
+    r = await client.post(
+        f"/documents/{doc['id']}/sign?role=site_engineer", headers=site
+    )
     assert r.status_code >= 400
 
     r = await client.post(

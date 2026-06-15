@@ -100,7 +100,7 @@ async def create_or_update_ref_config(
     user: User = Depends(require_permission("admin.settings")),
 ):
     """Create or update reference number config (upsert by project+doc_type)."""
-    await assert_user_in_project(user, body.project_id)
+    await assert_user_in_project(user, body.project_id, db=db)
     _validate_pattern(body.pattern)
     result = await db.execute(
         select(ReferenceNumberConfig).where(
@@ -152,7 +152,7 @@ async def delete_ref_config(
     config = result.scalar_one_or_none()
     if not config:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, config.project_id)
+    await assert_user_in_project(user, config.project_id, db=db)
     config.is_deleted = True
     await record_audit(
         db,

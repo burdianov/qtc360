@@ -1,0 +1,168 @@
+# QTC360 end-to-end test runner.
+#
+# One command brings up Postgres + Gotenberg + the FastAPI backend,
+# waits for the backend to be healthy, then runs the pytest suite in a
+# second container that points at the running backend.
+#
+# Usage (from repo root):
+#   docker compose -f docker-compose.e2e.yml up --abort-on-container-exit
+#
+# Or via the wrapper script:
+#   ./scripts/run_e2e.sh           # bash / git-bash
+#   pwsh scripts/run_e2e.ps1       # Windows PowerShell
+#
+# Shape: four services.
+#   - postgres   — DB, only used to host the `qtc360_e2e` schema.
+#   - gotenberg  — DOCX→PDF conversion (Chromium + LibreOffice).
+#   - init       — one-shot: alembic upgrade head, then app.seed +
+#                  app.seed_commissioning. Exits 0; backend waits for
+#                  service_completed_successfully before starting.
+#   - backend    — long-running uvicorn on :8000; healthcheck polls
+#                  /api/v1/health.
+#   - tests      — runs `uv run pytest tests/e2e …`; depends on backend
+#                  being healthy. TEST_BASE_URL makes the top-level
+#                  tests/e2e/conftest.py `client` fixture reach
+#                  `http://backend:8000`.
+#
+# The per-session fixture inside tests/e2e/e2e_documents/conftest.py
+# still creates a uniquely-named throwaway database and spawns its own
+# uvicorn on a free port, so that sub-suite is independent of the
+# backend service here.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qtc360-e2e-postgres
+    environment:
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: qtc360_dev
+      POSTGRES_DB: qtc360_e2e
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qtc360 -d qtc360_e2e"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    # No host port mapping — services communicate over the compose network.
+    tmpfs:
+      - /var/lib/postgresql/data:rw,size=512m
+
+  gotenberg:
+    # Chromium + LibreOffice modules so /forms/libreoffice/convert can
+    # turn DOCX into PDF. 8.x is the current line; bump as upstream moves.
+    image: gotenberg/gotenberg:8
+    container_name: qtc360-e2e-gotenberg
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  init:
+    # One-shot container: run migrations + seed against the same DB the
+    # backend will use. Exits 0 on success; backend waits for
+    # service_completed_successfully so uvicorn never starts against an
+    # unmigrated schema.
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.e2e
+    container_name: qtc360-e2e-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: qtc360_dev
+      POSTGRES_DB: qtc360_e2e
+      SECRET_KEY: e2e-secret-key-that-is-long-enough-for-tests-only
+      ENVIRONMENT: development
+    entrypoint: ["sh", "-c"]
+    command:
+      - "uv run alembic upgrade head && uv run python -m app.seed && uv run python -m app.seed_commissioning"
+    working_dir: /app
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.e2e
+    container_name: qtc360-e2e-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gotenberg:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    environment:
+      # In-network DNS names: postgres, gotenberg. These match the service
+      # names above and are resolved automatically by the compose network.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: qtc360_dev
+      POSTGRES_DB: qtc360_e2e
+      GOTENBERG_URL: http://gotenberg:3000
+      SECRET_KEY: e2e-secret-key-that-is-long-enough-for-tests-only
+      ENVIRONMENT: development
+      # Lib dir for the top-level tests/e2e/_common_helpers.py to write
+      # temporary DOCX/PNG. /tmp is tmpfs below so nothing leaks.
+      UPLOAD_DIR: /tmp/qtc360_e2e_uploads
+      PYTHONUNBUFFERED: "1"
+    command:
+      - "uv"
+      - "run"
+      - "uvicorn"
+      - "app.main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+    healthcheck:
+      # `curl` isn't in python:3.12-slim and we don't want to add it just
+      # for the healthcheck. Use python's stdlib urllib against the
+      # same /api/v1/health endpoint the suite relies on.
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2).status == 200 else 1)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    # No host port mapping — services communicate over the compose network.
+    tmpfs:
+      - /tmp/qtc360_e2e_uploads:rw,size=512m
+    working_dir: /app
+
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.e2e
+    container_name: qtc360-e2e-tests
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Makes the top-level tests/e2e/conftest.py `client` fixture (which
+      # reads BASE_URL from tests/e2e/_config.py) reach the running
+      # uvicorn. The sub-package tests/e2e/e2e_documents/conftest.py
+      # spawns its own uvicorn, so it ignores this and keeps working.
+      TEST_BASE_URL: "http://backend:8000"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: qtc360
+      POSTGRES_PASSWORD: qtc360_dev
+      POSTGRES_DB: qtc360_e2e
+      GOTENBERG_URL: http://gotenberg:3000
+      SECRET_KEY: e2e-secret-key-that-is-long-enough-for-tests-only
+      ENVIRONMENT: development
+      UPLOAD_DIR: /tmp/qtc360_e2e_uploads
+      PYTHONUNBUFFERED: "1"
+      # Pass-through: any extra pytest args supplied by the runner script.
+      PYTEST_ARGS: ""
+    # 60 min should be plenty for the full ~240-test suite. Override with
+    # E2E_TIMEOUT in the host shell if you have a slower machine.
+    entrypoint: ["sh", "-c"]
+    command:
+      - "uv run pytest tests/e2e -ra --durations=10 --tb=short -v $PYTEST_ARGS"
+    working_dir: /app

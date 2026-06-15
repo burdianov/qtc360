@@ -49,6 +49,7 @@ PERMISSIONS = [
         "code": "documents.create",
         "description": "Create new documents (WIR, MIR, CIR, FAT)",
     },
+    {"code": "documents.view", "description": "View and list documents"},
     {"code": "documents.edit", "description": "Edit existing documents"},
     {"code": "documents.delete", "description": "Delete documents"},
     {"code": "documents.sign", "description": "Sign documents as inspector"},
@@ -81,6 +82,7 @@ ROLE_PERMISSIONS = {
     "super_admin": [p["code"] for p in PERMISSIONS],  # all
     "admin": [p["code"] for p in PERMISSIONS],  # all
     "site_engineer": [
+        "documents.view",
         "documents.create",
         "documents.edit",
         "documents.sign",
@@ -89,6 +91,7 @@ ROLE_PERMISSIONS = {
         "reports.generate",
     ],
     "qaqc_engineer": [
+        "documents.view",
         "documents.create",
         "documents.edit",
         "documents.sign",
@@ -98,6 +101,7 @@ ROLE_PERMISSIONS = {
         "reports.generate",
     ],
     "qaqc_manager": [
+        "documents.view",
         "documents.create",
         "documents.edit",
         "documents.delete",

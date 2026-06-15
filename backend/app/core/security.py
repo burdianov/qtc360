@@ -31,23 +31,39 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
+def _now_ts() -> int:
+    # Millisecond precision ensures two tokens created in the same second
+    # have distinct iat values, preventing identical JWT payloads.
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
 def create_access_token(subject: str, token_version: int = 0) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.access_token_expire_minutes
-    )
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "access", "ver": token_version},
+        {
+            "sub": subject,
+            "exp": expire,
+            "iat": _now_ts(),
+            "type": "access",
+            "ver": token_version,
+        },
         settings.secret_key.get_secret_value(),
         algorithm=ALGORITHM,
     )
 
 
 def create_refresh_token(subject: str, token_version: int = 0) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.refresh_token_expire_days
-    )
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(days=settings.refresh_token_expire_days)
     return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "refresh", "ver": token_version},
+        {
+            "sub": subject,
+            "exp": expire,
+            "iat": _now_ts(),
+            "type": "refresh",
+            "ver": token_version,
+        },
         settings.secret_key.get_secret_value(),
         algorithm=ALGORITHM,
     )

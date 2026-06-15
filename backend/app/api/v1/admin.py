@@ -67,7 +67,9 @@ async def create_user(
         roles = (
             (
                 await db.execute(
-                    select(Role).where(Role.id.in_(body.role_ids), Role.is_deleted == False)  # noqa: E712
+                    select(Role).where(
+                        Role.id.in_(body.role_ids), Role.is_deleted == False
+                    )  # noqa: E712
                 )
             )
             .scalars()
@@ -159,7 +161,9 @@ async def update_user(
         roles = (
             (
                 await db.execute(
-                    select(Role).where(Role.id.in_(body.role_ids), Role.is_deleted == False)  # noqa: E712
+                    select(Role).where(
+                        Role.id.in_(body.role_ids), Role.is_deleted == False
+                    )  # noqa: E712
                 )
             )
             .scalars()
@@ -231,7 +235,9 @@ async def delete_user(
 @router.get("/roles", response_model=list[RoleAdminResponse])
 async def list_roles(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Role).where(Role.is_deleted == False).options(selectinload(Role.permissions))  # noqa: E712
+        select(Role)
+        .where(Role.is_deleted == False)
+        .options(selectinload(Role.permissions))  # noqa: E712
     )
     return result.scalars().all()
 
@@ -274,8 +280,10 @@ async def create_role(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Role already exists")
-    await db.refresh(role)
-    return role
+    result = await db.execute(
+        select(Role).where(Role.id == role.id).options(selectinload(Role.permissions))
+    )
+    return result.scalar_one()
 
 
 @router.patch("/roles/{role_id}", response_model=RoleAdminResponse)
@@ -286,7 +294,9 @@ async def update_role(
     current_user: User = Depends(get_current_user),
 ):
     role = (
-        await db.execute(select(Role).where(Role.id == role_id, Role.is_deleted == False))  # noqa: E712
+        await db.execute(
+            select(Role).where(Role.id == role_id, Role.is_deleted == False)
+        )  # noqa: E712
     ).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
@@ -317,8 +327,10 @@ async def update_role(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Role name already in use")
-    await db.refresh(role)
-    return role
+    result = await db.execute(
+        select(Role).where(Role.id == role.id).options(selectinload(Role.permissions))
+    )
+    return result.scalar_one()
 
 
 @router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -328,7 +340,9 @@ async def delete_role(
     current_user: User = Depends(get_current_user),
 ):
     role = (
-        await db.execute(select(Role).where(Role.id == role_id, Role.is_deleted == False))  # noqa: E712
+        await db.execute(
+            select(Role).where(Role.id == role_id, Role.is_deleted == False)
+        )  # noqa: E712
     ).scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
@@ -391,7 +405,8 @@ async def update_permission(
     perm = (
         await db.execute(
             select(Permission).where(
-                Permission.id == perm_id, Permission.is_deleted == False  # noqa: E712
+                Permission.id == perm_id,
+                Permission.is_deleted == False,  # noqa: E712
             )
         )
     ).scalar_one_or_none()  # noqa: E712
@@ -419,7 +434,8 @@ async def delete_permission(
     perm = (
         await db.execute(
             select(Permission).where(
-                Permission.id == perm_id, Permission.is_deleted == False  # noqa: E712
+                Permission.id == perm_id,
+                Permission.is_deleted == False,  # noqa: E712
             )
         )
     ).scalar_one_or_none()  # noqa: E712

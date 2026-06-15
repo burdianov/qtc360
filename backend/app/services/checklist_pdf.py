@@ -193,7 +193,13 @@ async def generate_checklist_pdf(db: AsyncSession, document, checklist) -> bytes
 
     available_w = width - 24 * mm
     notes_col_w = 40 * mm
-    col_widths = [12 * mm, available_w - 12 * mm - 30 * mm - notes_col_w, 15 * mm, 15 * mm, notes_col_w]
+    col_widths = [
+        12 * mm,
+        available_w - 12 * mm - 30 * mm - notes_col_w,
+        15 * mm,
+        15 * mm,
+        notes_col_w,
+    ]
     t = Table(table_data, colWidths=col_widths, repeatRows=1)
     t.setStyle(
         TableStyle(

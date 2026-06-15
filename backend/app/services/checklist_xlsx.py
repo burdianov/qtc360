@@ -31,7 +31,9 @@ def fill_xlsx_template(template_bytes: bytes, context: dict[str, str]) -> bytes:
             for cell in row:
                 if cell.value and isinstance(cell.value, str) and "{{" in cell.value:
                     # Capture from the first yes/no placeholder cell
-                    if placeholder_font is None and ("{{ yes_" in cell.value or "{{ no_" in cell.value):
+                    if placeholder_font is None and (
+                        "{{ yes_" in cell.value or "{{ no_" in cell.value
+                    ):
                         placeholder_font = Font(
                             name=cell.font.name or "Arial",
                             size=cell.font.size or 10,

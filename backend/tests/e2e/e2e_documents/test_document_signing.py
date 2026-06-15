@@ -65,14 +65,20 @@ async def test_signature_rules_per_document_type(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["FAT", "CRS"])
-async def test_auto_approved_docs_cannot_be_signed(client, seed_data, auth_headers, doc_type: str):
+async def test_auto_approved_docs_cannot_be_signed(
+    client, seed_data, auth_headers, doc_type: str
+):
     """FAT and CRS are auto-approved on create — signing is not applicable."""
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, doc_type, "no sign")
     assert doc["status"] == "approved"
 
-    r = await client.post(f"/documents/{doc['id']}/sign?role=site_engineer", headers=site)
-    assert r.status_code == 400, f"{doc_type} should not be signable: {r.status_code} {r.text}"
+    r = await client.post(
+        f"/documents/{doc['id']}/sign?role=site_engineer", headers=site
+    )
+    assert r.status_code == 400, (
+        f"{doc_type} should not be signable: {r.status_code} {r.text}"
+    )
     assert "draft" in r.text.lower()
 
 
@@ -87,7 +93,9 @@ async def test_duplicate_sign_rejected(client, seed_data, auth_headers):
     await sign_document(client, doc["id"], "site_engineer", site, "draft")
 
     # Duplicate site sign should be rejected
-    r = await client.post(f"/documents/{doc['id']}/sign?role=site_engineer", headers=site)
+    r = await client.post(
+        f"/documents/{doc['id']}/sign?role=site_engineer", headers=site
+    )
     assert r.status_code == 400, r.text
     assert "already signed" in r.text.lower()
 
@@ -120,7 +128,9 @@ async def test_cannot_unsign_after_submission(client, seed_data, auth_headers):
     doc = await internally_sign_document(client, doc, site, site)
     await submit_to_approver(client, site, doc["id"], 1)
 
-    r = await client.post(f"/documents/{doc['id']}/unsign?role=site_engineer", headers=site)
+    r = await client.post(
+        f"/documents/{doc['id']}/unsign?role=site_engineer", headers=site
+    )
     assert r.status_code == 400, r.text
     assert "Cannot remove signature" in r.text
 
@@ -130,7 +140,9 @@ async def test_cannot_unsign_after_submission(client, seed_data, auth_headers):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["WIR", "MIR", "CIR", "CRS"])
-async def test_notify_signatories_succeeds(client, seed_data, auth_headers, doc_type: str):
+async def test_notify_signatories_succeeds(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, doc_type, "notify")
     # Must be the creator to notify
@@ -143,7 +155,9 @@ async def test_notify_signatories_succeeds(client, seed_data, auth_headers, doc_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", ["WIR", "MIR", "CIR"])
-async def test_cannot_sign_after_submission(client, seed_data, auth_headers, doc_type: str):
+async def test_cannot_sign_after_submission(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
@@ -152,7 +166,9 @@ async def test_cannot_sign_after_submission(client, seed_data, auth_headers, doc
     await submit_to_approver(client, site, doc["id"], 1)
 
     # Now in with_approver_1 — signing should be blocked
-    r = await client.post(f"/documents/{doc['id']}/sign?role=site_engineer", headers=site)
+    r = await client.post(
+        f"/documents/{doc['id']}/sign?role=site_engineer", headers=site
+    )
     assert r.status_code == 400, r.text
     assert "draft" in r.text.lower()
 
@@ -161,7 +177,9 @@ async def test_cannot_sign_after_submission(client, seed_data, auth_headers, doc
 
 
 @pytest.mark.asyncio
-async def test_sign_on_behalf_of_without_delegation_rejected(client, seed_data, auth_headers):
+async def test_sign_on_behalf_of_without_delegation_rejected(
+    client, seed_data, auth_headers
+):
     """Signing on behalf of another user requires a delegation record.
     The qaqc user tries to sign on behalf of the site engineer without a
     delegation — should fail."""
@@ -178,4 +196,6 @@ async def test_sign_on_behalf_of_without_delegation_rejected(client, seed_data, 
         headers=qaqc,
     )
     # Should fail — qaqc hasn't been delegated by the site engineer
-    assert r.status_code in {400, 403}, f"Expected 400 or 403, got {r.status_code}: {r.text}"
+    assert r.status_code in {400, 403}, (
+        f"Expected 400 or 403, got {r.status_code}: {r.text}"
+    )

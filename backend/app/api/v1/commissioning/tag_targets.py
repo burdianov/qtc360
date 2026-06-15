@@ -19,7 +19,9 @@ from app.schemas.commissioning import (
     AssetTagTargetOut,
     AssetTagTargetUpdate,
 )
-from app.api.v1.commissioning.helpers import project_id_for_asset as _project_id_for_asset
+from app.api.v1.commissioning.helpers import (
+    project_id_for_asset as _project_id_for_asset,
+)
 
 router = APIRouter()
 
@@ -31,7 +33,7 @@ async def list_tag_targets(
     user: User = Depends(get_current_user),
 ):
     if asset_id:
-        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id))
+        await assert_user_in_project(user, await _project_id_for_asset(db, asset_id), db=db)
     query = select(AssetTagTarget).where(AssetTagTarget.is_deleted == False)  # noqa: E712
     if asset_id:
         query = query.where(AssetTagTarget.asset_id == asset_id)
@@ -61,7 +63,7 @@ async def create_tag_target(
     pid = await _project_id_for_asset(db, data.asset_id)
     if pid is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    await assert_user_in_project(user, pid)
+    await assert_user_in_project(user, pid, db=db)
     target = AssetTagTarget(**data.model_dump())
     db.add(target)
     await db.commit()
@@ -83,7 +85,7 @@ async def update_tag_target(
     if not target:
         raise HTTPException(status_code=404, detail="Tag target not found")
     pid = await _project_id_for_asset(db, target.asset_id)
-    await assert_user_in_project(user, pid)
+    await assert_user_in_project(user, pid, db=db)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(target, k, v)
     await db.commit()

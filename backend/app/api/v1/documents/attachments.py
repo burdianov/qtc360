@@ -36,12 +36,16 @@ from app.models.document import Document
 from app.models.document_attachment import DocumentAttachment
 from app.models.user import User
 from app.services.storage import storage
-from app.api.v1.documents.helpers import load_doc_for_attachment, build_download_filename
+from app.api.v1.documents.helpers import (
+    load_doc_for_attachment,
+    build_download_filename,
+)
 
 router = APIRouter()
 
 
 # ── List attachments ─────────────────────────────────────────────────────────
+
 
 @router.get("/{doc_id}/attachments")
 async def list_attachments(
@@ -76,6 +80,7 @@ async def list_attachments(
 
 
 # ── Upload attachment ────────────────────────────────────────────────────────
+
 
 @router.post("/{doc_id}/attachments", status_code=201)
 async def upload_attachment(
@@ -158,6 +163,7 @@ async def upload_attachment(
 
 # ── Delete attachment ────────────────────────────────────────────────────────
 
+
 @router.delete("/{doc_id}/attachments/{att_id}", status_code=204)
 async def delete_attachment(
     doc_id: UUID,
@@ -186,6 +192,7 @@ async def delete_attachment(
 
 # ── Download single attachment ────────────────────────────────────────────────
 
+
 @router.get("/{doc_id}/attachments/{att_id}")
 async def download_attachment(
     doc_id: UUID,
@@ -211,7 +218,9 @@ async def download_attachment(
     try:
         data = storage.read(att.storage_path)
     except Exception:
-        raise HTTPException(status_code=404, detail="Attachment file not found on storage")
+        raise HTTPException(
+            status_code=404, detail="Attachment file not found on storage"
+        )
 
     return Response(
         content=data,
@@ -221,6 +230,7 @@ async def download_attachment(
 
 
 # ── Reorder attachments ──────────────────────────────────────────────────────
+
 
 @router.patch("/{doc_id}/attachments/reorder")
 async def reorder_attachments(
@@ -252,9 +262,7 @@ async def reorder_attachments(
 CACHE_KIND = AttachmentKind.CACHE  # attachment kind for cached main-PDF bytes
 
 
-async def _get_or_generate_cached_main_pdf(
-    db: AsyncSession, doc, template
-) -> bytes:
+async def _get_or_generate_cached_main_pdf(db: AsyncSession, doc, template) -> bytes:
     """Return main PDF bytes, using cache when not stale.
 
     Caches the raw filled template PDF (before signature stamping) as a
@@ -355,7 +363,7 @@ async def download_document_bundle(
 
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     if doc.template_id:
         template = (
@@ -489,8 +497,12 @@ async def pre_warm_main_pdf_cache(doc_id: uuid.UUID):
                     .options(
                         selectinload(Document.discipline),
                         selectinload(Document.project),
-                        selectinload(Document.site_engineer).selectinload(User.designation),
-                        selectinload(Document.qaqc_engineer).selectinload(User.designation),
+                        selectinload(Document.site_engineer).selectinload(
+                            User.designation
+                        ),
+                        selectinload(Document.qaqc_engineer).selectinload(
+                            User.designation
+                        ),
                     )
                 )
             ).scalar_one_or_none()

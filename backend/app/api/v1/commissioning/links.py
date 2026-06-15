@@ -46,7 +46,7 @@ async def create_document_requirement_link(
             status_code=400,
             detail="Document and requirement belong to different projects",
         )
-    await assert_user_in_project(user, pid_doc)
+    await assert_user_in_project(user, pid_doc, db=db)
     link = DocumentRequirementLink(**data.model_dump())
     db.add(link)
     await recalculate_requirement_status(db, data.asset_requirement_id)
@@ -67,7 +67,7 @@ async def delete_document_requirement_links(
     pid_req = await _project_id_for_asset_requirement(db, asset_requirement_id)
     if pid_doc is None or pid_req is None:
         raise HTTPException(status_code=404, detail="Document or requirement not found")
-    await assert_user_in_project(user, pid_doc)
+    await assert_user_in_project(user, pid_doc, db=db)
 
     result = await db.execute(
         select(DocumentRequirementLink).where(
@@ -93,11 +93,11 @@ async def list_document_links(
 ):
     if document_id:
         await assert_user_in_project(
-            user, await _project_id_for_document(db, document_id)
+            user, await _project_id_for_document(db, document_id), db=db
         )
     if asset_requirement_id:
         await assert_user_in_project(
-            user, await _project_id_for_asset_requirement(db, asset_requirement_id)
+            user, await _project_id_for_asset_requirement(db, asset_requirement_id), db=db
         )
     query = select(DocumentRequirementLink).where(
         DocumentRequirementLink.is_deleted == False  # noqa: E712

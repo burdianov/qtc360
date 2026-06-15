@@ -43,6 +43,7 @@ class GenerateReportRequest(PydanticModel):
 
 # ── Generate report ──────────────────────────────────────────────────────────
 
+
 @router.post("/generate/{doc_type}")
 async def generate_report(
     doc_type: str,
@@ -51,11 +52,12 @@ async def generate_report(
     user: User = Depends(require_permission("reports.generate")),
 ):
     """Generate PDF from document data + Word template. Appends attachments."""
-    await assert_user_in_project(user, body.project_id)
+    await assert_user_in_project(user, body.project_id, db=db)
     if body.template_id:
         result = await db.execute(
             select(DocTemplate).where(
-                DocTemplate.id == body.template_id, DocTemplate.is_deleted == False  # noqa: E712
+                DocTemplate.id == body.template_id,
+                DocTemplate.is_deleted == False,  # noqa: E712
             )
         )
     else:
@@ -137,7 +139,8 @@ async def generate_report(
         .where(
             DocumentAttachment.document_id == body.document_id,
             DocumentAttachment.kind.in_(BUNDLE_KINDS),
-            DocumentAttachment.is_deleted == False, )  # noqa: E712
+            DocumentAttachment.is_deleted == False,
+        )  # noqa: E712
         .order_by(DocumentAttachment.sort_order, DocumentAttachment.id)
     )
     attachments = att_result.scalars().all()
@@ -173,6 +176,7 @@ async def generate_report(
 
 # ── Health check ─────────────────────────────────────────────────────────────
 
+
 @router.get("/pdf-engine/health")
 async def pdf_engine_health(_: User = Depends(get_current_user)):
     """Check LibreOffice is available and can convert DOCX to PDF."""
@@ -201,6 +205,7 @@ async def pdf_engine_health(_: User = Depends(get_current_user)):
 
 # ── Latest PDF ───────────────────────────────────────────────────────────────
 
+
 @router.get("/latest-pdf/{document_id}")
 async def get_latest_pdf(
     document_id: UUID,
@@ -213,7 +218,7 @@ async def get_latest_pdf(
     doc = await db.get(Document, document_id)
     if not doc or doc.is_deleted:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     rounds_result = await db.execute(
         select(DocumentApprovalRound)
@@ -255,6 +260,7 @@ async def get_latest_pdf(
 
 # ── CRS PDF generation ──────────────────────────────────────────────────────
 
+
 @router.post("/generate-crs")
 async def generate_crs_pdf(
     body: GenerateReportRequest,
@@ -270,7 +276,7 @@ async def generate_crs_pdf(
     from reportlab.lib import colors
     from app.models.app_setting import AppSetting
 
-    await assert_user_in_project(user, body.project_id)
+    await assert_user_in_project(user, body.project_id, db=db)
 
     doc_result = await db.execute(
         select(Document)

@@ -160,4 +160,3 @@ if settings.environment.lower() == "production":
 elif not settings.cors_origins:
     # Development convenience: default to the local Next.js dev server only.
     settings = settings.model_copy(update={"allowed_origins": "http://localhost:3000"})
-

@@ -169,6 +169,11 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaginatedDocuments(BaseModel):
+    items: list[DocumentResponse]
+    total: int
+
+
 # --- Document Approval Round ---
 
 

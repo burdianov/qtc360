@@ -52,7 +52,9 @@ class _LocalStorage:
         if not path.exists():
             return 0
         if path.is_file():
-            raise ValueError(f"purge_prefix target {prefix!r} is a file, not a directory")
+            raise ValueError(
+                f"purge_prefix target {prefix!r} is a file, not a directory"
+            )
         # Sanity-check we're inside our root after the resolve.
         if not path.is_relative_to(self._root):
             raise ValueError(f"Path traversal detected in purge_prefix: {prefix!r}")

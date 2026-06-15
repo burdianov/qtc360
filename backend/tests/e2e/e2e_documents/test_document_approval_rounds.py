@@ -32,7 +32,9 @@ from .helpers import (
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", MULTI_APPROVAL_TYPES)
-async def test_download_submitted_stage_files(client, seed_data, auth_headers, doc_type: str):
+async def test_download_submitted_stage_files(
+    client, seed_data, auth_headers, doc_type: str
+):
     """After submitting to approver 1 and 2, S1.pdf and S2.pdf should be downloadable."""
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
@@ -57,7 +59,9 @@ async def test_download_submitted_stage_files(client, seed_data, auth_headers, d
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", MULTI_APPROVAL_TYPES)
-async def test_download_returned_stage_files(client, seed_data, auth_headers, doc_type: str):
+async def test_download_returned_stage_files(
+    client, seed_data, auth_headers, doc_type: str
+):
     """After recording responses, R1.pdf and R2.pdf should be downloadable."""
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
@@ -107,16 +111,25 @@ async def test_invalid_stage_name_rejected(client, seed_data, auth_headers):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", MULTI_APPROVAL_TYPES)
-async def test_list_approval_rounds_returns_in_order(client, seed_data, auth_headers, doc_type: str):
+async def test_list_approval_rounds_returns_in_order(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
     doc = await create_document(client, site, seed_data, doc_type, "rounds list")
     doc = await internally_sign_document(client, doc, site, qaqc)
     await submit_to_approver(client, site, doc["id"], 1)
-    await record_response(client, site, seed_data, doc["id"], 1, "A",
-                          signatory_name="First Approver",
-                          comments="First round done")
+    await record_response(
+        client,
+        site,
+        seed_data,
+        doc["id"],
+        1,
+        "A",
+        signatory_name="First Approver",
+        comments="First round done",
+    )
 
     # List rounds
     rounds = await list_approval_rounds(client, site, doc["id"])
@@ -130,9 +143,16 @@ async def test_list_approval_rounds_returns_in_order(client, seed_data, auth_hea
 
     # Submit and record round 2
     await submit_to_approver(client, site, doc["id"], 2)
-    await record_response(client, site, seed_data, doc["id"], 2, "B",
-                          signatory_name="Second Approver",
-                          comments="Second round with comments")
+    await record_response(
+        client,
+        site,
+        seed_data,
+        doc["id"],
+        2,
+        "B",
+        signatory_name="Second Approver",
+        comments="Second round with comments",
+    )
 
     rounds = await list_approval_rounds(client, site, doc["id"])
     assert len(rounds) == 2
@@ -150,7 +170,9 @@ async def test_list_approval_rounds_returns_in_order(client, seed_data, auth_hea
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("doc_type", MULTI_APPROVAL_TYPES)
-async def test_replace_round_file_succeeds(client, seed_data, auth_headers, doc_type: str):
+async def test_replace_round_file_succeeds(
+    client, seed_data, auth_headers, doc_type: str
+):
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
@@ -192,7 +214,12 @@ async def test_replace_round_file_rejects_non_pdf(client, seed_data, auth_header
     # Try to replace with a text file
     bad_file = {"file": ("bad.txt", b"not a pdf", "text/plain")}
     await replace_round_file(
-        client, site, doc["id"], round_obj["id"], file_data=bad_file, expected_status=400
+        client,
+        site,
+        doc["id"],
+        round_obj["id"],
+        file_data=bad_file,
+        expected_status=400,
     )
 
 
@@ -208,7 +235,12 @@ async def test_replace_round_file_rejects_empty_file(client, seed_data, auth_hea
 
     empty_pdf = {"file": ("empty.pdf", b"", "application/pdf")}
     await replace_round_file(
-        client, site, doc["id"], round_obj["id"], file_data=empty_pdf, expected_status=400
+        client,
+        site,
+        doc["id"],
+        round_obj["id"],
+        file_data=empty_pdf,
+        expected_status=400,
     )
 
 
@@ -225,7 +257,12 @@ async def test_round_metadata_persisted_correctly(client, seed_data, auth_header
     doc = await internally_sign_document(client, doc, site, qaqc)
     await submit_to_approver(client, site, doc["id"], 1, "2026-06-01")
     await record_response(
-        client, site, seed_data, doc["id"], 1, "B",
+        client,
+        site,
+        seed_data,
+        doc["id"],
+        1,
+        "B",
         signatory_name="Metadata Tester",
         date="2026-06-05",
         comments="Detailed round 1 comments",

@@ -1,5 +1,35 @@
+# Files / dirs that should never enter any backend image build context.
+# Both the production Dockerfile and the e2e Dockerfile COPY the
+# backend tree, so a stale local venv (e.g. .venv_old) that the daemon
+# can't open will fail the whole build with
+# "error from sender: open ...: The file cannot be accessed by the system".
+
+# Local virtualenvs (current + any historical names).
 .venv
+.venv_*
+venv
+env
+
+# Python caches.
 __pycache__
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Local artefacts that have no place in a build image.
 uploads/
 .env
+.env.*
+.coverage
+.coverage.*
+htmlcov/
+*.log
+
+# Editor / OS noise.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

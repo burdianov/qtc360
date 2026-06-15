@@ -73,6 +73,7 @@ class ReqStatus:
 
 # ─── Permission Codes ────────────────────────────────────────────────────────
 class PermissionCode(str, Enum):
+    DOCUMENTS_VIEW = "documents.view"
     DOCUMENTS_SUBMIT = "documents.submit"
     DOCUMENTS_EDIT = "documents.edit"
     DOCUMENTS_DELETE = "documents.delete"

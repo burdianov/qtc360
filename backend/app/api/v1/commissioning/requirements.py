@@ -47,10 +47,10 @@ async def list_asset_requirements(
     query = select(AssetRequirement).where(AssetRequirement.is_deleted == False)  # noqa: E712
     if asset_id:
         ap = await project_id_for_asset(db, asset_id)
-        await assert_user_in_project(user, ap)
+        await assert_user_in_project(user, ap, db=db)
         query = query.where(AssetRequirement.asset_id == asset_id)
     if project_id:
-        await assert_user_in_project(user, project_id)
+        await assert_user_in_project(user, project_id, db=db)
         query = query.join(Asset, AssetRequirement.asset_id == Asset.id).where(
             Asset.is_deleted == False,  # noqa: E712
             Asset.project_id == project_id,
@@ -87,7 +87,7 @@ async def create_asset_requirement(
     ap = await project_id_for_asset(db, data.asset_id)
     if ap is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    await assert_user_in_project(user, ap)
+    await assert_user_in_project(user, ap, db=db)
     req = AssetRequirement(**data.model_dump())
     db.add(req)
     try:
@@ -121,7 +121,7 @@ async def update_asset_requirement(
         raise HTTPException(status_code=404, detail="Asset requirement not found")
 
     project_id = await project_id_for_asset_requirement(db, asset_requirement_id)
-    await assert_user_in_project(user, project_id)
+    await assert_user_in_project(user, project_id, db=db)
 
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
@@ -158,7 +158,7 @@ async def delete_asset_requirement(
         raise HTTPException(status_code=404, detail="Asset requirement not found")
 
     project_id = await project_id_for_asset_requirement(db, asset_requirement_id)
-    await assert_user_in_project(user, project_id)
+    await assert_user_in_project(user, project_id, db=db)
 
     linked_doc = await db.execute(
         select(DocumentRequirementLink.id).where(
@@ -202,7 +202,7 @@ async def bulk_create_asset_requirements(
         if not project_ids:
             raise HTTPException(status_code=404, detail="No valid assets found")
         for pid in project_ids:
-            await assert_user_in_project(user, pid)
+            await assert_user_in_project(user, pid, db=db)
     reqs = []
     for asset_id in data.asset_ids:
         req = AssetRequirement(
@@ -242,7 +242,8 @@ async def bulk_assign_by_asset_type(
     type_ids.extend([row[0] for row in subtypes.all()])
 
     asset_q = select(Asset).where(
-        Asset.asset_type_id.in_(type_ids), Asset.is_deleted == False  # noqa: E712
+        Asset.asset_type_id.in_(type_ids),
+        Asset.is_deleted == False,  # noqa: E712
     )
     if not user.is_superuser:
         my_project_ids = [p.id for p in user.projects]

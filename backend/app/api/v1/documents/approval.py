@@ -47,6 +47,7 @@ router = APIRouter()
 
 # ── List approval rounds ─────────────────────────────────────────────────────
 
+
 @router.get(
     "/{doc_id}/approval-rounds", response_model=list[DocumentApprovalRoundResponse]
 )
@@ -62,7 +63,7 @@ async def list_approval_rounds(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     rounds = (
         (
             await db.execute(
@@ -83,6 +84,7 @@ async def list_approval_rounds(
 
 
 # ── OCR preview (stateless, before round exists) ─────────────────────────────
+
 
 @router.post(
     "/{doc_id}/extract-preview",
@@ -119,7 +121,7 @@ async def extract_preview_region(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     suffix = FilePath(file.filename or "").suffix.lower()
     if suffix != ".pdf":
@@ -152,6 +154,7 @@ async def extract_preview_region(
 
 # ── Submit to approver ───────────────────────────────────────────────────────
 
+
 @router.post(
     "/{doc_id}/submit-to-approver",
     response_model=DocumentApprovalRoundResponse,
@@ -183,7 +186,7 @@ async def submit_to_approver_endpoint(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = await submit_to_approver(db, doc, approver_order, None)
 
@@ -238,6 +241,7 @@ async def submit_to_approver_endpoint(
 
 
 # ── Record response ──────────────────────────────────────────────────────────
+
 
 @router.post(
     "/{doc_id}/approval-rounds",
@@ -297,7 +301,7 @@ async def record_response_endpoint(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = await record_response(
         db,
@@ -421,6 +425,7 @@ async def record_response_endpoint(
 
 # ── Replace round file ───────────────────────────────────────────────────────
 
+
 @router.put(
     "/{doc_id}/approval-rounds/{round_id}/file",
     status_code=200,
@@ -457,7 +462,7 @@ async def replace_round_file(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = (
         await db.execute(
@@ -534,6 +539,7 @@ async def replace_round_file(
 
 # ── OCR from a saved round ───────────────────────────────────────────────────
 
+
 @router.post(
     "/{doc_id}/approval-rounds/{round_id}/extract",
     response_model=OCRExtractResponse,
@@ -555,7 +561,7 @@ async def extract_round_region(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = (
         await db.execute(
@@ -595,6 +601,7 @@ async def extract_round_region(
 
 # ── Round remarks ────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/{doc_id}/approval-rounds/{round_id}/remarks",
     response_model=DocumentApprovalRoundResponse,
@@ -630,7 +637,7 @@ async def upload_round_remarks(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = (
         await db.execute(
@@ -666,6 +673,7 @@ async def upload_round_remarks(
 
 
 # ── Round attachments CRUD ───────────────────────────────────────────────────
+
 
 @router.post(
     "/{doc_id}/approval-rounds/{round_id}/attachments",
@@ -712,7 +720,7 @@ async def upload_round_attachment(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = (
         await db.execute(
@@ -876,6 +884,7 @@ async def delete_round_attachment(
 
 # ── Download single round attachment ─────────────────────────────────────────
 
+
 @router.get("/{doc_id}/approval-rounds/{round_id}/attachments/{att_id}")
 async def download_round_attachment(
     doc_id: UUID,
@@ -894,7 +903,7 @@ async def download_round_attachment(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     att = (
         await db.execute(
@@ -912,7 +921,9 @@ async def download_round_attachment(
     try:
         data = storage.read(att.storage_path)
     except Exception:
-        raise HTTPException(status_code=404, detail="Attachment file not found on storage")
+        raise HTTPException(
+            status_code=404, detail="Attachment file not found on storage"
+        )
 
     return Response(
         content=data,
@@ -922,6 +933,7 @@ async def download_round_attachment(
 
 
 # ── Round bundle download ────────────────────────────────────────────────────
+
 
 @router.get("/{doc_id}/approval-rounds/{round_id}/bundle")
 async def download_round_bundle(
@@ -941,7 +953,7 @@ async def download_round_bundle(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
 
     round_ = (
         await db.execute(

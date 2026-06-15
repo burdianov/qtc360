@@ -13,7 +13,9 @@ from .helpers import (
 
 
 @pytest.mark.asyncio
-async def test_update_captured_information_in_draft_before_internal_signing(client, seed_data, auth_headers):
+async def test_update_captured_information_in_draft_before_internal_signing(
+    client, seed_data, auth_headers
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, "WIR", "captured info")
 
@@ -38,7 +40,9 @@ async def test_update_captured_information_in_draft_before_internal_signing(clie
 
 
 @pytest.mark.asyncio
-async def test_update_mir_captured_delivery_information(client, seed_data, auth_headers):
+async def test_update_mir_captured_delivery_information(
+    client, seed_data, auth_headers
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, "MIR", "captured mir")
 
@@ -55,7 +59,9 @@ async def test_update_mir_captured_delivery_information(client, seed_data, auth_
 
 
 @pytest.mark.asyncio
-async def test_update_crs_captured_comment_response_information(client, seed_data, auth_headers):
+async def test_update_crs_captured_comment_response_information(
+    client, seed_data, auth_headers
+):
     site = auth_headers("site")
     doc = await create_document(client, site, seed_data, "CRS", "captured crs")
 
@@ -76,7 +82,9 @@ async def test_update_crs_captured_comment_response_information(client, seed_dat
             },
         ],
     }
-    r = await client.patch(f"/documents/{doc['id']}", json={"crs_data": crs_data}, headers=site)
+    r = await client.patch(
+        f"/documents/{doc['id']}", json={"crs_data": crs_data}, headers=site
+    )
     assert r.status_code == 200, r.text
     assert r.json()["crs_data"] == crs_data
 
@@ -98,7 +106,10 @@ async def test_resubmit_rejected_document_keeps_same_revision_and_returns_to_dra
 
     r = await client.post(
         f"/documents/{doc['id']}/resubmit",
-        json={"title": f"E2E {doc_type} resubmitted after C", "remarks_1": "corrective action captured"},
+        json={
+            "title": f"E2E {doc_type} resubmitted after C",
+            "remarks_1": "corrective action captured",
+        },
         headers=site,
     )
     assert r.status_code == 200, f"Resubmit failed for {doc_type}: {r.text}"
@@ -111,9 +122,13 @@ async def test_resubmit_rejected_document_keeps_same_revision_and_returns_to_dra
     # Prove the same document can go through the approval chain again.
     resubmitted = await internally_sign_document(client, resubmitted, site, qaqc)
     await submit_to_approver(client, site, resubmitted["id"], 1, "2026-06-10")
-    await record_response(client, site, seed_data, resubmitted["id"], 1, "A", "2026-06-11")
+    await record_response(
+        client, site, seed_data, resubmitted["id"], 1, "A", "2026-06-11"
+    )
     await submit_to_approver(client, site, resubmitted["id"], 2, "2026-06-12")
-    await record_response(client, site, seed_data, resubmitted["id"], 2, "A", "2026-06-13")
+    await record_response(
+        client, site, seed_data, resubmitted["id"], 2, "A", "2026-06-13"
+    )
     assert (await get_document(client, site, resubmitted["id"]))["status"] == "approved"
 
 
@@ -125,11 +140,15 @@ async def test_received_then_add_attachment_then_continue_to_next_approver(
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
 
-    doc = await create_document(client, site, seed_data, doc_type, "received add attachment")
+    doc = await create_document(
+        client, site, seed_data, doc_type, "received add attachment"
+    )
     doc = await internally_sign_document(client, doc, site, qaqc)
     await submit_to_approver(client, site, doc["id"], 1)
     round_obj = await record_response(client, site, seed_data, doc["id"], 1, "A")
-    assert (await get_document(client, site, doc["id"]))["status"] == "approver_1_returned"
+    assert (await get_document(client, site, doc["id"]))[
+        "status"
+    ] == "approver_1_returned"
 
     r = await client.post(
         f"/documents/{doc['id']}/approval-rounds/{round_obj['id']}/attachments",
@@ -154,14 +173,23 @@ async def test_received_then_add_attachment_then_continue_to_next_approver(
 
 
 @pytest.mark.asyncio
-async def test_extract_preview_and_round_region_validation_paths(client, seed_data, auth_headers):
+async def test_extract_preview_and_round_region_validation_paths(
+    client, seed_data, auth_headers
+):
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
     doc = await create_document(client, site, seed_data, "WIR", "extract validation")
 
     r = await client.post(
         f"/documents/{doc['id']}/extract-preview",
-        params={"page": 1, "x": 0, "y": 0, "width": 100, "height": 40, "target_field": "invalid"},
+        params={
+            "page": 1,
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 40,
+            "target_field": "invalid",
+        },
         files=pdf_file("returned.pdf"),
         headers=site,
     )
@@ -174,7 +202,12 @@ async def test_extract_preview_and_round_region_validation_paths(client, seed_da
 
     r = await client.post(
         f"/documents/{doc['id']}/approval-rounds/{round_obj['id']}/extract",
-        json={"page": 1, "bbox": [0, 0, 100], "target_field": "comments", "force_ocr": False},
+        json={
+            "page": 1,
+            "bbox": [0, 0, 100],
+            "target_field": "comments",
+            "force_ocr": False,
+        },
         headers=site,
     )
     assert r.status_code == 400
@@ -186,7 +219,9 @@ async def test_extract_preview_and_round_region_validation_paths(client, seed_da
     "target_field",
     ["signatory_name", "response_date", "response_time", "comments"],
 )
-async def test_extract_preview_happy_path(client, seed_data, auth_headers, target_field: str):
+async def test_extract_preview_happy_path(
+    client, seed_data, auth_headers, target_field: str
+):
     """Extract preview with valid target_field should return extracted text
     (or empty text for minimal PDF)."""
     site = auth_headers("site")
@@ -195,8 +230,13 @@ async def test_extract_preview_happy_path(client, seed_data, auth_headers, targe
     r = await client.post(
         f"/documents/{doc['id']}/extract-preview",
         params={
-            "page": 1, "x": 0, "y": 0, "width": 100, "height": 40,
-            "target_field": target_field, "force_ocr": False,
+            "page": 1,
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 40,
+            "target_field": target_field,
+            "force_ocr": False,
         },
         files=pdf_file("returned.pdf"),
         headers=site,
@@ -213,7 +253,9 @@ async def test_extract_preview_happy_path(client, seed_data, auth_headers, targe
     "target_field",
     ["signatory_name", "response_date", "response_time", "comments"],
 )
-async def test_round_extract_happy_path(client, seed_data, auth_headers, target_field: str):
+async def test_round_extract_happy_path(
+    client, seed_data, auth_headers, target_field: str
+):
     """Round-based OCR extraction with valid bbox."""
     site = auth_headers("site")
     qaqc = auth_headers("qaqc")
@@ -248,7 +290,11 @@ async def test_extract_preview_validation_errors(client, seed_data, auth_headers
     r = await client.post(
         f"/documents/{doc['id']}/extract-preview",
         params={
-            "page": 1, "x": 0, "y": 0, "width": 100, "height": 40,
+            "page": 1,
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 40,
             "target_field": "comments",
         },
         files={"file": ("bad.txt", b"hello", "text/plain")},
@@ -260,7 +306,11 @@ async def test_extract_preview_validation_errors(client, seed_data, auth_headers
     r = await client.post(
         f"/documents/{doc['id']}/extract-preview",
         params={
-            "page": 1, "x": 0, "y": 0, "width": 100, "height": 40,
+            "page": 1,
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 40,
             "target_field": "comments",
         },
         files={"file": ("empty.pdf", b"", "application/pdf")},

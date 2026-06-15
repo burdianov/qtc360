@@ -50,6 +50,7 @@ async def _load_date_format(db: AsyncSession) -> str:
         _date_format_cache = item.value if item else DEFAULT_DATE_FORMAT
         return _date_format_cache
 
+
 from sqlalchemy import select  # noqa: E402
 
 
@@ -94,6 +95,7 @@ def _safe_filename_for_disposition(name: str) -> str:
 
 
 # ── Context builder ──────────────────────────────────────────────────────────
+
 
 def _build_context(document: Document) -> dict:
     """Build template context from a Document model."""
@@ -196,6 +198,7 @@ def _build_context(document: Document) -> dict:
 
 # ── Template filler ──────────────────────────────────────────────────────────
 
+
 def _fill_template(template_bytes: bytes, context: dict, document: Document) -> bytes:
     """Fill a DOCX template with context data, using a sandboxed Jinja env."""
     from jinja2.sandbox import SandboxedEnvironment
@@ -229,6 +232,7 @@ def _fill_template(template_bytes: bytes, context: dict, document: Document) -> 
 
 
 # ── Signature stamping ───────────────────────────────────────────────────────
+
 
 def _stamp_vector_signatures(
     pdf_bytes: bytes,
@@ -383,6 +387,7 @@ def _stamp_vector_signatures(
 
 # ── PDF conversion ───────────────────────────────────────────────────────────
 
+
 async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
     """Convert DOCX to PDF via Gotenberg (preferred) or LibreOffice fallback."""
     import httpx
@@ -459,6 +464,7 @@ async def _convert_to_pdf(docx_bytes: bytes) -> bytes:
 
 
 # ── Attachment merger ────────────────────────────────────────────────────────
+
 
 def _merge_attachments_with_status(
     main_pdf: bytes, attachments

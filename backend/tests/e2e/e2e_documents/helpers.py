@@ -19,7 +19,9 @@ def first_asset_id(seed: DocumentSeedData, preferred: str = "GEN-01") -> str:
     return seed.asset_ids.get(preferred) or next(iter(seed.asset_ids.values()))
 
 
-def document_payload(seed: DocumentSeedData, doc_type: str, title_suffix: str = "") -> dict[str, Any]:
+def document_payload(
+    seed: DocumentSeedData, doc_type: str, title_suffix: str = ""
+) -> dict[str, Any]:
     asset_id = first_asset_id(seed)
     base: dict[str, Any] = {
         "project_id": seed.project_id,
@@ -91,7 +93,9 @@ async def create_document(
     if extra:
         payload.update(extra)
     r = await client.post("/documents", json=payload, headers=headers)
-    assert r.status_code == expected_status, f"create {doc_type} failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"create {doc_type} failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else {"status_code": r.status_code}
 
 
@@ -120,7 +124,9 @@ async def get_document_list(
     if status:
         params["status"] = status
     r = await client.get("/documents", params=params, headers=headers)
-    assert r.status_code == expected_status, f"list docs failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"list docs failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else []
 
 
@@ -132,7 +138,9 @@ async def update_document(
     expected_status: int = 200,
 ) -> dict[str, Any]:
     r = await client.patch(f"/documents/{doc_id}", json=payload, headers=headers)
-    assert r.status_code == expected_status, f"update doc failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"update doc failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else {}
 
 
@@ -143,7 +151,9 @@ async def delete_document(
     expected_status: int = 204,
 ) -> None:
     r = await client.delete(f"/documents/{doc_id}", headers=headers)
-    assert r.status_code == expected_status, f"delete doc failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"delete doc failed: {r.status_code} {r.text}"
+    )
 
 
 async def list_rejected_for_revision(
@@ -161,8 +171,12 @@ async def list_rejected_for_revision(
     params: dict[str, str] = {"project_id": project_id}
     if document_type:
         params["document_type"] = document_type
-    r = await client.get("/documents/rejected-for-revision", params=params, headers=headers)
-    assert r.status_code == expected_status, f"rejected-for-revision failed: {r.status_code} {r.text}"
+    r = await client.get(
+        "/documents/rejected-for-revision", params=params, headers=headers
+    )
+    assert r.status_code == expected_status, (
+        f"rejected-for-revision failed: {r.status_code} {r.text}"
+    )
     grouped = r.json() if r.content else {}
     flat: list[dict[str, Any]] = []
     for docs in grouped.values():
@@ -200,7 +214,9 @@ async def unsign_document(
     expected_status: int = 200,
 ) -> dict[str, Any]:
     r = await client.post(f"/documents/{doc_id}/unsign?role={role}", headers=headers)
-    assert r.status_code == expected_status, f"unsign {role} failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"unsign {role} failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else {}
 
 
@@ -232,9 +248,13 @@ async def internally_sign_document(
         # FAT and CRS are already approved — signing is not applicable
         return doc
     if doc_type == "MIR":
-        return await sign_document(client, doc_id, "site_engineer", site_headers, "internally_signed")
+        return await sign_document(
+            client, doc_id, "site_engineer", site_headers, "internally_signed"
+        )
     await sign_document(client, doc_id, "site_engineer", site_headers, "draft")
-    return await sign_document(client, doc_id, "qaqc_engineer", qaqc_headers, "internally_signed")
+    return await sign_document(
+        client, doc_id, "qaqc_engineer", qaqc_headers, "internally_signed"
+    )
 
 
 # ── Approval workflow ───────────────────────────────────────────────────────────
@@ -253,7 +273,9 @@ async def submit_to_approver(
         json={"approver_order": order, "aconex_submitted_date": date},
         headers=headers,
     )
-    assert r.status_code == expected_status, f"submit order {order} got {r.status_code}: {r.text}"
+    assert r.status_code == expected_status, (
+        f"submit order {order} got {r.status_code}: {r.text}"
+    )
     return r.json() if r.content else None
 
 
@@ -283,7 +305,9 @@ async def record_response(
         files=pdf_file(f"R{order}_{status_letter}.pdf"),
         headers=headers,
     )
-    assert r.status_code == expected_status, f"record response got {r.status_code}: {r.text}"
+    assert r.status_code == expected_status, (
+        f"record response got {r.status_code}: {r.text}"
+    )
     return r.json() if r.content else None
 
 
@@ -294,7 +318,9 @@ async def list_approval_rounds(
     expected_status: int = 200,
 ) -> list[dict[str, Any]]:
     r = await client.get(f"/documents/{doc_id}/approval-rounds", headers=headers)
-    assert r.status_code == expected_status, f"list rounds failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"list rounds failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else []
 
 
@@ -309,7 +335,9 @@ async def download_stage_file(
     expected_status: int = 200,
 ) -> httpx.Response:
     r = await client.get(f"/documents/{doc_id}/files/{stage}", headers=headers)
-    assert r.status_code == expected_status, f"download {stage} got {r.status_code}: {r.text}"
+    assert r.status_code == expected_status, (
+        f"download {stage} got {r.status_code}: {r.text}"
+    )
     return r
 
 
@@ -344,7 +372,9 @@ async def replace_round_file(
         files=files,
         headers=headers,
     )
-    assert r.status_code == expected_status, f"replace round file got {r.status_code}: {r.text}"
+    assert r.status_code == expected_status, (
+        f"replace round file got {r.status_code}: {r.text}"
+    )
     return r.json() if r.content else {}
 
 
@@ -363,7 +393,9 @@ async def upload_round_remarks(
         files=file_data,
         headers=headers,
     )
-    assert r.status_code == expected_status, f"upload remarks got {r.status_code}: {r.text}"
+    assert r.status_code == expected_status, (
+        f"upload remarks got {r.status_code}: {r.text}"
+    )
     return r.json() if r.content else {}
 
 
@@ -387,7 +419,9 @@ async def link_requirement(
         },
         headers=headers,
     )
-    assert r.status_code in {200, 201}, f"link requirement failed: {r.status_code} {r.text}"
+    assert r.status_code in {200, 201}, (
+        f"link requirement failed: {r.status_code} {r.text}"
+    )
 
 
 async def get_asset_requirements(
@@ -400,5 +434,7 @@ async def get_asset_requirements(
         f"/commissioning/asset-requirements?asset_id={asset_id}",
         headers=headers,
     )
-    assert r.status_code == expected_status, f"get asset requirements failed: {r.status_code} {r.text}"
+    assert r.status_code == expected_status, (
+        f"get asset requirements failed: {r.status_code} {r.text}"
+    )
     return r.json() if r.content else []

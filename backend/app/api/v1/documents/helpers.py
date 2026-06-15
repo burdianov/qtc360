@@ -99,7 +99,8 @@ async def allocate_serial(
         .where(
             ReferenceNumberConfig.project_id == project_id,
             ReferenceNumberConfig.doc_type == doc_type,
-            ReferenceNumberConfig.is_deleted == False, )  # noqa: E712
+            ReferenceNumberConfig.is_deleted == False,
+        )  # noqa: E712
         .with_for_update()
     )
     config = config_result.scalar_one_or_none()
@@ -179,9 +180,7 @@ async def auto_create_ref_config(
     return config
 
 
-async def load_doc_for_attachment(
-    db: AsyncSession, doc_id: UUID, user
-) -> Document:
+async def load_doc_for_attachment(db: AsyncSession, doc_id: UUID, user) -> Document:
     """Load a document and assert the user is in its project. Used by
     attachment endpoints."""
     from fastapi import HTTPException
@@ -194,5 +193,5 @@ async def load_doc_for_attachment(
     ).scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    await assert_user_in_project(user, doc.project_id)
+    await assert_user_in_project(user, doc.project_id, db=db)
     return doc
