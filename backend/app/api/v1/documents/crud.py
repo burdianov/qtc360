@@ -38,6 +38,7 @@ from app.schemas.document import (
 from app.services.commissioning import (
     recalculate_requirements_for_document,
     recalculate_requirement_status,
+    recalculate_tag_status,
 )
 from app.services.audit import record_audit
 from app.api.v1.documents.helpers import (
@@ -573,7 +574,7 @@ async def delete_document(
     - If NOT submitted: HARD DELETE
     """
     from app.models.document_attachment import DocumentAttachment
-    from app.models.commissioning import DocumentRequirementLink
+    from app.models.commissioning import AssetRequirement, DocumentRequirementLink
 
     result = await db.execute(
         select(Document)
@@ -659,6 +660,19 @@ async def delete_document(
 
         for ar_id in affected_ar_ids:
             await recalculate_requirement_status(db, ar_id)
+
+        if affected_ar_ids:
+            asset_result = await db.execute(
+                select(AssetRequirement.asset_id)
+                .where(
+                    AssetRequirement.id.in_(affected_ar_ids),
+                    AssetRequirement.is_deleted == False,  # noqa: E712
+                )
+                .distinct()
+            )
+            asset_ids = [row[0] for row in asset_result.all()]
+            for asset_id in asset_ids:
+                await recalculate_tag_status(db, asset_id)
 
         await record_audit(
             db,
