@@ -56,7 +56,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
   });
 
   return (
-    <header className="flex h-16 shrink-0 items-center border-b border-border px-4 md:px-6 gap-3">
+    <header className="flex h-16 shrink-0 items-center border-b border-border px-4 md:px-6 gap-3 overflow-hidden">
       {/* Mobile: hamburger */}
       <Button
         variant="ghost"
@@ -74,7 +74,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         alt="QTC360"
         width={100}
         height={22}
-        className="hidden dark:block dark:md:hidden shrink-0"
+        className="hidden dark:block dark:md:hidden shrink-0 w-[80px] md:w-[100px]"
         style={{ height: "auto" }}
       />
       <Image
@@ -82,7 +82,7 @@ export function Navbar({ onSearchClick }: NavbarProps) {
         alt="QTC360"
         width={100}
         height={22}
-        className="block md:hidden dark:hidden shrink-0"
+        className="block md:hidden dark:hidden shrink-0 w-[80px] md:w-[100px]"
         style={{ height: "auto" }}
       />
       <div className="flex-1 md:hidden" />

@@ -28,7 +28,7 @@ export function ProjectSwitcher({ mobile }: { mobile?: boolean }) {
         }
       >
         <FolderKanban className="h-3.5 w-3.5 text-primary" />
-        <span className="font-medium">{selectedProject.name}</span>
+        <span className="font-medium max-w-[100px] truncate">{selectedProject.name}</span>
         <span className="text-muted-foreground">({selectedProject.code})</span>
         <ChevronsUpDown className="h-3 w-3 text-muted-foreground" />
       </DropdownMenuTrigger>
