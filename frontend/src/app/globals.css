@@ -128,7 +128,7 @@
   }
   html {
     @apply font-sans;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
   }
   button,
   [role="button"],
@@ -224,7 +224,7 @@
   display: none;
 }
 html {
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 /* Sidebar thin scrollbar */
