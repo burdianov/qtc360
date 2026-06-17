@@ -254,7 +254,6 @@ html {
 }
 
 .tracker-scroll {
-  scrollbar-gutter: stable;
 }
 .tracker-scroll::-webkit-scrollbar {
   height: 10px;

@@ -503,7 +503,7 @@ export default function InspectionTrackerPage() {
             {/* Vertical + horizontal scroll container */}
             <div
               ref={trackerBodyRef}
-              className="tracker-scroll overflow-y-auto overflow-x-scroll"
+              className="tracker-scroll overflow-y-auto overflow-x-auto"
               style={{ height: "100%" }}
               onScroll={(e) => {
                 if (scrollRef.current && scrollRef.current.scrollTop !== e.currentTarget.scrollTop) {
