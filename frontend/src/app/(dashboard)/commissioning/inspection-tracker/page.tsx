@@ -315,7 +315,7 @@ export default function InspectionTrackerPage() {
 
   return (
     <TooltipProvider delay={200}>
-      <div className="flex flex-col h-[calc(100vh-7rem)]">
+      <div className="tracker-page flex flex-col h-[calc(100vh-7rem)]">
         {/* Toolbar */}
         <div className="sticky top-0 z-30 bg-background py-1.5 border-b shrink-0 space-y-1.5">
           {/* Row 1: Title + Disciplines left, Status + Search + Export right */}
